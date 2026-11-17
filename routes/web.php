@@ -26,7 +26,7 @@ Route::get('/', function () {
 
 // ระบบ Authentication
 Route::get('/login', [BackendAuthController::class, 'showLoginForm'])->name('login');
-Route::post('/login', [BackendAuthController::class, 'login']);
+Route::post('/login', [BackendAuthController::class, 'login'])->middleware('throttle:5,1');
 Route::post('/logout', [BackendAuthController::class, 'logout'])->name('logout');
 
 

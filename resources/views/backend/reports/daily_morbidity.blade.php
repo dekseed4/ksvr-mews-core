@@ -6,6 +6,33 @@
 @section('content')
 <div class="max-w-7xl mx-auto space-y-6 pb-12">
 
+    @php
+        // สร้าง Map ชื่อหน่วยฝึกของพลทหารแต่ละนายไว้สำรองสำหรับแสดงหลังชื่อทหารในรายการ Admit
+        $patientUnitLookup = [];
+        if (isset($batchPatients)) {
+            foreach ($batchPatients as $bp) {
+                $fullNameKey = trim(($bp->rank ?? '') . ($bp->first_name ?? '') . ' ' . ($bp->last_name ?? ''));
+                $spacedNameKey = trim(($bp->rank ?? '') . ' ' . ($bp->first_name ?? '') . ' ' . ($bp->last_name ?? ''));
+                $uShort = $bp->militaryUnit->short_name ?? null;
+                if ($uShort) {
+                    $patientUnitLookup[$fullNameKey] = $uShort;
+                    $patientUnitLookup[$spacedNameKey] = $uShort;
+                    $patientUnitLookup[trim(($bp->first_name ?? '') . ' ' . ($bp->last_name ?? ''))] = $uShort;
+                }
+            }
+        }
+        if (isset($activeCasesGrouped)) {
+            foreach ($activeCasesGrouped as $ac) {
+                if ($ac->patient && $ac->militaryUnit) {
+                    $fn1 = trim(($ac->patient->rank ?? '') . ($ac->patient->first_name ?? '') . ' ' . ($ac->patient->last_name ?? ''));
+                    $fn2 = trim(($ac->patient->rank ?? '') . ' ' . ($ac->patient->first_name ?? '') . ' ' . ($ac->patient->last_name ?? ''));
+                    $patientUnitLookup[$fn1] = $ac->militaryUnit->short_name;
+                    $patientUnitLookup[$fn2] = $ac->militaryUnit->short_name;
+                }
+            }
+        }
+    @endphp
+
     <!-- 🛠️ แถบเครื่องมือ: เลือกผลัด, เลือกวันที่, เพิ่มเคส และบันทึกเป็นรูปภาพสไลด์ -->
     <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 print:hidden">
         <form method="GET" action="{{ route('backend.morbidity_reports.index') }}" class="flex flex-wrap items-end gap-3">
@@ -55,7 +82,7 @@
             </p>
         </div>
 
-        <!-- โครงสร้างหลักแบ่งซ้าย (8 ส่วน) และ ขวา (4 ส่วน) เหมือนในรูปต้นฉบับ -->
+        <!-- โครงสร้างหลักแบ่งซ้าย (8 ส่วน) และ ขวา (4 ส่วน) -->
         <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
 
             <!-- ================= ฝั่งซ้าย (8 คอลัมน์): ทางเดินหายใจ + ความร้อน + เคสสุขภาพจิต ================= -->
@@ -121,9 +148,9 @@
                         </div>
                     </div>
 
-                    <!-- ตารางโรคระบบทางเดินหายใจ -->
+                    <!-- ตารางโรคระบบทางเดินหายใจ (ตัวเลขตัวหนาทั้งหมด) -->
                     <div class="overflow-x-auto">
-                        <table class="w-full text-xs text-center border-collapse border border-black">
+                        <table class="w-full text-xs text-center border-collapse border border-black font-bold">
                             <thead>
                                 <tr class="font-bold">
                                     <th rowspan="2" class="border border-black bg-[#fff2cc] p-1.5 align-middle">หน่วยฝึก</th>
@@ -145,21 +172,21 @@
                                     <th class="border border-black bg-white p-1">นอน รพ.</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody class="font-bold">
                                 @foreach($respTable as $row)
                                     <tr>
                                         <td class="border border-black font-bold p-1.5 bg-white">{{ $row['unit_name'] }}</td>
                                         <td class="border border-black font-bold p-1.5 bg-white">{{ $row['allocated'] }}</td>
-                                        <td class="border border-black bg-[#fff2cc] p-1.5">{{ $row['covid_new'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $row['covid_old'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $row['covid_cum'] ?: '-' }}</td>
-                                        <td class="border border-black bg-[#fce4d6] p-1.5">{{ $row['flu_new'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $row['flu_old'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $row['flu_cum'] ?: '-' }}</td>
-                                        <td class="border border-black bg-[#f8cbad] font-bold p-1.5">{{ $row['outbreak_percent'] > 0 ? $row['outbreak_percent'].'%' : '-' }}</td>
-                                        <td class="border border-black bg-[#e2efda] p-1.5">{{ $row['recovered'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $row['ci_count'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $row['hosp_count'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-[#fff2cc] p-1.5">{{ $row['covid_new'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $row['covid_old'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $row['covid_cum'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-[#fce4d6] p-1.5">{{ $row['flu_new'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $row['flu_old'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $row['flu_cum'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-[#f8cbad] p-1.5">{{ $row['outbreak_percent'] > 0 ? $row['outbreak_percent'].'%' : '-' }}</td>
+                                        <td class="border border-black font-bold bg-[#e2efda] p-1.5">{{ $row['recovered'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $row['ci_count'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $row['hosp_count'] ?: '-' }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -200,9 +227,9 @@
                         </div>
                     </div>
 
-                    <!-- ตารางการบาดเจ็บจากความร้อน 9 ชนิด -->
+                    <!-- ตารางการบาดเจ็บจากความร้อน 9 ชนิด (ตัวเลขตัวหนาทั้งหมด) -->
                     <div class="overflow-x-auto">
-                        <table class="w-full text-[11px] text-center border-collapse border border-black bg-white">
+                        <table class="w-full text-[11px] text-center border-collapse border border-black bg-white font-bold">
                             <thead>
                                 <tr class="font-bold">
                                     <th class="border border-black bg-[#fff2cc] p-1.5">หน่วยฝึก</th>
@@ -218,12 +245,12 @@
                                     <th class="border border-black bg-[#fce4d6] p-1.5">รวม</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody class="font-bold">
                                 @foreach($heatTable as $hRow)
                                     <tr>
                                         <td class="border border-black font-bold p-1.5 bg-white">{{ $hRow['unit_name'] }}</td>
                                         @foreach(['heat_rash', 'heat_edema', 'heat_cramps', 'heat_tetany', 'heat_syncope', 'mild_rhabdo', 'severe_rhabdo', 'heat_exhaustion', 'heat_stroke'] as $stKey)
-                                            <td class="border border-black p-1.5 bg-white">{{ $hRow['counts'][$stKey] ?: '-' }}</td>
+                                            <td class="border border-black font-bold p-1.5 bg-white">{{ $hRow['counts'][$stKey] ?: '-' }}</td>
                                         @endforeach
                                         <td class="border border-black font-bold p-1.5 bg-[#fce4d6]">{{ $hRow['total'] }}</td>
                                     </tr>
@@ -233,7 +260,7 @@
                     </div>
                 </div>
 
-                <!-- 3. เคสสุขภาพจิต / จิตเวช (ใหม่! ออกแบบสไตล์เดียวกับตารางมาตรฐาน รพ.ค่ายฯ) -->
+                <!-- 3. เคสสุขภาพจิต / จิตเวช -->
                 @php
                     $safeMentalSummary = $mentalSummary ?? ['new_today' => 0, 'treating' => 0, 'unit_care' => 0, 'hosp_care' => 0, 'cum' => 0, 'recovered' => 0];
                     $safeMentalTable   = $mentalTable ?? [];
@@ -244,7 +271,7 @@
                         เคสสุขภาพจิต / จิตเวช
                     </div>
 
-                    <!-- กล่องสรุป 3 กล่องบนของเคสสุขภาพจิต (รายใหม่วันนี้ | กำลังดูแล | ยอดสะสม) -->
+                    <!-- กล่องสรุป 3 กล่องบนของเคสสุขภาพจิต -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 text-xs font-bold">
                         <div class="grid grid-cols-12 border border-black">
                             <div class="col-span-5 bg-[#c00000] text-white flex items-center justify-center p-2 text-center leading-tight">
@@ -289,9 +316,9 @@
                         </div>
                     </div>
 
-                    <!-- ตารางเคสสุขภาพจิตแยกตามหน่วยฝึก (ใช้ bg-white เฉพาะ <th> ย่อยเพื่อไม่ให้บัง rowspan="2") -->
+                    <!-- ตารางเคสสุขภาพจิตแยกตามหน่วยฝึก (ตัวเลขตัวหนาทั้งหมด) -->
                     <div class="overflow-x-auto">
-                        <table class="w-full text-xs text-center border-collapse border border-black bg-white">
+                        <table class="w-full text-xs text-center border-collapse border border-black bg-white font-bold">
                             <thead>
                                 <tr class="font-bold">
                                     <th rowspan="2" class="border border-black bg-[#fff2cc] p-1.5 align-middle">หน่วยฝึก</th>
@@ -307,16 +334,16 @@
                                     <th class="border border-black bg-white p-1">นอน รพ.</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody class="font-bold">
                                 @foreach($safeMentalTable as $mRow)
                                     <tr>
                                         <td class="border border-black font-bold p-1.5 bg-white">{{ $mRow['unit_name'] }}</td>
-                                        <td class="border border-black bg-[#ede7f6] p-1.5">{{ $mRow['new'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $mRow['old'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white font-bold p-1.5">{{ $mRow['cum'] ?: '-' }}</td>
-                                        <td class="border border-black bg-[#e2efda] p-1.5">{{ $mRow['recovered'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $mRow['unit_care'] ?: '-' }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $mRow['hosp_care'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-[#ede7f6] p-1.5">{{ $mRow['new'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $mRow['old'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $mRow['cum'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-[#e2efda] p-1.5">{{ $mRow['recovered'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $mRow['unit_care'] ?: '-' }}</td>
+                                        <td class="border border-black font-bold bg-white p-1.5">{{ $mRow['hosp_care'] ?: '-' }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -346,86 +373,96 @@
             <!-- ================= ฝั่งขวา (4 คอลัมน์): การเจ็บป่วยอื่นๆ (นอน รพ.) + ตารางการนำปลด ================= -->
             <div class="xl:col-span-4 space-y-5">
 
-                <!-- กล่องขวาบน: การเจ็บป่วยอื่นๆ (นอน รพ.ค่ายฯ & นอน รพ.สาธารณสุข) -->
-                <div class="flex flex-col justify-between bg-[#fdf2e9] p-4 rounded-xl border border-rose-200 shadow-sm space-y-4">
+                <!-- กล่องขวาบน: การเจ็บป่วยอื่นๆ (วางตาราง นอน รพ.ค่ายฯ และ นอน รพ.สาธารณสุข ก่อน แล้วแสดงรายชื่อใต้ตาราง) -->
+                <div class="flex flex-col bg-[#fdf2e9] p-4 rounded-xl border border-rose-200 shadow-sm space-y-3.5">
                     <div>
-                        <div class="inline-block bg-[#f8cbad] text-slate-900 font-black text-sm px-4 py-1.5 rounded-lg mb-3 border border-rose-300">
+                        <div class="inline-block bg-[#f8cbad] text-slate-900 font-black text-sm px-4 py-1.5 rounded-lg border border-rose-300">
                             การเจ็บป่วยอื่นๆ
-                        </div>
-
-                        <!-- ตารางบน: นอน รพ.ค่ายฯ -->
-                        <table class="w-full text-xs text-center border-collapse border border-black bg-white mb-4">
-                            <thead>
-                                <tr class="font-bold">
-                                    <th rowspan="2" class="border border-black bg-[#ffe699] p-1.5 align-middle">หน่วยฝึก</th>
-                                    <th colspan="4" class="border border-black bg-[#ffe699] p-1.5">นอน รพ.ค่ายฯ</th>
-                                </tr>
-                                <tr class="font-bold">
-                                    <th class="border border-black bg-[#fff2cc] p-1">รายใหม่</th>
-                                    <th class="border border-black bg-white p-1">รายเก่า</th>
-                                    <th class="border border-black bg-white p-1">สะสม</th>
-                                    <th class="border border-black bg-white p-1">หายป่วย</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($campHospTable as $cRow)
-                                    <tr>
-                                        <td class="border border-black font-bold p-1.5 bg-[#fce4d6]">{{ $cRow['unit_name'] }}</td>
-                                        <td class="border border-black bg-[#fff2cc] p-1.5">{{ $cRow['new'] }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $cRow['old'] }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $cRow['cum'] }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $cRow['recovered'] }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-
-                        <!-- กล่องแสดงรายชื่อทหารที่ Admit พร้อม Dx. -->
-                        <div class="my-4 p-3.5 bg-white rounded-xl border border-rose-200 min-h-[105px] flex flex-col justify-center">
-                            @forelse($activeIpdList as $ipd)
-                                <div class="text-sm font-bold text-slate-800 leading-relaxed mb-2 last:mb-0">
-                                    - {{ $ipd['full_name'] }} <span class="text-indigo-700">Dx. {{ $ipd['dx'] }}</span><br>
-                                    <span class="text-xs text-slate-600 ml-2">Admit วันที่ {{ $ipd['admit_date'] }} ({{ $ipd['hosp_type'] }})</span>
-                                </div>
-                            @empty
-                                <div class="text-xs text-slate-400 text-center italic">
-                                    - ไม่มีผู้ป่วยนอนพักรักษาตัวในโรงพยาบาล ณ วันนี้ -
-                                </div>
-                            @endforelse
                         </div>
                     </div>
 
-                    <!-- ตารางล่าง: นอน รพ.สาธารณสุข -->
-                    <div>
-                        <table class="w-full text-xs text-center border-collapse border border-black bg-white">
-                            <thead>
-                                <tr class="font-bold">
-                                    <th rowspan="2" class="border border-black bg-[#ffe699] p-1.5 align-middle">หน่วยฝึก</th>
-                                    <th colspan="4" class="border border-black bg-[#ffe699] p-1.5">นอน รพ.สาธารณสุข</th>
+                    <!-- ตารางที่ 1: นอน รพ.ค่ายฯ (ตัวเลขตัวหนาทั้งหมด) -->
+                    <table class="w-full text-xs text-center border-collapse border border-black bg-white font-bold">
+                        <thead>
+                            <tr class="font-bold">
+                                <th rowspan="2" class="border border-black bg-[#ffe699] p-1.5 align-middle">หน่วยฝึก</th>
+                                <th colspan="4" class="border border-black bg-[#ffe699] p-1.5">นอน รพ.ค่ายฯ</th>
+                            </tr>
+                            <tr class="font-bold">
+                                <th class="border border-black bg-[#fff2cc] p-1">รายใหม่</th>
+                                <th class="border border-black bg-white p-1">รายเก่า</th>
+                                <th class="border border-black bg-white p-1">สะสม</th>
+                                <th class="border border-black bg-white p-1">หายป่วย</th>
+                            </tr>
+                        </thead>
+                        <tbody class="font-bold">
+                            @foreach($campHospTable as $cRow)
+                                <tr>
+                                    <td class="border border-black font-bold p-1.5 bg-[#fce4d6]">{{ $cRow['unit_name'] }}</td>
+                                    <td class="border border-black font-bold bg-[#fff2cc] p-1.5">{{ $cRow['new'] }}</td>
+                                    <td class="border border-black font-bold bg-white p-1.5">{{ $cRow['old'] }}</td>
+                                    <td class="border border-black font-bold bg-white p-1.5">{{ $cRow['cum'] }}</td>
+                                    <td class="border border-black font-bold bg-white p-1.5">{{ $cRow['recovered'] }}</td>
                                 </tr>
-                                <tr class="font-bold">
-                                    <th class="border border-black bg-[#fff2cc] p-1">รายใหม่</th>
-                                    <th class="border border-black bg-white p-1">รายเก่า</th>
-                                    <th class="border border-black bg-white p-1">สะสม</th>
-                                    <th class="border border-black bg-white p-1">หายป่วย</th>
+                            @endforeach
+                        </tbody>
+                    </table>
+
+                    <!-- ตารางที่ 2: นอน รพ.สาธารณสุข (ตัวเลขตัวหนาทั้งหมด) -->
+                    <table class="w-full text-xs text-center border-collapse border border-black bg-white font-bold">
+                        <thead>
+                            <tr class="font-bold">
+                                <th rowspan="2" class="border border-black bg-[#ffe699] p-1.5 align-middle">หน่วยฝึก</th>
+                                <th colspan="4" class="border border-black bg-[#ffe699] p-1.5">นอน รพ.สาธารณสุข</th>
+                            </tr>
+                            <tr class="font-bold">
+                                <th class="border border-black bg-[#fff2cc] p-1">รายใหม่</th>
+                                <th class="border border-black bg-white p-1">รายเก่า</th>
+                                <th class="border border-black bg-white p-1">สะสม</th>
+                                <th class="border border-black bg-white p-1">หายป่วย</th>
+                            </tr>
+                        </thead>
+                        <tbody class="font-bold">
+                            @foreach($publicHospTable as $pRow)
+                                <tr>
+                                    <td class="border border-black font-bold p-1.5 bg-[#fce4d6]">{{ $pRow['unit_name'] }}</td>
+                                    <td class="border border-black font-bold bg-[#fff2cc] p-1.5">{{ $pRow['new'] }}</td>
+                                    <td class="border border-black font-bold bg-white p-1.5">{{ $pRow['old'] }}</td>
+                                    <td class="border border-black font-bold bg-white p-1.5">{{ $pRow['cum'] }}</td>
+                                    <td class="border border-black font-bold bg-white p-1.5">{{ $pRow['recovered'] }}</td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($publicHospTable as $pRow)
-                                    <tr>
-                                        <td class="border border-black font-bold p-1.5 bg-[#fce4d6]">{{ $pRow['unit_name'] }}</td>
-                                        <td class="border border-black bg-[#fff2cc] p-1.5">{{ $pRow['new'] }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $pRow['old'] }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $pRow['cum'] }}</td>
-                                        <td class="border border-black bg-white p-1.5">{{ $pRow['recovered'] }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
+                            @endforeach
+                        </tbody>
+                    </table>
+
+                    <!-- 📋 กล่องแสดงรายชื่อทหารที่ Admit พร้อมชื่อหน่วยฝึกหลังชื่อทหาร และ Dx. (ย้ายมาอยู่ใต้ตารางทั้งสองเรียบร้อย) -->
+                    <div class="p-3.5 bg-white rounded-xl border border-rose-200 min-h-[90px] flex flex-col justify-center">
+                        @forelse($activeIpdList as $ipd)
+                            @php
+                                $cleanSoldierName = trim($ipd['full_name'] ?? '');
+                                $noRankName = trim(preg_replace('/^(พลฯ|พลทหาร)\s*/u', '', $cleanSoldierName));
+                                $resolvedUnitName = $ipd['unit_name']
+                                    ?? $ipd['unit']
+                                    ?? ($patientUnitLookup[$cleanSoldierName] ?? null)
+                                    ?? ($patientUnitLookup[$noRankName] ?? null);
+                            @endphp
+                            <div class="text-sm font-bold text-slate-800 leading-relaxed mb-2 last:mb-0">
+                                - {{ $ipd['full_name'] }}
+                                @if(!empty($resolvedUnitName))
+                                    <span class="text-xs text-slate-500">({{ $resolvedUnitName }})</span>
+                                @endif
+                                <span class="text-indigo-700">Dx. {{ $ipd['dx'] }}</span><br>
+                                <span class="text-xs text-slate-600 ml-2">Admit วันที่ {{ $ipd['admit_date'] }} ({{ $ipd['hosp_type'] }})</span>
+                            </div>
+                        @empty
+                            <div class="text-xs text-slate-400 text-center italic">
+                                - ไม่มีผู้ป่วยนอนพักรักษาตัวในโรงพยาบาล ณ วันนี้ -
+                            </div>
+                        @endforelse
                     </div>
                 </div>
 
-                <!-- 🎖️ กล่องขวาล่าง (ใหม่!): ตารางการนำปลด (แยกเป็น "ปลดทางกาย" กับ "ปลดทางสุขภาพจิต") -->
+                <!-- 🎖️ กล่องขวาล่าง: ตารางการนำปลด (ตัวเลขตัวหนาทั้งหมด) -->
                 @php
                     $safeDcSummary = $dischargeSummary ?? ['physical_total' => 0, 'mental_total' => 0, 'grand_total' => 0, 'completed' => 0, 'in_progress' => 0];
                     $safeDcTable   = $dischargeTable ?? [];
@@ -441,8 +478,7 @@
                         </a>
                     </div>
 
-                    <!-- ตารางการนำปลด แยกปลดทางกาย vs ปลดทางสุขภาพจิต (ใช้ bg-white เฉพาะ <th> ย่อย ไม่บัง rowspan="2") -->
-                    <table class="w-full text-xs text-center border-collapse border border-black bg-white">
+                    <table class="w-full text-xs text-center border-collapse border border-black bg-white font-bold">
                         <thead>
                             <tr class="font-bold">
                                 <th rowspan="2" class="border border-black bg-[#ffe699] p-1.5 align-middle">หน่วยฝึก</th>
@@ -455,7 +491,7 @@
                                 <th class="border border-black bg-[#d9d2e9] p-1">ปลดทางสุขภาพจิต</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody class="font-bold">
                             @foreach($safeDcTable as $dRow)
                                 <tr>
                                     <td class="border border-black font-bold p-1.5 bg-[#fce4d6]">{{ $dRow['unit_name'] }}</td>
@@ -465,7 +501,6 @@
                                     <td class="border border-black bg-[#e2efda] font-bold p-1.5">{{ $dRow['completed'] ?: '-' }}</td>
                                 </tr>
                             @endforeach
-                            <!-- แถวสรุปยอดรวมการนำปลด -->
                             <tr class="font-black">
                                 <td class="border border-black bg-[#ffe699] p-1.5">รวมทั้งหมด</td>
                                 <td class="border border-black bg-[#d0e0e3] p-1.5 text-teal-950">{{ $safeDcSummary['physical_total'] }}</td>
@@ -501,7 +536,7 @@
 
         </div>
 
-        <!-- 🎖️ แถบเครดิตระบบ M-CARE System ด้านล่างสุดของภาพสไลด์ (ติดไปกับไฟล์ภาพ JPG เวลา Export) -->
+        <!-- 🎖️ แถบเครดิตระบบ M-CARE System ด้านล่างสุดของภาพสไลด์ -->
         <div class="mt-4 pt-2.5 border-t border-slate-300/80 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] font-bold text-slate-600 px-1">
             <div class="flex items-center gap-1.5">
                 <span class="px-2 py-0.5 rounded bg-[#1b6b4a] text-white font-black text-[10px]">M-CARE System</span>
@@ -758,9 +793,6 @@
         ]
     };
 
-    // =========================================================================
-    // 🔍 ระบบค้นหารายชื่อพลทหารแบบพิมพ์ค้นหาสด (Smart Searchable Combobox)
-    // =========================================================================
     function openRecruitDropdown() {
         document.getElementById('recruit_dropdown_list')?.classList.remove('hidden');
     }
@@ -886,7 +918,6 @@
         filterRecruitDropdown('');
     }
 
-    // ปิดรายการ Dropdown เมื่อคลิกพื้นที่ว่างข้างนอก
     document.addEventListener('click', function(e) {
         const box = document.getElementById('recruit_search_box');
         const list = document.getElementById('recruit_dropdown_list');
@@ -926,7 +957,6 @@
         document.getElementById('manageActiveModal').classList.remove('hidden');
     }
 
-    // ดึงข้อมูล Dx. ล่าสุดจาก HosXP ด้วย HN
     function fetchDxFromHosxp() {
         const patientId = document.getElementById('modal_patient_id').value;
         if (!patientId) {
@@ -956,7 +986,6 @@
             });
     }
 
-    // 🎨 ฟังก์ชันตัวช่วยแปลงค่าสี oklch(...) เป็น rgb(...) ผ่าน Canvas 2D ของเบราว์เซอร์
     function sanitizeOklchColorsInClone(clonedDoc) {
         const canvas = document.createElement('canvas');
         canvas.width = 1;
@@ -992,7 +1021,6 @@
         });
     }
 
-    // 📸 แคปภาพหน้าจอสไลด์เป็นไฟล์ JPG คมชัดสูง
     async function exportSlideAsImage() {
         const board = document.getElementById('morbidity-slide-board');
         const btn = document.getElementById('btn-export-slide');
