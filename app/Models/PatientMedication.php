@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class PatientMedication extends Model
 {
+    protected $table = 'patient_medications';
+
     protected $fillable = [
         'patient_id',
         'care_group',
@@ -22,7 +24,6 @@ class PatientMedication extends Model
         'end_date',
         'is_active',
         'instruction_note',
-        'note',
         'created_by',
     ];
 
@@ -47,25 +48,32 @@ class PatientMedication extends Model
         return $this->hasMany(PatientMedicationLog::class, 'patient_medication_id');
     }
 
+    // สำรองให้เรียก $med->note หรือ $med->instruction_note ได้ทั้งคู่
+    public function getNoteAttribute(): ?string
+    {
+        return $this->instruction_note;
+    }
+
     public function getMealTimingLabelAttribute(): string
     {
         return match ($this->meal_timing) {
-            'before_meal' => 'ก่อนอาหาร',
-            'after_meal'  => 'หลังอาหาร',
-            'with_meal'   => 'พร้อมอาหาร',
-            'prn'         => 'เวลามีอาการ (PRN)',
-            'external'    => 'ยาทา / ยานวดภายนอก',
-            'bedtime'     => 'ก่อนนอน',
-            default       => 'ตามแพทย์สั่ง / ไม่ระบุ',
+            'before_meal'  => 'ก่อนอาหาร',
+            'after_meal'   => 'หลังอาหาร',
+            'with_meal'    => 'พร้อมอาหาร',
+            'bedtime_only' => 'ก่อนนอนอย่างเดียว',
+            'bedtime'      => 'ก่อนนอน',
+            'prn'          => 'เวลามีอาการ (PRN)',
+            'external'     => 'ยาทา / ยานวดภายนอก',
+            default        => 'ตามแพทย์สั่ง / ไม่ระบุ',
         };
     }
 
     public function getCareGroupLabelAttribute(): string
     {
         return match ($this->care_group) {
-            'psychiatric'  => '🧠 กลุ่มโรคจิตเวช (เฝ้าระวังพิเศษ)',
-            'chronic'      => '❤️ กลุ่มโรคประจำตัว / โรคเรื้อรัง',
-            default        => '🏕️ ผู้ป่วยแยกกัก CI / ห้องพยาบาลหน่วยฝึก',
+            'psychiatric' => '🧠 กลุ่มโรคจิตเวช (เฝ้าระวังพิเศษ)',
+            'chronic'     => '❤️ กลุ่มโรคประจำตัว / โรคเรื้อรัง',
+            default       => '🏕️ ผู้ป่วยแยกกัก CI / ห้องพยาบาลหน่วยฝึก',
         };
     }
 }

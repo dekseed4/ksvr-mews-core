@@ -286,7 +286,6 @@ class RecruitCareChartController extends Controller
             'start_date'       => $data['start_date'],
             'is_active'        => true,
             'instruction_note' => $data['instruction_note'] ?? null,
-            'note'             => $data['instruction_note'] ?? null,
             'created_by'       => auth()->id(),
         ];
 
