@@ -408,6 +408,34 @@
                         </tbody>
                     </table>
 
+                    <!-- 📋 กล่องแสดงรายชื่อทหารที่ Admit พร้อมชื่อหน่วยฝึกหลังชื่อทหาร และ Dx. (ย้ายมาอยู่ใต้ตารางทั้งสองเรียบร้อย) -->
+                    <div class="p-3.5 bg-white rounded-xl border border-rose-200 min-h-[90px] flex flex-col justify-center">
+                        @forelse($activeIpdList as $ipd)
+                        @if($ipd['hosp_type'] === 'รพ.ค่ายฯ')
+                            @php
+                                $cleanSoldierName = trim($ipd['full_name'] ?? '');
+                                $noRankName = trim(preg_replace('/^(พลฯ|พลทหาร)\s*/u', '', $cleanSoldierName));
+                                $resolvedUnitName = $ipd['unit_name']
+                                    ?? $ipd['unit']
+                                    ?? ($patientUnitLookup[$cleanSoldierName] ?? null)
+                                    ?? ($patientUnitLookup[$noRankName] ?? null);
+                            @endphp
+                            <div class="text-sm font-bold text-slate-800 leading-relaxed mb-2 last:mb-0">
+                                - {{ $ipd['full_name'] }}
+                                @if(!empty($resolvedUnitName))
+                                    <span class="text-xs text-slate-500">({{ $resolvedUnitName }})</span>
+                                @endif
+                                <span class="text-indigo-700">Dx. {{ $ipd['dx'] }}</span><br>
+                                <span class="text-xs text-slate-600 ml-2">Admit วันที่ {{ $ipd['admit_date'] }} ({{ $ipd['hosp_type'] }})</span>
+                            </div>
+                        @endif
+                        @empty
+                            <div class="text-xs text-slate-400 text-center italic">
+                                - ไม่มีผู้ป่วยนอนพักรักษาตัวในโรงพยาบาล ณ วันนี้ -
+                            </div>
+                        @endforelse
+                    </div>
+
                     <!-- ตารางที่ 2: นอน รพ.สาธารณสุข (ตัวเลขตัวหนาทั้งหมด) -->
                     <table class="w-full text-xs text-center border-collapse border border-black bg-white font-bold">
                         <thead>
@@ -438,6 +466,7 @@
                     <!-- 📋 กล่องแสดงรายชื่อทหารที่ Admit พร้อมชื่อหน่วยฝึกหลังชื่อทหาร และ Dx. (ย้ายมาอยู่ใต้ตารางทั้งสองเรียบร้อย) -->
                     <div class="p-3.5 bg-white rounded-xl border border-rose-200 min-h-[90px] flex flex-col justify-center">
                         @forelse($activeIpdList as $ipd)
+                        @if($ipd['hosp_type'] === 'รพ.สาธารณสุข')
                             @php
                                 $cleanSoldierName = trim($ipd['full_name'] ?? '');
                                 $noRankName = trim(preg_replace('/^(พลฯ|พลทหาร)\s*/u', '', $cleanSoldierName));
@@ -454,6 +483,7 @@
                                 <span class="text-indigo-700">Dx. {{ $ipd['dx'] }}</span><br>
                                 <span class="text-xs text-slate-600 ml-2">Admit วันที่ {{ $ipd['admit_date'] }} ({{ $ipd['hosp_type'] }})</span>
                             </div>
+                        @endif
                         @empty
                             <div class="text-xs text-slate-400 text-center italic">
                                 - ไม่มีผู้ป่วยนอนพักรักษาตัวในโรงพยาบาล ณ วันนี้ -

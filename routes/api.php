@@ -2,6 +2,8 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\RecruitStatusApiController;
+use App\Http\Middleware\VerifyExternalApiKey;
 
 use App\Http\Controllers\Api\AuthController;
 
@@ -22,3 +24,9 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // (อนาคต) ใส่ Route สำหรับบันทึกฟอร์ม 4 in 1 หรือดึงข้อมูล HosXP ตรงนี้ได้เลยครับ
 });
+
+Route::prefix('v1')
+    ->middleware([VerifyExternalApiKey::class, 'throttle:60,1'])
+    ->group(function () {
+        Route::get('/recruits/training-status', [RecruitStatusApiController::class, 'trainingStatus']);
+    });
