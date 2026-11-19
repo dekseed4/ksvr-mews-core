@@ -1024,115 +1024,13 @@
                 }
             });
         });
-        // // -----------------------------------------------------
-        // // 4. ฟังก์ชันเปิดคู่มือด่วน Quick Help (Infographic Pop-up)
-        // // -----------------------------------------------------
-        // function showQuickHelp() {
-        //     Swal.fire({
-        //         title: '<div class="text-xl font-black text-slate-800 dark:text-white"><i class="fa-solid fa-map-location-dot text-indigo-500 mr-2"></i> สรุปขั้นตอนการทำงาน (Workflow)</div>',
-        //         html: `
-        //             <div class="mt-4 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 relative">
-        //                 <!-- 💡 เปลี่ยน URL ตรง src เป็นที่เก็บรูปภาพ Infographic ของจริงได้เลยครับ -->
-        //                 <img src="https://placehold.co/800x450/f8fafc/64748b?text=ภาพสรุป+Workflow+อยู่ที่นี่" alt="Workflow Cheat Sheet" class="w-full h-auto object-contain">
-        //             </div>
-        //             <div class="mt-6 flex justify-center">
-        //                 <a href="/backend/help" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-bold underline underline-offset-4 transition-colors"><i class="fa-solid fa-clapperboard mr-1"></i> ดูคู่มือฉบับเต็มแบบวิดีโอ (Help Center)</a>
-        //             </div>
-        //         `,
-        //         width: '800px',
-        //         showConfirmButton: false,
-        //         showCloseButton: true,
-        //         customClass: {
-        //             popup: 'bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-700 p-4 md:p-6',
-        //             closeButton: 'focus:outline-none hover:text-rose-500 transition-colors'
-        //         }
-        //     });
-        // }
-
         // -----------------------------------------------------
-        // 4. ฟังก์ชันเปิดคู่มือด่วน Quick Help (Infographic ด้วย HTML เพียว)
+        // 4. ฟังก์ชันเปิดคู่มือด่วน Quick Help (เรียกใช้ Modal 4 ขั้นตอนฉบับอัปเดต)
         // -----------------------------------------------------
         function showQuickHelp() {
-            Swal.fire({
-                title: '<div class="text-xl md:text-2xl font-black text-slate-800 dark:text-white"><i class="fa-solid fa-map-location-dot text-indigo-500 mr-2"></i> ภาพรวมกระบวนการ KSVR MEWS</div>',
-                html: `
-                    <div class="mt-4 p-2 md:p-4 text-left">
-                        <!-- 🌟 เริ่มต้น Infographic Workflow 🌟 -->
-                        <div class="relative flex flex-col md:flex-row justify-between items-stretch gap-6 md:gap-4 z-10">
-                            
-                            <!-- เส้นเชื่อม (โชว์เฉพาะจอคอม) -->
-                            <div class="hidden md:block absolute top-[40%] left-10 right-10 h-1.5 bg-slate-100 dark:bg-slate-700 -z-10 rounded-full"></div>
-                            <!-- เส้นเชื่อม (โชว์เฉพาะมือถือ) -->
-                            <div class="md:hidden absolute left-1/2 top-10 bottom-10 w-1.5 bg-slate-100 dark:bg-slate-700 -z-10 rounded-full transform -translate-x-1/2"></div>
-
-                            <!-- Step 1: ภาคสนาม -->
-                            <div class="flex-1 bg-white dark:bg-slate-800 border-2 border-emerald-400 rounded-2xl p-5 shadow-sm relative text-center hover:-translate-y-1 transition-transform">
-                                <div class="w-14 h-14 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto mb-3 shadow-inner">
-                                    <i class="fa-solid fa-walkie-talkie"></i>
-                                </div>
-                                <span class="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full absolute -top-3 left-1/2 transform -translate-x-1/2">ขั้นตอนที่ 1</span>
-                                <h4 class="font-bold text-slate-800 dark:text-white text-base">เสนารักษ์ (ภาคสนาม)</h4>
-                                <ul class="text-xs text-slate-500 dark:text-slate-400 mt-2 space-y-1 text-left inline-block">
-                                    <li><i class="fa-solid fa-check text-emerald-500 mr-1"></i> ค้นหาประวัติ / สร้างเคส</li>
-                                    <li><i class="fa-solid fa-check text-emerald-500 mr-1"></i> ประเมินสัญญาณชีพ (V/S)</li>
-                                </ul>
-                            </div>
-
-                            <!-- Step 2: ER -->
-                            <div class="flex-1 bg-white dark:bg-slate-800 border-2 border-rose-400 rounded-2xl p-5 shadow-md relative text-center hover:-translate-y-1 transition-transform ring-4 ring-rose-50 dark:ring-rose-900/20">
-                                <div class="w-14 h-14 bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 rounded-full flex items-center justify-center text-2xl mx-auto mb-3 shadow-inner animate-pulse">
-                                    <i class="fa-solid fa-truck-medical"></i>
-                                </div>
-                                <span class="bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full absolute -top-3 left-1/2 transform -translate-x-1/2">ขั้นตอนที่ 2</span>
-                                <h4 class="font-bold text-slate-800 dark:text-white text-base">พยาบาล (ห้อง ER)</h4>
-                                <ul class="text-xs text-slate-500 dark:text-slate-400 mt-2 space-y-1 text-left inline-block">
-                                    <li><i class="fa-solid fa-bell text-rose-500 mr-1"></i> รับ Alert ฉุกเฉินแบบ Real-time</li>
-                                    <li><i class="fa-solid fa-stethoscope text-rose-500 mr-1"></i> เปิดแฟ้มเพื่อ <b class="text-rose-600 dark:text-rose-400">ประเมินซ้ำ</b></li>
-                                </ul>
-                            </div>
-
-                            <!-- Step 3: จบเคส -->
-                            <div class="flex-1 bg-white dark:bg-slate-800 border-2 border-blue-400 rounded-2xl p-5 shadow-sm relative text-center hover:-translate-y-1 transition-transform">
-                                <div class="w-14 h-14 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-2xl mx-auto mb-3 shadow-inner">
-                                    <i class="fa-solid fa-house-chimney-medical"></i>
-                                </div>
-                                <span class="bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full absolute -top-3 left-1/2 transform -translate-x-1/2">ขั้นตอนที่ 3</span>
-                                <h4 class="font-bold text-slate-800 dark:text-white text-base">แพทย์ / ER</h4>
-                                <ul class="text-xs text-slate-500 dark:text-slate-400 mt-2 space-y-1 text-left inline-block">
-                                    <li><i class="fa-solid fa-bed-pulse text-blue-500 mr-1"></i> สั่งการรักษา (Admit/Refer)</li>
-                                    <li><i class="fa-solid fa-lock text-blue-500 mr-1"></i> จบเคส (ระบบแจ้งต้นสังกัด)</li>
-                                </ul>
-                            </div>
-
-                        </div>
-                        
-                        <!-- 🌟 ฐานข้อมูลส่วนกลาง (Executive & Admin) 🌟 -->
-                        <div class="mt-6 bg-slate-800 dark:bg-slate-900 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-center gap-4 text-center md:text-left shadow-lg border border-slate-700">
-                            <div class="w-12 h-12 bg-slate-700 rounded-xl flex items-center justify-center text-2xl text-amber-400 shrink-0 shadow-inner">
-                                <i class="fa-solid fa-chart-pie"></i>
-                            </div>
-                            <div>
-                                <h4 class="font-bold text-white text-sm md:text-base">ผู้บริหาร & ทะเบียน (Executive / Admin)</h4>
-                                <p class="text-xs text-slate-400 mt-1">สามารถดู <b>Dashboard สถิติภาพรวม</b> และบริหารจัดการรายชื่อกำลังพลทั้งหมดได้แบบ Real-time โดยไม่รบกวนหน้างาน</p>
-                            </div>
-                        </div>
-
-                    </div>
-                    
-                    <div class="mt-6 flex justify-center border-t border-slate-100 dark:border-slate-700 pt-5">
-                        <a href="/backend/help" class="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-500 rounded-xl font-bold transition-all shadow-sm">
-                            <i class="fa-solid fa-clapperboard"></i> ดูคู่มือแบบวิดีโอ (Help Center)
-                        </a>
-                    </div>
-                `,
-                width: '850px',
-                showConfirmButton: false,
-                showCloseButton: true,
-                customClass: {
-                    popup: 'bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-700',
-                    closeButton: 'focus:outline-none hover:text-rose-500 transition-colors mt-2 mr-2'
-                }
-            });
+            if (typeof window.openWorkflowOverviewModal === 'function') {
+                window.openWorkflowOverviewModal();
+            }
         }
     </script>
 
@@ -1978,5 +1876,6 @@
     </script>
 
     @include('partials.pwa_install_modal')
+    @include('partials.workflow_overview_modal')
 </body>
 </html>
