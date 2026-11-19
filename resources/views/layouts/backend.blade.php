@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="base-url" content="{{ url('/') }}">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    
 
     @php
         $authUser = auth()->user();
@@ -19,7 +20,11 @@
     <title>@yield('title', 'KSVR Hospital System')</title>
     <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}?v=1.0">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}?v=1.0">
-    <link rel="manifest" href="{{ asset('manifest.json') }}">
+    <link rel="manifest" href="{{ asset('manifest.json') }}?v=2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
     <meta name="theme-color" content="#10b981">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -598,22 +603,62 @@
                         <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 hidden md:block"></i>
                     </button>
 
-                    <!-- Dropdown เมนูโปรไฟล์ -->
-                    <div id="profile-dropdown" class="hidden absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 z-[60] overflow-hidden animate-fade-in-up">
-                        <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-700 md:hidden bg-slate-50 dark:bg-slate-800/80">
+                    <!-- Dropdown เมนูโปรไฟล์ (ขยายเป็น w-64 เพื่อให้ข้อความภาษาไทยไม่อึดอัด) -->
+                    <div id="profile-dropdown" class="hidden absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200/80 dark:border-slate-700 z-[60] overflow-hidden animate-fade-in-up">
+                        
+                        <!-- ข้อมูลผู้ใช้ (แสดงบนมือถือ) -->
+                        <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-700 md:hidden bg-slate-50/80 dark:bg-slate-800/80">
                             <p class="text-sm font-bold text-slate-800 dark:text-white truncate">{{ auth()->user()->name }}</p>
                             <p class="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{{ auth()->user()->email }}</p>
                         </div>
-                        <a href="{{ route('backend.profile.edit') }}" class="flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                            <i class="fa-solid fa-user-doctor text-emerald-500 w-4 text-center"></i> ตั้งค่าโปรไฟล์
-                        </a>
+
+                        <!-- กลุ่มเมนูหลัก -->
+                        <div class="p-1.5 space-y-1">
+                            <!-- 1. ตั้งค่าโปรไฟล์ -->
+                            <a href="{{ route('backend.profile.edit') }}" class="flex items-center gap-3 px-2.5 py-2 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/70 transition-colors group">
+                                <div class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:bg-white dark:group-hover:bg-slate-600 transition-colors">
+                                    <i class="fa-solid fa-user-doctor text-sm"></i>
+                                </div>
+                                <span class="truncate">ตั้งค่าโปรไฟล์</span>
+                            </a>
+
+                            <!-- 2. ติดตั้งแอปลงมือถือ (ซ่อนอัตโนมัติเมื่อเปิดผ่านแอปเต็มจอแล้ว) -->
+                            <div class="pwa-hide-when-installed">
+                                <button type="button" onclick="window.openPwaInstallModal()"
+                                        class="w-full flex items-center gap-3 px-2.5 py-2 rounded-xl bg-emerald-50/80 hover:bg-emerald-100/90 dark:bg-emerald-900/25 dark:hover:bg-emerald-900/45 border border-emerald-200/70 dark:border-emerald-800/70 text-left transition-all group">
+                                    <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                                        <i class="fa-solid fa-download text-xs"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="text-[13px] font-bold text-emerald-900 dark:text-emerald-200 leading-tight whitespace-nowrap">
+                                            ติดตั้งแอปลงมือถือ
+                                        </div>
+                                        <div class="flex items-center gap-1.5 mt-0.5 text-[11px] font-semibold text-emerald-700/90 dark:text-emerald-400 leading-none">
+                                            <span class="inline-flex items-center gap-1"><i class="fa-brands fa-apple text-[11px]"></i> iOS</span>
+                                            <span class="opacity-40">•</span>
+                                            <span class="inline-flex items-center gap-1"><i class="fa-brands fa-android text-[10px]"></i> Android</span>
+                                        </div>
+                                    </div>
+                                    <i class="fa-solid fa-chevron-right text-[10px] text-emerald-500/70 group-hover:translate-x-0.5 transition-transform shrink-0"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- เส้นคั่นบางๆ -->
                         <div class="border-t border-slate-100 dark:border-slate-700"></div>
-                        <form action="{{ route('logout') }}" method="POST" class="block w-full m-0 p-0">
-                            @csrf
-                            <button type="submit" class="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors text-left">
-                                <i class="fa-solid fa-right-from-bracket text-rose-500 w-4 text-center"></i> ออกจากระบบ
-                            </button>
-                        </form>
+
+                        <!-- 3. ออกจากระบบ -->
+                        <div class="p-1.5">
+                            <form action="{{ route('logout') }}" method="POST" class="block w-full m-0 p-0">
+                                @csrf
+                                <button type="submit" class="w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-sm font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors text-left group">
+                                    <div class="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-900/30 text-rose-500 flex items-center justify-center shrink-0 group-hover:bg-rose-100 dark:group-hover:bg-rose-900/50 transition-colors">
+                                        <i class="fa-solid fa-right-from-bracket text-sm"></i>
+                                    </div>
+                                    <span>ออกจากระบบ</span>
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </div>
 
@@ -1931,5 +1976,7 @@
             }
         });
     </script>
+
+    @include('partials.pwa_install_modal')
 </body>
 </html>
