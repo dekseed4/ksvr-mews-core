@@ -28,7 +28,7 @@
                 </p>
             </div>
         </div>
-        <button type="button" onclick="showAdvanceAppointmentAlertModal(true)" class="px-4 py-2.5 bg-white text-orange-700 hover:bg-amber-50 rounded-xl text-xs sm:text-sm font-black shadow-sm shrink-0 transition-transform hover:-translate-y-0.5">
+        <button type="button" onclick="showAdvanceAppointmentAlertModal(true)" class="w-full md:w-auto px-4 py-2.5 bg-white text-orange-700 hover:bg-amber-50 rounded-xl text-xs sm:text-sm font-black shadow-sm shrink-0 transition-transform hover:-translate-y-0.5">
             <i class="fa-solid fa-list-check mr-1"></i> เปิดดูรายชื่อที่ต้องเตรียมส่งตัว
         </button>
     </div>
@@ -77,7 +77,7 @@
         </a>
     </div>
 
-    <!-- 🛠️ 3. แถบเครื่องมือตัวกรอง + เลือกจำนวน 10/20 รายชื่อ + ปุ่มดึงข้อมูลจาก HosXP -->
+    <!-- 🛠️ 3. แถบเครื่องมือตัวกรอง + เลือกจำนวน 10/20/50/100 รายชื่อ + ปุ่มดึงข้อมูลจาก HosXP -->
     <div class="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
         <form method="GET" action="{{ route('backend.recruit_appointments.index') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-2.5 flex-1">
             @if(isset($focusedPatient) && $focusedPatient)
@@ -170,9 +170,9 @@
                 @forelse($appointments as $app)
                     @php
                         $pt = $app->patient;
-                        $rowBatch = $app->intake_batch ?? $pt->intake_batch ?? 'ไม่ระบุ';
-                        $rowUnitName = $app->militaryUnit->name ?? $pt->militaryUnit->name ?? $pt->company ?? 'ไม่ระบุหน่วยฝึก';
-                        $fullPtName = trim(($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? ''));
+                        $rowBatch = $app->intake_batch ?? $pt?->intake_batch ?? 'ไม่ระบุ';
+                        $rowUnitName = $app->militaryUnit?->name ?? $pt?->militaryUnit?->name ?? $pt?->company ?? 'ไม่ระบุหน่วยฝึก';
+                        $fullPtName = trim(($pt?->rank ?? '') . ($pt?->first_name ?? '') . ' ' . ($pt?->last_name ?? ''));
 
                         $appDateStr = $app->appointment_date->format('Y-m-d');
                         $isTomorrow = ($appDateStr === $tomorrowStr && $app->status === 'scheduled');
@@ -248,15 +248,15 @@
                         <div>
                             <div class="font-black text-slate-800 dark:text-white text-base leading-snug">
                                 @if($pt)
-                                    <a href="{{ route('backend.patients.show', $pt->id) }}" class="hover:text-indigo-600 transition-colors">{{ $fullPtName }}</a>
+                                    <a href="{{ route('backend.patients.show', $pt->id) }}" class="hover:text-indigo-600 transition-colors">{{ $fullPtName ?: 'ไม่ระบุชื่อ' }}</a>
                                 @else
                                     ไม่ระบุชื่อ
                                 @endif
                             </div>
                             <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
-                                <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-bold">HN: {{ $pt->hn ?? '-' }}</span>
+                                <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-bold">HN: {{ $pt?->hn ?: '-' }}</span>
                                 <span class="font-mono text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/60 px-2 py-0.5 rounded border border-slate-200/80 dark:border-slate-700">
-                                    <i class="fa-regular fa-id-card mr-1"></i>{{ $pt->cid ?? '-' }}
+                                    <i class="fa-regular fa-id-card mr-1"></i>{{ $pt?->cid ?: '-' }}
                                 </span>
                             </div>
                         </div>
@@ -322,7 +322,7 @@
                             <form id="delete-app-mobile-{{ $app->id }}" action="{{ route('backend.recruit_appointments.destroy', $app->id) }}" method="POST" class="shrink-0">
                                 @csrf @method('DELETE')
                                 <button type="button"
-                                        onclick="confirmAction(event, 'ยืนยันการลบรายการนัด?', 'ต้องการลบคิวนัดของ {{ addslashes($fullPtName) }} ใช่หรือไม่?', 'warning', 'delete-app-mobile-{{ $app->id }}')"
+                                        onclick="confirmAction(event, 'ยืนยันการลบรายการนัด?', 'ต้องการลบคิวนัดของ {{ addslashes($fullPtName ?: 'พลทหารรายนี้') }} ใช่หรือไม่?', 'warning', 'delete-app-mobile-{{ $app->id }}')"
                                         class="w-10 h-10 rounded-xl bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-200 flex items-center justify-center transition-colors" title="ลบรายการ">
                                     <i class="fa-solid fa-trash-can text-xs"></i>
                                 </button>
@@ -363,9 +363,9 @@
                         @forelse($appointments as $app)
                             @php
                                 $pt = $app->patient;
-                                $rowBatch = $app->intake_batch ?? $pt->intake_batch ?? 'ไม่ระบุ';
-                                $rowUnitName = $app->militaryUnit->name ?? $pt->militaryUnit->name ?? $pt->company ?? 'ไม่ระบุหน่วยฝึก';
-                                $fullPtName = trim(($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? ''));
+                                $rowBatch = $app->intake_batch ?? $pt?->intake_batch ?? 'ไม่ระบุ';
+                                $rowUnitName = $app->militaryUnit?->name ?? $pt?->militaryUnit?->name ?? $pt?->company ?? 'ไม่ระบุหน่วยฝึก';
+                                $fullPtName = trim(($pt?->rank ?? '') . ($pt?->first_name ?? '') . ' ' . ($pt?->last_name ?? ''));
 
                                 $appDateStr = $app->appointment_date->format('Y-m-d');
                                 $isTomorrow = ($appDateStr === $tomorrowStr && $app->status === 'scheduled');
@@ -423,8 +423,8 @@
                                         {{ $fullPtName ?: 'ไม่ระบุชื่อ' }}
                                     </div>
                                     <div class="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2">
-                                        <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-bold">HN: {{ $pt->hn ?? '-' }}</span>
-                                        <span class="font-mono text-slate-400"><i class="fa-regular fa-id-card mr-1"></i>{{ $pt->cid ?? '-' }}</span>
+                                        <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-bold">HN: {{ $pt?->hn ?: '-' }}</span>
+                                        <span class="font-mono text-slate-400"><i class="fa-regular fa-id-card mr-1"></i>{{ $pt?->cid ?: '-' }}</span>
                                     </div>
                                 </td>
 
@@ -495,7 +495,7 @@
                                         <form id="delete-app-desktop-{{ $app->id }}" action="{{ route('backend.recruit_appointments.destroy', $app->id) }}" method="POST">
                                             @csrf @method('DELETE')
                                             <button type="button"
-                                                    onclick="confirmAction(event, 'ยืนยันการลบรายการนัด?', 'ต้องการลบคิวนัดของ {{ addslashes($fullPtName) }} ใช่หรือไม่?', 'warning', 'delete-app-desktop-{{ $app->id }}')"
+                                                    onclick="confirmAction(event, 'ยืนยันการลบรายการนัด?', 'ต้องการลบคิวนัดของ {{ addslashes($fullPtName ?: 'พลทหารรายนี้') }} ใช่หรือไม่?', 'warning', 'delete-app-desktop-{{ $app->id }}')"
                                                     class="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white flex items-center justify-center transition-colors" title="ลบรายการ">
                                                 <i class="fa-solid fa-trash-can text-xs"></i>
                                             </button>
@@ -538,283 +538,12 @@
         </div>
     </div>
 
-    <!-- 🛠️ 3. แถบเครื่องมือตัวกรอง + เลือกจำนวน 10/20 รายชื่อ + ปุ่มดึงข้อมูลจาก HosXP -->
-    <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
-        <form method="GET" action="{{ route('backend.recruit_appointments.index') }}" class="flex flex-wrap items-center gap-2.5">
-            @if(isset($focusedPatient) && $focusedPatient)
-                <input type="hidden" name="patient_id" value="{{ $focusedPatient->id }}">
-            @endif
-
-            <!-- ตัวกรองผลัด -->
-            <select name="intake_batch" onchange="this.form.submit()" class="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 px-3.5 py-2.5 outline-none focus:border-emerald-500 cursor-pointer transition-colors">
-                <option value="all" {{ $selectedBatch == 'all' ? 'selected' : '' }}>ทุกผลัดทหาร</option>
-                @foreach($batches as $b)
-                    <option value="{{ $b }}" {{ $selectedBatch == $b ? 'selected' : '' }}>ผลัดที่ {{ $b }}</option>
-                @endforeach
-            </select>
-
-            <!-- ตัวกรองหน่วยฝึก -->
-            <select name="unit_id" onchange="this.form.submit()" class="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 px-3.5 py-2.5 outline-none focus:border-emerald-500 cursor-pointer transition-colors">
-                <option value="">ทุกหน่วยฝึก</option>
-                @foreach($units as $u)
-                    <option value="{{ $u->id }}" {{ $selectedUnit == $u->id ? 'selected' : '' }}>{{ $u->short_name ?? $u->name }}</option>
-                @endforeach
-            </select>
-
-            <!-- ตัวกรองประเภทโรงพยาบาล -->
-            <select name="hospital_type" onchange="this.form.submit()" class="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 px-3.5 py-2.5 outline-none focus:border-emerald-500 cursor-pointer transition-colors">
-                <option value="">ทุกสถานที่นัด (รพ.ค่ายฯ + รพ.สธ.)</option>
-                <option value="camp_hospital" {{ $selectedType === 'camp_hospital' ? 'selected' : '' }}>🏥 นัดพบแพทย์ รพ.ค่ายฯ</option>
-                <option value="public_hospital" {{ $selectedType === 'public_hospital' ? 'selected' : '' }}>🚑 นัดพบแพทย์ รพ.สาธารณสุข</option>
-            </select>
-            
-            <!-- ตัวกรองช่วงเวลานัด -->
-            <select name="date_scope" onchange="this.form.submit()" class="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 px-3.5 py-2.5 outline-none focus:border-emerald-500 cursor-pointer transition-colors">
-                <option value="upcoming" {{ $selectedScope === 'upcoming' ? 'selected' : '' }}>📅 นัดตั้งแต่วันนี้เป็นต้นไป</option>
-                <option value="tomorrow" {{ $selectedScope === 'tomorrow' ? 'selected' : '' }}>⏰ เฉพาะนัดพรุ่งนี้ (ล่วงหน้า 1 วัน)</option>
-                <option value="today" {{ $selectedScope === 'today' ? 'selected' : '' }}>🚨 เฉพาะนัดวันนี้</option>
-                <option value="past" {{ $selectedScope === 'past' ? 'selected' : '' }}>🕓 ประวัตินัดย้อนหลัง</option>
-                <option value="all" {{ $selectedScope === 'all' ? 'selected' : '' }}>📋 ทั้งหมด</option>
-            </select>
-
-            <!-- 🌟 ตัวเลือกจำนวนรายชื่อต่อหน้า (10 / 20 / 50 / 100 รายชื่อ) -->
-            <div class="flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3 py-1.5">
-                <span class="text-xs font-bold text-slate-400 mr-2"><i class="fa-solid fa-list-ol mr-1"></i>แสดง:</span>
-                <select name="per_page" onchange="this.form.submit()" class="bg-transparent text-xs sm:text-sm font-black text-indigo-600 outline-none cursor-pointer pr-1">
-                    @foreach([10, 20, 50, 100] as $size)
-                        <option value="{{ $size }}" {{ ($perPage ?? 10) == $size ? 'selected' : '' }}>{{ $size }} รายชื่อ</option>
-                    @endforeach
-                </select>
-            </div>
-        </form>
-
-        <div class="flex flex-wrap items-center gap-2.5 shrink-0">
-            <!-- 🔄 ปุ่มซิงค์ข้อมูลวันนัดจากตาราง oapp ของ HosXP -->
-            <button type="button" id="btn-sync-oapp" onclick="syncAppointmentsFromHosxp()"
-                    class="flex-1 sm:flex-none justify-center px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap">
-                <i class="fa-solid fa-rotate" id="icon-sync-oapp"></i> ดึงวันนัดจาก HosXP (อัตโนมัติ)
-            </button>
-
-            <!-- ➕ ปุ่มลงข้อมูลนัดพบแพทย์ -->
-            <button type="button" onclick="openAddAppointmentModal()"
-                    class="flex-1 sm:flex-none justify-center px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap">
-                <i class="fa-solid fa-calendar-plus"></i> + ลงวันนัดพบแพทย์
-            </button>
-        </div>
-    </div>
-
-    <!-- 📋 4. ตารางรายการนัดพบแพทย์ของทหารใหม่ (จัดกลุ่มแยกตามผลัดและหน่วยฝึก) -->
-    <div>
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-3 px-1">
-            <h3 class="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-calendar-days text-indigo-500"></i> ตารางคิวนัดพบแพทย์แยกตามหน่วยฝึก
-                <span class="text-xs font-bold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
-                    พบทั้งหมด {{ number_format($appointments->total()) }} รายการ
-                </span>
-            </h3>
-            <span class="text-xs font-semibold text-slate-400">
-                แสดงหน้าละ {{ $perPage ?? 10 }} รายชื่อ (หน้าที่ {{ $appointments->currentPage() }} / {{ max(1, $appointments->lastPage()) }})
-            </span>
-        </div>
-
-        <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left text-slate-600">
-                    <thead class="text-xs text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100">
-                        <tr>
-                            <th class="px-6 py-4 font-bold">วัน-เวลานัด</th>
-                            <th class="px-6 py-4 font-bold">ข้อมูลพลทหาร</th>
-                            <th class="px-6 py-4 font-bold">สถานที่นัด / คลินิก</th>
-                            <th class="px-6 py-4 font-bold">สาเหตุการนัด / การเตรียมตัว</th>
-                            <th class="px-6 py-4 font-bold text-center">สถานะ</th>
-                            <th class="px-6 py-4 font-bold text-center">จัดการ</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        @php
-                            $currentBatchGroup = null;
-                            $currentUnitGroup  = null;
-                        @endphp
-
-                        @forelse($appointments as $app)
-                            @php
-                                $pt = $app->patient;
-                                $rowBatch = $app->intake_batch ?? $pt->intake_batch ?? 'ไม่ระบุ';
-                                $rowUnitName = $app->militaryUnit->name ?? $pt->militaryUnit->name ?? $pt->company ?? 'ไม่ระบุหน่วยฝึก';
-
-                                $appDateStr = $app->appointment_date->format('Y-m-d');
-                                $isTomorrow = ($appDateStr === $tomorrowStr && $app->status === 'scheduled');
-                                $isToday    = ($appDateStr === $todayStr && $app->status === 'scheduled');
-                                $isCamp     = ($app->hospital_type === 'camp_hospital');
-                            @endphp
-
-                            <!-- 🎖️ Grouping ชั้นที่ 1: แยกตามผลัดทหาร -->
-                            @if($currentBatchGroup !== $rowBatch)
-                                @php
-                                    $currentBatchGroup = $rowBatch;
-                                    $currentUnitGroup  = null;
-                                @endphp
-                                <tr class="bg-slate-800">
-                                    <td colspan="6" class="px-6 py-2.5">
-                                        <div class="flex items-center gap-2 text-white font-bold text-sm">
-                                            <i class="fa-solid fa-calendar-days text-emerald-400"></i> ทหารกองประจำการ ผลัดที่ {{ $currentBatchGroup }}
-                                        </div>
-                                    </td>
-                                </tr>
-                            @endif
-
-                            <!-- 🏕️ Grouping ชั้นที่ 2: แยกตามหน่วยฝึกทหาร -->
-                            @if($currentUnitGroup !== $rowUnitName)
-                                @php $currentUnitGroup = $rowUnitName; @endphp
-                                <tr class="bg-indigo-50/60">
-                                    <td colspan="6" class="px-6 py-2.5 border-y border-indigo-100">
-                                        <div class="flex items-center gap-2 text-indigo-700 font-bold text-xs uppercase tracking-wide">
-                                            <i class="fa-solid fa-tent text-indigo-500"></i> {{ $currentUnitGroup }}
-                                        </div>
-                                    </td>
-                                </tr>
-                            @endif
-
-                            <!-- แถวข้อมูลการนัดพบแพทย์ -->
-                            <tr class="hover:bg-slate-50/80 transition-colors {{ $isToday ? 'bg-rose-50/30' : ($isTomorrow ? 'bg-amber-50/30' : '') }}">
-                                <!-- วัน-เวลานัด -->
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="font-black text-slate-800 text-base">
-                                        {{ $app->appointment_date->locale('th')->addYears(543)->translatedFormat('j M Y') }}
-                                    </div>
-                                    <div class="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
-                                        <i class="fa-regular fa-clock text-indigo-500"></i> เวลา {{ $app->appointment_time ?: '08:30' }} น.
-                                    </div>
-                                    @if($isToday)
-                                        <span class="mt-1 inline-block px-2 py-0.5 bg-rose-600 text-white rounded text-[10px] font-black animate-pulse">🚨 นัดวันนี้!</span>
-                                    @elseif($isTomorrow)
-                                        <span class="mt-1 inline-block px-2 py-0.5 bg-amber-500 text-white rounded text-[10px] font-black">⏰ พรุ่งนี้ (อีก 1 วัน)</span>
-                                    @endif
-                                </td>
-
-                                <!-- ข้อมูลพลทหาร -->
-                                <td class="px-6 py-4">
-                                    <div class="font-bold text-slate-900 text-base">
-                                        {{ $pt->rank ?? '' }}{{ $pt->first_name ?? '' }} {{ $pt->last_name ?? '' }}
-                                    </div>
-                                    <div class="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2">
-                                        <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-bold">HN: {{ $pt->hn ?: '-' }}</span>
-                                        <span class="font-mono text-slate-400"><i class="fa-regular fa-id-card mr-1"></i>{{ $pt->cid ?? '-' }}</span>
-                                    </div>
-                                </td>
-
-                                <!-- สถานที่นัด / คลินิก -->
-                                <td class="px-6 py-4">
-                                    @if($isCamp)
-                                        <span class="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold inline-flex items-center gap-1.5">
-                                            <i class="fa-solid fa-hospital"></i> {{ $app->hospital_name ?: 'รพ.ค่ายกฤษณ์สีวะรา' }}
-                                        </span>
-                                    @else
-                                        <span class="px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold inline-flex items-center gap-1.5">
-                                            <i class="fa-solid fa-truck-medical"></i> {{ $app->hospital_name ?: 'รพ.สาธารณสุข' }}
-                                        </span>
-                                    @endif
-                                    <div class="text-xs font-semibold text-slate-700 mt-1.5">
-                                        แผนก/คลินิก: <span class="text-indigo-700">{{ $app->clinic_name ?: 'ไม่ระบุ' }}</span>
-                                    </div>
-                                    @if($app->doctor_name)
-                                        <div class="text-[11px] text-slate-400">แพทย์: {{ $app->doctor_name }}</div>
-                                    @endif
-                                </td>
-
-                                <!-- สาเหตุการนัด -->
-                                <td class="px-6 py-4 max-w-xs">
-                                    <div class="font-bold text-slate-800 text-xs sm:text-sm">{{ $app->app_cause ?: 'นัดตรวจติดตามอาการ' }}</div>
-                                    @if($app->note)
-                                        <div class="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg mt-1 font-medium">
-                                            <i class="fa-solid fa-circle-info text-amber-500 mr-1"></i>{{ $app->note }}
-                                        </div>
-                                    @endif
-                                    @if($app->hosxp_oapp_id)
-                                        <span class="text-[10px] text-slate-400 font-mono mt-1 block"><i class="fa-solid fa-link mr-1"></i>ซิงค์จาก HosXP (#{{ $app->hosxp_oapp_id }})</span>
-                                    @endif
-                                </td>
-
-                                <!-- สถานะ -->
-                                <td class="px-6 py-4 text-center whitespace-nowrap">
-                                    @if($app->status === 'completed')
-                                        <span class="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200"><i class="fa-solid fa-check mr-1"></i>ไปพบแพทย์แล้ว</span>
-                                    @elseif($app->status === 'postponed')
-                                        <span class="px-3 py-1 rounded-xl bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200"><i class="fa-solid fa-clock-rotate-left mr-1"></i>เลื่อนนัด</span>
-                                    @elseif($app->status === 'cancelled')
-                                        <span class="px-3 py-1 rounded-xl bg-slate-100 text-slate-500 text-xs font-bold"><i class="fa-solid fa-ban mr-1"></i>ยกเลิกนัด</span>
-                                    @else
-                                        <span class="px-3 py-1 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold"><i class="fa-regular fa-calendar-check mr-1"></i>รอพบแพทย์</span>
-                                    @endif
-                                </td>
-
-                                <!-- ปุ่มจัดการ -->
-                                <td class="px-6 py-4 text-center whitespace-nowrap">
-                                    <div class="flex items-center justify-center gap-1.5">
-                                        @if($app->status === 'scheduled')
-                                            <form action="{{ route('backend.recruit_appointments.update_status', $app->id) }}" method="POST">
-                                                @csrf @method('PATCH')
-                                                <input type="hidden" name="status" value="completed">
-                                                <button type="submit" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors" title="บันทึกว่าไปพบแพทย์ตามนัดแล้ว">
-                                                    <i class="fa-solid fa-check mr-1"></i> ไปตามนัดแล้ว
-                                                </button>
-                                            </form>
-                                        @endif
-
-                                        <a href="{{ route('backend.patients.show', $pt->id) }}" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white flex items-center justify-center transition-colors" title="ดูแฟ้มประวัติ">
-                                            <i class="fa-solid fa-address-card text-xs"></i>
-                                        </a>
-
-                                        <form action="{{ route('backend.recruit_appointments.destroy', $app->id) }}" method="POST" onsubmit="return confirm('ยืนยันการลบรายการนัดนี้?')">
-                                            @csrf @method('DELETE')
-                                            <button type="submit" class="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white flex items-center justify-center transition-colors" title="ลบรายการ">
-                                                <i class="fa-solid fa-trash-can text-xs"></i>
-                                            </button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="6" class="px-6 py-14 text-center text-slate-400">
-                                    <i class="fa-regular fa-calendar-xmark text-4xl mb-3 block opacity-40"></i>
-                                    <p class="font-bold text-slate-600 text-base">ไม่พบรายการนัดพบแพทย์ในหมวดที่เลือก</p>
-                                    <p class="text-xs mt-1">คลิกปุ่ม "ดึงวันนัดจาก HosXP" หรือปุ่ม "+ ลงวันนัดพบแพทย์" ด้านบนเพื่อเพิ่มข้อมูลได้เลยครับ</p>
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- แถบเปลี่ยนหน้า (Pagination) พร้อมตัวเลือกสลับ 10 / 20 รายชื่อด้านล่างตาราง -->
-            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div class="flex items-center gap-2 text-xs text-slate-500 font-semibold">
-                    <span>แสดงหน้าละ:</span>
-                    @foreach([10, 20, 50] as $pSize)
-                        <a href="{{ request()->fullUrlWithQuery(['per_page' => $pSize, 'page' => 1]) }}"
-                           class="px-2.5 py-1 rounded-lg font-bold transition-colors {{ ($perPage ?? 10) == $pSize ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-600 hover:bg-indigo-50' }}">
-                            {{ $pSize }}
-                        </a>
-                    @endforeach
-                    <span>รายชื่อ</span>
-                </div>
-
-                @if($appointments->hasPages())
-                    <div class="w-full sm:w-auto">
-                        {{ $appointments->links() }}
-                    </div>
-                @endif
-            </div>
-        </div>
-    </div>
-
 </div>
 
 <!-- ========================================================================= -->
 <!-- ➕ Modal ลงวันนัดพบแพทย์ใหม่ (พร้อมระบบตรวจสอบและแจ้งเตือนรายช่อง 100%) -->
 <!-- ========================================================================= -->
-<div id="addAppointmentModal" class="{{ $errors->any() ? '' : 'hidden' }} fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+<div id="addAppointmentModal" class="{{ $errors->any() ? '' : 'hidden' }} fixed inset-0 z-[90] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
     <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8">
         <div class="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
             <h3 class="text-lg font-black text-slate-800"><i class="fa-solid fa-calendar-plus text-emerald-500 mr-2"></i>ลงรายการนัดพบแพทย์ทหารใหม่</h3>
@@ -849,7 +578,7 @@
                 <div id="app_patient_dropdown" class="hidden absolute left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-white rounded-2xl shadow-xl border-2 border-slate-200 z-50 divide-y divide-slate-100">
                     @foreach($batchPatients as $pt)
                         @php
-                            $uName = $pt->militaryUnit->short_name ?? 'ไม่ระบุหน่วย';
+                            $uName = $pt->militaryUnit?->short_name ?? 'ไม่ระบุหน่วย';
                             $fName = ($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? '');
                             $sKey  = strtolower($fName . ' ' . ($pt->cid ?? '') . ' ' . ($pt->hn ?? '') . ' ' . $uName);
                         @endphp
@@ -1005,7 +734,6 @@
     // =========================================================================
     function showAdvanceAppointmentAlertModal(forceOpen = false) {
         if (!upcomingAlertsData || upcomingAlertsData.length === 0) return;
-        // หากเปิดหน้ามาเพราะกรอกฟอร์มไม่ครบ ให้แสดงฟอร์มที่ติด Error ก่อน ไม่ต้องเด้งป๊อปอัปทับ
         if (!forceOpen && hasServerValidationErrors) return;
 
         const alertStorageKey = 'ksvr_app_alert_shown_{{ date("Y-m-d") }}';
@@ -1176,7 +904,6 @@
         }
     }
 
-    // 🌟 ฟังก์ชันตีกรอบสีแดงและแสดงข้อความเตือนใต้ช่องที่ลืมกรอก
     function markFieldError(inputId, errId, customMsg = null) {
         const inputEl = document.getElementById(inputId);
         const errEl = document.getElementById(errId);
@@ -1193,7 +920,6 @@
         }
     }
 
-    // 🌟 ฟังก์ชันล้างกรอบสีแดงทันทีเมื่อผู้ใช้เริ่มพิมพ์แก้ไข
     function clearFieldError(inputId, errId) {
         const inputEl = document.getElementById(inputId);
         const errEl = document.getElementById(errId);
@@ -1206,12 +932,10 @@
         }
     }
 
-    // 🛡️ ฟังก์ชันตรวจสอบทุกช่องที่บังคับกรอกก่อนส่งฟอร์ม
     function validateAppointmentForm(e) {
         let missingFields = [];
         let firstInvalidEl = null;
 
-        // 1. ตรวจสอบการเลือกพลทหาร
         const patientId = document.getElementById('app_patient_id')?.value.trim();
         if (!patientId) {
             markFieldError('app_patient_search', 'err_patient_id', 'กรุณาพิมพ์ค้นหาแล้วคลิกเลือกรายชื่อพลทหารจากรายการที่ปรากฏ');
@@ -1219,7 +943,6 @@
             if (!firstInvalidEl) firstInvalidEl = document.getElementById('app_patient_search');
         }
 
-        // 2. ตรวจสอบชื่อโรงพยาบาลสาธารณสุข (กรณีเลือกส่งต่อ รพ.สาธารณสุข)
         const hospType = document.querySelector('input[name="hospital_type"]:checked')?.value;
         const hospName = document.getElementById('app_hospital_name')?.value.trim();
         if (hospType === 'public_hospital' && (!hospName || hospName === 'รพ.ค่ายกฤษณ์สีวะรา')) {
@@ -1228,7 +951,6 @@
             if (!firstInvalidEl) firstInvalidEl = document.getElementById('app_hospital_name');
         }
 
-        // 3. ตรวจสอบวันที่นัด
         const appDate = document.getElementById('app_date_input')?.value.trim();
         if (!appDate) {
             markFieldError('app_date_input', 'err_appointment_date', 'กรุณาระบุวันที่นัดพบแพทย์');
@@ -1236,7 +958,6 @@
             if (!firstInvalidEl) firstInvalidEl = document.getElementById('app_date_input');
         }
 
-        // 4. ตรวจสอบเวลานัด
         const appTime = document.getElementById('app_time_input')?.value.trim();
         if (!appTime) {
             markFieldError('app_time_input', 'err_appointment_time', 'กรุณาระบุเวลานัด');
@@ -1244,7 +965,6 @@
             if (!firstInvalidEl) firstInvalidEl = document.getElementById('app_time_input');
         }
 
-        // 5. ตรวจสอบคลินิก / แผนกที่นัด
         const clinicName = document.getElementById('app_clinic_input')?.value.trim();
         if (!clinicName) {
             markFieldError('app_clinic_input', 'err_clinic_name', 'กรุณาระบุคลินิกหรือแผนกที่นัด (หรือแตะปุ่มตัวเลือกด่วน)');
@@ -1252,7 +972,6 @@
             if (!firstInvalidEl) firstInvalidEl = document.getElementById('app_clinic_input');
         }
 
-        // 6. ตรวจสอบสาเหตุการนัด / อาการที่ติดตาม
         const appCause = document.getElementById('app_cause_input')?.value.trim();
         if (!appCause) {
             markFieldError('app_cause_input', 'err_app_cause', 'กรุณาระบุสาเหตุการนัดหรืออาการที่ติดตาม');
@@ -1260,7 +979,6 @@
             if (!firstInvalidEl) firstInvalidEl = document.getElementById('app_cause_input');
         }
 
-        // หากมีช่องที่ลืมกรอก ให้ระงับการส่งฟอร์มและเด้งแจ้งเตือนชัดเจนทันที!
         if (missingFields.length > 0) {
             if (e) e.preventDefault();
 
