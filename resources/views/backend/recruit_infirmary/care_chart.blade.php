@@ -92,24 +92,112 @@
         </div>
     </div>
 
+    @php
+        $defaultMobileMarDate = collect($dateColumns)->firstWhere('is_today', true)['date_str']
+            ?? ($dateColumns[0]['date_str'] ?? date('Y-m-d'));
+    @endphp
+
+    <style>
+        .ksvr-no-scrollbar::-webkit-scrollbar { display: none; }
+        .ksvr-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+
     <!-- ========================================================================= -->
-    <!-- 📊 ส่วนที่ 1: ตารางบันทึกสัญญาณชีพ 06.00 น. และ 18.00 น. -->
+    <!-- 📊 ส่วนที่ 1: บันทึกสัญญาณชีพ 06.00 น. และ 18.00 น. (Mobile Cards + Desktop/Print Table) -->
     <!-- ========================================================================= -->
-    <div class="bg-white rounded-3xl p-5 md:p-6 shadow-sm border border-slate-200">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100 print:hidden">
+    <div class="bg-white dark:bg-slate-800 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700 print:border-0 print:shadow-none print:p-0">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100 dark:border-slate-700 print:hidden">
             <div>
-                <h3 class="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2">
-                    <i class="fa-solid fa-heart-pulse text-rose-500"></i> 1. ตารางบันทึกสัญญาณชีพประจำวัน (เวลา 06.00 น. และ 18.00 น.)
+                <h3 class="text-base sm:text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-heart-pulse text-rose-500"></i> 1. บันทึกสัญญาณชีพประจำวัน (06.00 น. / 18.00 น.)
                 </h3>
-                <p class="text-xs text-slate-500">คลิกที่แถวเวลา <b>06.00 น.</b> หรือ <b>18.00 น.</b> ในแต่ละวันเพื่อลงข้อมูล ระบบจะคำนวณ <b>Mew score</b> ให้อัตโนมัติ</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">แตะรอบเวลา <b>06.00 น.</b> หรือ <b>18.00 น.</b> เพื่อลงข้อมูล ระบบคำนวณ <b>Mew score</b> อัตโนมัติ</p>
             </div>
             <button type="button" onclick="openVitalModal('{{ date('Y-m-d') }}', '{{ (int)date('H') < 12 ? '06:00' : '18:00' }}')"
-                    class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm flex items-center gap-1.5 shrink-0">
+                    class="w-full sm:w-auto justify-center px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm flex items-center gap-1.5 shrink-0">
                 <i class="fa-solid fa-plus-circle"></i> + ลงสัญญาณชีพวันนี้
             </button>
         </div>
 
-        <div class="overflow-x-auto">
+        <!-- 📱 โหมดมือถือ: การ์ดสัญญาณชีพรายวัน (ซ่อนตอนพิมพ์ A4) -->
+        <div class="md:hidden print:hidden space-y-3">
+            @foreach(array_slice($dateColumns, 0, 7) as $dCol)
+                @php
+                    $dayLogs = $vitalLogs->get($dCol['date_str'], collect());
+                    $mLog = $dayLogs->firstWhere('round_time', '06:00');
+                    $eLog = $dayLogs->firstWhere('round_time', '18:00');
+                @endphp
+                <div class="rounded-2xl border {{ $dCol['is_today'] ? 'border-emerald-300 bg-emerald-50/25 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/40' }} overflow-hidden">
+                    <div class="px-3.5 py-2 border-b {{ $dCol['is_today'] ? 'border-emerald-200 bg-emerald-50/70 dark:bg-emerald-900/30' : 'border-slate-200/80 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/80' }} flex items-center justify-between">
+                        <span class="font-black text-xs {{ $dCol['is_today'] ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200' }}">
+                            <i class="fa-regular fa-calendar mr-1"></i>{{ $dCol['thai_text'] }}
+                        </span>
+                        @if($dCol['is_today'])
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white">วันนี้</span>
+                        @endif
+                    </div>
+
+                    <div class="grid grid-cols-2 divide-x divide-slate-200/80 dark:divide-slate-700">
+                        <!-- รอบเช้า 06:00 น. -->
+                        <button type="button" onclick='openVitalModal("{{ $dCol["date_str"] }}", "06:00", @json($mLog))'
+                                class="p-3 text-left hover:bg-amber-50/60 dark:hover:bg-amber-900/20 transition-colors space-y-1.5">
+                            <div class="flex items-center justify-between gap-1">
+                                <span class="text-[11px] font-black text-amber-700 dark:text-amber-400">🌅 06.00 น.</span>
+                                @if($mLog)
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black {{ $mLog->mews_score >= 4 ? 'bg-rose-600 text-white' : ($mLog->mews_score >= 2 ? 'bg-amber-500 text-white' : 'bg-emerald-100 text-emerald-800') }}">
+                                        MEWS {{ $mLog->mews_score }}
+                                    </span>
+                                @endif
+                            </div>
+
+                            @if($mLog)
+                                <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                                    <span class="{{ $mLog->temperature >= 38.0 ? 'text-rose-600 font-black' : '' }}">T: {{ number_format($mLog->temperature, 1) }}°</span>
+                                    <span>PR: {{ $mLog->heart_rate ?? '-' }}</span>
+                                    <span class="col-span-2">BP: {{ $mLog->systolic_bp ?? '-' }}/{{ $mLog->diastolic_bp ?? '-' }}</span>
+                                    <span>RR: {{ $mLog->respiratory_rate ?? '-' }}</span>
+                                    <span class="{{ $mLog->o2sat < 95 ? 'text-rose-600 font-black' : '' }}">O2: {{ $mLog->o2sat }}%</span>
+                                </div>
+                            @else
+                                <div class="py-2 text-center text-[11px] font-bold text-slate-400 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl">
+                                    + แตะลงข้อมูล
+                                </div>
+                            @endif
+                        </button>
+
+                        <!-- รอบเย็น 18:00 น. -->
+                        <button type="button" onclick='openVitalModal("{{ $dCol["date_str"] }}", "18:00", @json($eLog))'
+                                class="p-3 text-left hover:bg-indigo-50/60 dark:hover:bg-indigo-900/20 transition-colors space-y-1.5">
+                            <div class="flex items-center justify-between gap-1">
+                                <span class="text-[11px] font-black text-indigo-700 dark:text-indigo-400">🌆 18.00 น.</span>
+                                @if($eLog)
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black {{ $eLog->mews_score >= 4 ? 'bg-rose-600 text-white' : ($eLog->mews_score >= 2 ? 'bg-amber-500 text-white' : 'bg-emerald-100 text-emerald-800') }}">
+                                        MEWS {{ $eLog->mews_score }}
+                                    </span>
+                                @endif
+                            </div>
+
+                            @if($eLog)
+                                <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                                    <span class="{{ $eLog->temperature >= 38.0 ? 'text-rose-600 font-black' : '' }}">T: {{ number_format($eLog->temperature, 1) }}°</span>
+                                    <span>PR: {{ $eLog->heart_rate ?? '-' }}</span>
+                                    <span class="col-span-2">BP: {{ $eLog->systolic_bp ?? '-' }}/{{ $eLog->diastolic_bp ?? '-' }}</span>
+                                    <span>RR: {{ $eLog->respiratory_rate ?? '-' }}</span>
+                                    <span class="{{ $eLog->o2sat < 95 ? 'text-rose-600 font-black' : '' }}">O2: {{ $eLog->o2sat }}%</span>
+                                </div>
+                            @else
+                                <div class="py-2 text-center text-[11px] font-bold text-slate-400 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl">
+                                    + แตะลงข้อมูล
+                                </div>
+                            @endif
+                        </button>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+
+        <!-- 💻 โหมดคอมพิวเตอร์ & โหมดพิมพ์ A4: ตารางทางการครบทุกช่อง -->
+        <div class="hidden md:block print:block overflow-x-auto">
             <table class="w-full text-xs sm:text-sm text-center border-collapse border-2 border-slate-800">
                 <thead>
                     <tr class="bg-slate-100 text-slate-900 font-black">
@@ -133,7 +221,6 @@
                             $mLog = $dayLogs->firstWhere('round_time', '06:00');
                             $eLog = $dayLogs->firstWhere('round_time', '18:00');
                         @endphp
-                        <!-- แถวรอบเช้า 06.00 น. -->
                         <tr onclick='openVitalModal("{{ $dCol["date_str"] }}", "06:00", @json($mLog))'
                             class="hover:bg-amber-50/60 cursor-pointer transition-colors">
                             <td rowspan="2" class="border border-slate-800 px-3 py-2 font-black text-slate-900 bg-white {{ $dCol['is_today'] ? 'bg-emerald-50/50 text-emerald-800' : '' }}">
@@ -165,7 +252,6 @@
                             </td>
                         </tr>
 
-                        <!-- แถวรอบเย็น 18.00 น. -->
                         <tr onclick='openVitalModal("{{ $dCol["date_str"] }}", "18:00", @json($eLog))'
                             class="hover:bg-indigo-50/60 cursor-pointer transition-colors">
                             <td class="border border-slate-800 px-2 py-2 font-bold text-slate-800 bg-indigo-50/30">18.00 น.</td>
@@ -197,25 +283,25 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- 💊 ส่วนที่ 2: ตารางบันทึกการรับประทานยา & ยาทา/ยานวด/เวลามีอาการ (e-MAR) -->
+    <!-- 💊 ส่วนที่ 2: ตารางยา e-MAR (Mobile Date-Picker Cards + Desktop/Print Table) -->
     <!-- ========================================================================= -->
-    <div class="bg-white rounded-3xl p-5 md:p-6 shadow-sm border border-slate-200">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100 print:hidden">
+    <div class="bg-white dark:bg-slate-800 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700 print:border-0 print:shadow-none print:p-0">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100 dark:border-slate-700 print:hidden">
             <div>
-                <h3 class="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2">
-                    <i class="fa-solid fa-pills text-teal-600"></i> 2. ตารางบันทึกการรับประทานยา / ยาทา / ยานวด (เช้า / เที่ยง / เย็น / ก่อนนอน / เวลามีอาการ)
+                <h3 class="text-base sm:text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-pills text-teal-600"></i> 2. บันทึกการรับประทานยา / ยาทา / ยานวด (e-MAR)
                 </h3>
-                <p class="text-xs text-slate-500">
-                    รองรับทั้งยารับประทานตามมื้อปกติ, ยากินเวลามีอาการ (PRN), ยานวด และยาทา <b>คลิกในช่องตารางเพื่อเช็คชื่อการใช้ยา (✅ ใช้แล้ว / ❌ ขาดยา)</b>
+                <p class="text-xs text-slate-500 dark:text-slate-400">
+                    แตะช่องมื้อยาเพื่อเช็คสถานะ (<b>✅ ใช้แล้ว → ❌ ขาดยา → ล้างค่า</b>) รองรับทั้งมื้อปกติและเวลามีอาการ (PRN)
                 </p>
             </div>
-            <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <div class="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 shrink-0">
                 @if(!empty($patient->hn))
-                    <button type="button" onclick="fetchDrugsFromHosxp()" class="px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-2xl text-xs font-bold flex items-center gap-1.5">
+                    <button type="button" onclick="fetchDrugsFromHosxp()" class="w-full sm:w-auto justify-center px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-2xl text-xs font-bold flex items-center gap-1.5">
                         <i class="fa-solid fa-cloud-arrow-down"></i> ดึงรายการยาจาก HosXP
                     </button>
                 @endif
-                <button type="button" onclick="openAddMedicationModal()" class="px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm flex items-center gap-1.5">
+                <button type="button" onclick="openAddMedicationModal()" class="w-full sm:w-auto justify-center px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm flex items-center gap-1.5">
                     <i class="fa-solid fa-plus"></i> + เพิ่มรายการยาที่ต้องกิน / ทา
                 </button>
             </div>
@@ -223,7 +309,153 @@
 
         <h4 class="hidden print:block text-center font-black text-base mb-2">บันทึกการรับประทานยา / การใช้ยา</h4>
 
-        <div class="overflow-x-auto">
+        <!-- =========================================================== -->
+        <!-- 📱 โหมดมือถือ e-MAR: แถบเลือกวันที่ + การ์ดยาพร้อมปุ่มติ๊กขนาดใหญ่ -->
+        <!-- =========================================================== -->
+        <div class="md:hidden print:hidden space-y-4">
+            @if($medications->count() > 0)
+                <!-- แถบเลือกวันที่แบบปัดซ้าย-ขวา (Date Pill Switcher) -->
+                <div>
+                    <div class="text-[11px] font-bold text-slate-400 mb-1.5 flex items-center justify-between">
+                        <span><i class="fa-regular fa-calendar-check text-teal-500 mr-1"></i>แตะเลือกวันที่ต้องการเช็คยา:</span>
+                        <span class="text-[10px]">ปัดเลื่อนได้ →</span>
+                    </div>
+                    <div id="mobile-mar-date-strip" class="ksvr-no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 scroll-smooth">
+                        @foreach($dateColumns as $dCol)
+                            @php $isDefDate = ($dCol['date_str'] === $defaultMobileMarDate); @endphp
+                            <button type="button"
+                                    data-mar-date-btn="{{ $dCol['date_str'] }}"
+                                    onclick="selectMobileMarDate('{{ $dCol['date_str'] }}', this)"
+                                    class="px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap border transition-all shrink-0 {{ $isDefDate ? 'bg-teal-600 text-white border-teal-600 shadow-sm' : ($dCol['is_today'] ? 'bg-sky-50 text-sky-700 border-sky-300' : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700') }}">
+                                {{ $dCol['thai_text'] }}
+                                @if($dCol['is_today'])
+                                    <span class="ml-1 text-[9px] px-1.5 py-0.2 rounded-full {{ $isDefDate ? 'bg-white/25 text-white' : 'bg-sky-600 text-white' }}">วันนี้</span>
+                                @endif
+                            </button>
+                        @endforeach
+                    </div>
+                </div>
+
+                <!-- การ์ดรายการยาทั้งหมด (ซิงค์ปุ่มติ๊กตามวันที่ที่เลือก) -->
+                <div class="space-y-3">
+                    @foreach($medications as $med)
+                        @php
+                            $hasStandardSlots = $med->take_morning || $med->take_noon || $med->take_evening || $med->take_bedtime;
+                            $hasPrnOrCustom   = $med->take_prn || !empty($med->custom_slot_text) || !$hasStandardSlots || in_array($med->meal_timing, ['prn', 'external']);
+
+                            $mobileSlots = [];
+                            if ($med->take_morning) $mobileSlots['morning'] = ['label' => '🌅 เช้า',     'is_prn' => false];
+                            if ($med->take_noon)    $mobileSlots['noon']    = ['label' => '☀️ เที่ยง',   'is_prn' => false];
+                            if ($med->take_evening) $mobileSlots['evening'] = ['label' => '🌆 เย็น',     'is_prn' => false];
+                            if ($med->take_bedtime) $mobileSlots['bedtime'] = ['label' => '🌙 ก่อนนอน',  'is_prn' => false];
+                            if ($hasPrnOrCustom) {
+                                $customLabel = !empty($med->custom_slot_text)
+                                    ? '⚡ ' . $med->custom_slot_text
+                                    : ($med->meal_timing === 'external' ? '🧴 ทา/นวดตามอาการ' : '⚡ เวลามีอาการ (PRN)');
+                                $mobileSlots['prn'] = ['label' => $customLabel, 'is_prn' => true];
+                            }
+
+                            $editMedPayload = [
+                                'id'               => $med->id,
+                                'care_group'       => $med->care_group,
+                                'drug_name'        => $med->drug_name,
+                                'dosage'           => $med->dosage,
+                                'meal_timing'      => $med->meal_timing,
+                                'take_morning'     => (bool)$med->take_morning,
+                                'take_noon'        => (bool)$med->take_noon,
+                                'take_evening'     => (bool)$med->take_evening,
+                                'take_bedtime'     => (bool)$med->take_bedtime,
+                                'take_prn'         => (bool)$med->take_prn,
+                                'custom_slot_text' => $med->custom_slot_text ?? '',
+                                'start_date'       => $med->start_date ? $med->start_date->format('Y-m-d') : $startDateStr,
+                                'instruction_note' => $med->instruction_note ?? '',
+                            ];
+                        @endphp
+
+                        <div class="rounded-2xl border-2 border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm space-y-3">
+                            <!-- หัวการ์ดยา: ชื่อยา + ปุ่มแก้ไข/ลบ -->
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <div class="font-black text-slate-900 dark:text-white text-base leading-snug">{{ $med->drug_name }}</div>
+                                    <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                        <span class="px-2 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 rounded-md font-bold text-[11px]">
+                                            {{ $med->dosage ?: 'ตามแพทย์สั่ง' }}
+                                        </span>
+                                        <span class="px-2 py-0.5 {{ $med->meal_timing === 'external' ? 'bg-amber-100 text-amber-900 border-amber-300' : ($med->meal_timing === 'prn' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-indigo-50 text-indigo-800 border-indigo-200') }} border rounded-md font-bold text-[11px]">
+                                            {{ $med->meal_timing_label }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button type="button" onclick='openEditMedicationModal(@json($editMedPayload))'
+                                            class="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center" title="แก้ไขยา">
+                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    </button>
+                                    <form id="delete-med-mobile-{{ $med->id }}" action="{{ route('backend.care_chart.destroy_medication', $med->id) }}" method="POST" class="inline">
+                                        @csrf @method('DELETE')
+                                        <button type="button"
+                                                onclick="confirmAction(event, 'ยืนยันการลบรายการยา?', 'ต้องการลบ {{ addslashes($med->drug_name) }} ออกจากตารางใช่หรือไม่?', 'warning', 'delete-med-mobile-{{ $med->id }}')"
+                                                class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 border border-rose-200 flex items-center justify-center" title="ลบยา">
+                                            <i class="fa-solid fa-trash-can text-xs"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+
+                            @if($med->instruction_note)
+                                <div class="text-xs text-rose-600 bg-rose-50/70 border border-rose-100 px-2.5 py-1.5 rounded-xl font-semibold">
+                                    <i class="fa-solid fa-circle-exclamation mr-1"></i>{{ $med->instruction_note }}
+                                </div>
+                            @endif
+
+                            <!-- ปุ่มติ๊กมื้อยาแยกตามวันที่ (สลับแสดงตาม Date Pill ที่เลือกด้านบน) -->
+                            @foreach($dateColumns as $dCol)
+                                @php $isVisibleDay = ($dCol['date_str'] === $defaultMobileMarDate); @endphp
+                                <div data-mar-date-panel="{{ $dCol['date_str'] }}"
+                                     class="{{ $isVisibleDay ? 'grid' : 'hidden' }} {{ count($mobileSlots) === 1 ? 'grid-cols-1' : 'grid-cols-2' }} gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                                    @foreach($mobileSlots as $slotKey => $slotInfo)
+                                        @php
+                                            $cellKey = $med->id . '_' . $dCol['date_str'] . '_' . $slotKey;
+                                            $cellLog = $medLogs->get($cellKey);
+                                            $st = $cellLog->status ?? 'none';
+
+                                            $btnCls = $st === 'taken'
+                                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                                : ($st === 'missed'
+                                                    ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                                                    : ($slotInfo['is_prn']
+                                                        ? 'bg-amber-50/70 text-amber-900 border-amber-300'
+                                                        : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600'));
+                                            $stateLabel = $st === 'taken' ? '✓ ใช้แล้ว' : ($st === 'missed' ? '✕ ขาดยา' : 'แตะเช็ค');
+                                        @endphp
+                                        <button type="button"
+                                                id="med-mobile-btn-{{ $cellKey }}"
+                                                data-is-prn="{{ $slotInfo['is_prn'] ? '1' : '0' }}"
+                                                onclick="toggleMedCell({{ $med->id }}, '{{ $dCol['date_str'] }}', '{{ $slotKey }}', '{{ $cellKey }}')"
+                                                class="{{ $slotInfo['is_prn'] && count($mobileSlots) > 1 ? 'col-span-2' : '' }} p-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-between gap-2 transition-all active:scale-95 {{ $btnCls }}">
+                                            <span class="truncate">{{ $slotInfo['label'] }}</span>
+                                            <span class="js-mobile-state-label px-2 py-0.5 rounded-lg text-[10px] font-black shrink-0 {{ $st === 'none' ? 'bg-white/80 dark:bg-slate-800 text-slate-500' : 'bg-white/20 text-white' }}">
+                                                {{ $stateLabel }}
+                                            </span>
+                                        </button>
+                                    @endforeach
+                                </div>
+                            @endforeach
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <div class="py-10 px-4 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl text-xs">
+                    ยังไม่มีรายการยาที่ต้องรับประทาน แตะปุ่ม <b>"+ เพิ่มรายการยาที่ต้องกิน / ทา"</b> ด้านบนได้เลยครับ
+                </div>
+            @endif
+        </div>
+
+        <!-- =========================================================== -->
+        <!-- 💻 โหมดคอมพิวเตอร์ & โหมดพิมพ์ A4: ตาราง e-MAR 10 วันเต็มรูปแบบ -->
+        <!-- =========================================================== -->
+        <div class="hidden md:block print:block overflow-x-auto">
             <table class="w-full text-xs text-center border-collapse border-2 border-slate-800">
                 <thead>
                     <tr class="bg-slate-100 text-slate-900 font-black">
@@ -245,7 +477,6 @@
                             $hasStandardSlots = $med->take_morning || $med->take_noon || $med->take_evening || $med->take_bedtime;
                             $hasPrnOrCustom   = $med->take_prn || !empty($med->custom_slot_text) || !$hasStandardSlots || in_array($med->meal_timing, ['prn', 'external']);
 
-                            // สร้างรายการแถวมื้อเวลาสำหรับยาตัวนี้
                             $medSlotRows = [];
                             if ($hasStandardSlots) {
                                 $medSlotRows['morning'] = ['label' => 'เช้า',    'active' => (bool)$med->take_morning];
@@ -253,7 +484,6 @@
                                 $medSlotRows['evening'] = ['label' => 'เย็น',    'active' => (bool)$med->take_evening];
                                 $medSlotRows['bedtime'] = ['label' => 'ก่อนนอน', 'active' => (bool)$med->take_bedtime];
                             }
-
                             if ($hasPrnOrCustom) {
                                 $customLabel = !empty($med->custom_slot_text)
                                     ? '⚡ ' . $med->custom_slot_text
@@ -287,7 +517,6 @@
                             @endphp
                             <tr>
                                 @if($loop->first)
-                                    <!-- คอลัมน์ที่ 1: ชื่อยา + ปริมาณ + วิธีใช้ + ปุ่มแก้ไข/ลบ -->
                                     <td rowspan="{{ $totalSlotRows }}" class="border border-slate-800 p-3 text-left align-middle bg-white relative">
                                         <div class="font-black text-slate-900 text-sm leading-snug">{{ $med->drug_name }}</div>
                                         <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -321,9 +550,11 @@
                                                 <i class="fa-solid fa-pen-to-square"></i> แก้ไข
                                             </button>
 
-                                            <form action="{{ route('backend.care_chart.destroy_medication', $med->id) }}" method="POST" onsubmit="return confirm('ต้องการลบรายการยานี้ใช่หรือไม่?')" class="inline">
+                                            <form id="delete-med-desktop-{{ $med->id }}" action="{{ route('backend.care_chart.destroy_medication', $med->id) }}" method="POST" class="inline">
                                                 @csrf @method('DELETE')
-                                                <button type="submit" class="text-[11px] text-rose-500 hover:underline font-bold flex items-center gap-1">
+                                                <button type="button"
+                                                        onclick="confirmAction(event, 'ยืนยันการลบรายการยา?', 'ต้องการลบ {{ addslashes($med->drug_name) }} ออกจากตารางใช่หรือไม่?', 'warning', 'delete-med-desktop-{{ $med->id }}')"
+                                                        class="text-[11px] text-rose-500 hover:underline font-bold flex items-center gap-1">
                                                     <i class="fa-solid fa-trash-can"></i> ลบ
                                                 </button>
                                             </form>
@@ -331,12 +562,10 @@
                                     </td>
                                 @endif
 
-                                <!-- คอลัมน์ที่ 2: มื้อเวลา (เช้า / เที่ยง / เย็น / ก่อนนอน / เวลามีอาการ-ยาทา-ยานวด) -->
                                 <td class="border border-slate-800 px-2.5 py-2 text-left font-bold {{ $isPrnRow ? 'text-amber-900 bg-amber-50/60 text-[11px]' : ($isPrescribedSlot ? 'text-slate-900 bg-white' : 'text-slate-300 bg-slate-50/70') }}">
                                     {{ $slotMeta['label'] }}
                                 </td>
 
-                                <!-- คอลัมน์ที่ 3-12: ช่องติ๊กการรับประทานยา/ทายารายวัน (10 วัน) -->
                                 @foreach($dateColumns as $dCol)
                                     @php
                                         $cellKey = $med->id . '_' . $dCol['date_str'] . '_' . $slotKey;
@@ -344,7 +573,7 @@
                                     @endphp
                                     @if($isPrescribedSlot)
                                         <td id="med-cell-{{ $cellKey }}"
-                                            onclick="toggleMedCell({{ $med->id }}, '{{ $dCol['date_str'] }}', '{{ $slotKey }}', 'med-cell-{{ $cellKey }}')"
+                                            onclick="toggleMedCell({{ $med->id }}, '{{ $dCol['date_str'] }}', '{{ $slotKey }}', '{{ $cellKey }}')"
                                             class="border border-slate-800 p-1.5 cursor-pointer hover:bg-teal-50 transition-colors select-none {{ $dCol['is_today'] ? 'bg-sky-50/30' : 'bg-white' }}"
                                             title="คลิกเพื่อบันทึก: กิน/ทายาแล้ว (✅) หรือ ขาดยา (❌)">
                                             @if($cellLog && $cellLog->status === 'taken')
@@ -765,10 +994,45 @@
         openAddMedicationModal('', '', medObj);
     }
 
-    // ✅ คลิกสลับสถานะกิน/ทายา (ใช้แล้ว ✓ -> ขาดยา ✕ -> ว่าง) แบบไม่ต้องโหลดหน้าใหม่
-    function toggleMedCell(medId, logDate, timeSlot, cellDomId) {
-        const cell = document.getElementById(cellDomId);
-        if (!cell) return;
+    // 📅 สลับวันที่ในโหมดการ์ดมือถือ e-MAR
+    function selectMobileMarDate(dateStr, clickedBtn) {
+        document.querySelectorAll('[data-mar-date-btn]').forEach(btn => {
+            const isSelected = btn.getAttribute('data-mar-date-btn') === dateStr;
+            const hasTodayPill = btn.querySelector('span');
+            if (isSelected) {
+                btn.className = 'px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap border transition-all shrink-0 bg-teal-600 text-white border-teal-600 shadow-sm';
+                if (hasTodayPill) hasTodayPill.className = 'ml-1 text-[9px] px-1.5 py-0.2 rounded-full bg-white/25 text-white';
+            } else {
+                btn.className = hasTodayPill
+                    ? 'px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap border transition-all shrink-0 bg-sky-50 text-sky-700 border-sky-300'
+                    : 'px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap border transition-all shrink-0 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+                if (hasTodayPill) hasTodayPill.className = 'ml-1 text-[9px] px-1.5 py-0.2 rounded-full bg-sky-600 text-white';
+            }
+        });
+
+        document.querySelectorAll('[data-mar-date-panel]').forEach(panel => {
+            const match = panel.getAttribute('data-mar-date-panel') === dateStr;
+            panel.classList.toggle('hidden', !match);
+            panel.classList.toggle('grid', match);
+        });
+
+        if (clickedBtn) {
+            clickedBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const activeDateBtn = document.querySelector('[data-mar-date-btn="{{ $defaultMobileMarDate }}"]');
+        if (activeDateBtn && window.innerWidth < 768) {
+            activeDateBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+    });
+
+    // ✅ คลิกสลับสถานะกิน/ทายา (อัปเดตพร้อมกันทั้งปุ่มการ์ดมือถือและช่องตาราง Desktop)
+    function toggleMedCell(medId, logDate, timeSlot, cellKey) {
+        const desktopCell = document.getElementById('med-cell-' + cellKey);
+        const mobileBtn   = document.getElementById('med-mobile-btn-' + cellKey);
+        if (mobileBtn) mobileBtn.disabled = true;
 
         fetch("{{ route('backend.care_chart.toggle_med_log') }}", {
             method: 'POST',
@@ -784,15 +1048,51 @@
         })
         .then(r => r.json())
         .then(res => {
-            if (res.status === 'success') {
+            if (res.status !== 'success') return;
+
+            // 1. อัปเดตช่องตาราง Desktop
+            if (desktopCell) {
                 if (res.state === 'taken') {
-                    cell.innerHTML = `<span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500 text-white font-black text-xs shadow-sm">✓</span>`;
+                    desktopCell.innerHTML = `<span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500 text-white font-black text-xs shadow-sm">✓</span>`;
                 } else if (res.state === 'missed') {
-                    cell.innerHTML = `<span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-rose-500 text-white font-black text-xs shadow-sm">✕</span>`;
+                    desktopCell.innerHTML = `<span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-rose-500 text-white font-black text-xs shadow-sm">✕</span>`;
                 } else {
-                    cell.innerHTML = `<span class="text-slate-200 text-[10px] print:hidden">•</span>`;
+                    desktopCell.innerHTML = `<span class="text-slate-200 text-[10px] print:hidden">•</span>`;
                 }
             }
+
+            // 2. อัปเดตปุ่มการ์ดมือถือ
+            if (mobileBtn) {
+                const isPrn = mobileBtn.getAttribute('data-is-prn') === '1';
+                const colSpanCls = mobileBtn.classList.contains('col-span-2') ? 'col-span-2 ' : '';
+                const stateBadge = mobileBtn.querySelector('.js-mobile-state-label');
+
+                if (res.state === 'taken') {
+                    mobileBtn.className = `${colSpanCls}p-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-between gap-2 transition-all active:scale-95 bg-emerald-600 text-white border-emerald-600 shadow-sm`;
+                    if (stateBadge) {
+                        stateBadge.className = 'js-mobile-state-label px-2 py-0.5 rounded-lg text-[10px] font-black shrink-0 bg-white/20 text-white';
+                        stateBadge.innerText = '✓ ใช้แล้ว';
+                    }
+                } else if (res.state === 'missed') {
+                    mobileBtn.className = `${colSpanCls}p-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-between gap-2 transition-all active:scale-95 bg-rose-600 text-white border-rose-600 shadow-sm`;
+                    if (stateBadge) {
+                        stateBadge.className = 'js-mobile-state-label px-2 py-0.5 rounded-lg text-[10px] font-black shrink-0 bg-white/20 text-white';
+                        stateBadge.innerText = '✕ ขาดยา';
+                    }
+                } else {
+                    const neutralCls = isPrn
+                        ? 'bg-amber-50/70 text-amber-900 border-amber-300'
+                        : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600';
+                    mobileBtn.className = `${colSpanCls}p-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-between gap-2 transition-all active:scale-95 ${neutralCls}`;
+                    if (stateBadge) {
+                        stateBadge.className = 'js-mobile-state-label px-2 py-0.5 rounded-lg text-[10px] font-black shrink-0 bg-white/80 dark:bg-slate-800 text-slate-500';
+                        stateBadge.innerText = 'แตะเช็ค';
+                    }
+                }
+            }
+        })
+        .finally(() => {
+            if (mobileBtn) mobileBtn.disabled = false;
         });
     }
 

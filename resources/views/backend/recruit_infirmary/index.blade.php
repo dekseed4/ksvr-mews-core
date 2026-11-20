@@ -15,73 +15,73 @@
         ];
     @endphp
 
-    <!-- 📊 1. การ์ดสรุป KPI 4 มิติ (คลิกเพื่อกรองตารางได้ทันที) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- 📊 1. การ์ดสรุป KPI 4 มิติ (ปรับเป็น 2x2 บนมือถือ ลดการเลื่อนหน้าจอ) -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <!-- ยอดกำลังแยกนอนทั้งหมด -->
         <a href="{{ route('backend.recruit_infirmary.index', ['intake_batch' => $selectedBatch, 'unit_id' => $selectedUnit, 'status' => 'staying']) }}"
-           class="bg-white p-5 rounded-3xl shadow-sm border-2 {{ ($selectedStatus === 'staying' && empty($selectedLocation) && empty($selectedReason)) ? 'border-teal-500 ring-2 ring-teal-100' : 'border-slate-100 hover:border-teal-300' }} flex items-center justify-between transition-all">
-            <div>
-                <span class="text-xs font-bold text-slate-400 uppercase">🛌 กำลังแยกนอนทั้งหมด</span>
-                <h4 class="text-3xl font-black text-slate-800 mt-1">{{ number_format($summary['active_total']) }} <span class="text-sm font-medium text-slate-400">นาย</span></h4>
+           class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border-2 {{ ($selectedStatus === 'staying' && empty($selectedLocation) && empty($selectedReason)) ? 'border-teal-500 ring-2 ring-teal-100' : 'border-slate-100 dark:border-slate-700 hover:border-teal-300' }} flex items-center justify-between gap-2 transition-all">
+            <div class="min-w-0">
+                <span class="text-[11px] sm:text-xs font-bold text-slate-400 block truncate">🛌 แยกนอนทั้งหมด</span>
+                <h4 class="text-2xl sm:text-3xl font-black text-slate-800 dark:text-white mt-1">{{ number_format($summary['active_total']) }} <span class="text-xs sm:text-sm font-medium text-slate-400">นาย</span></h4>
             </div>
-            <div class="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center text-xl"><i class="fa-solid fa-bed"></i></div>
+            <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-teal-50 dark:bg-teal-900/30 text-teal-600 flex items-center justify-center text-lg sm:text-xl shrink-0"><i class="fa-solid fa-bed"></i></div>
         </a>
 
-        <!-- นอนห้องพยาบาลหน่วยฝึก (แยกโรงนอนที่หน่วย) -->
+        <!-- นอนห้องพยาบาลหน่วยฝึก -->
         <a href="{{ route('backend.recruit_infirmary.index', ['intake_batch' => $selectedBatch, 'unit_id' => $selectedUnit, 'location_type' => 'unit_infirmary', 'status' => 'staying']) }}"
-           class="bg-white p-5 rounded-3xl shadow-sm border-2 {{ $selectedLocation === 'unit_infirmary' ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-100 hover:border-indigo-300' }} flex items-center justify-between transition-all">
-            <div>
-                <span class="text-xs font-bold text-indigo-600 uppercase">🏕️ ห้องพยาบาลหน่วยฝึก</span>
-                <h4 class="text-3xl font-black text-indigo-600 mt-1">{{ number_format($summary['unit_infirmary']) }} <span class="text-sm font-medium text-slate-400">นาย</span></h4>
+           class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border-2 {{ $selectedLocation === 'unit_infirmary' ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-100 dark:border-slate-700 hover:border-indigo-300' }} flex items-center justify-between gap-2 transition-all">
+            <div class="min-w-0">
+                <span class="text-[11px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-400 block truncate">🏕️ ห้องพยาบาลหน่วย</span>
+                <h4 class="text-2xl sm:text-3xl font-black text-indigo-600 dark:text-indigo-400 mt-1">{{ number_format($summary['unit_infirmary']) }} <span class="text-xs sm:text-sm font-medium text-slate-400">นาย</span></h4>
             </div>
-            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl"><i class="fa-solid fa-tent-arrows-down"></i></div>
+            <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 flex items-center justify-center text-lg sm:text-xl shrink-0"><i class="fa-solid fa-tent-arrows-down"></i></div>
         </a>
 
         <!-- ฝากนอนแยกกักที่ รพ.ค่ายฯ -->
         <a href="{{ route('backend.recruit_infirmary.index', ['intake_batch' => $selectedBatch, 'unit_id' => $selectedUnit, 'location_type' => 'camp_hospital', 'status' => 'staying']) }}"
-           class="bg-white p-5 rounded-3xl shadow-sm border-2 {{ $selectedLocation === 'camp_hospital' ? 'border-amber-500 ring-2 ring-amber-100' : 'border-slate-100 hover:border-amber-300' }} flex items-center justify-between transition-all">
-            <div>
-                <span class="text-xs font-bold text-amber-600 uppercase">🏥 ฝากนอนที่ รพ.ค่ายฯ</span>
-                <h4 class="text-3xl font-black text-amber-600 mt-1">{{ number_format($summary['camp_hospital']) }} <span class="text-sm font-medium text-slate-400">นาย</span></h4>
+           class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border-2 {{ $selectedLocation === 'camp_hospital' ? 'border-amber-500 ring-2 ring-amber-100' : 'border-slate-100 dark:border-slate-700 hover:border-amber-300' }} flex items-center justify-between gap-2 transition-all">
+            <div class="min-w-0">
+                <span class="text-[11px] sm:text-xs font-bold text-amber-600 dark:text-amber-400 block truncate">🏥 ฝากนอน รพ.ค่ายฯ</span>
+                <h4 class="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 mt-1">{{ number_format($summary['camp_hospital']) }} <span class="text-xs sm:text-sm font-medium text-slate-400">นาย</span></h4>
             </div>
-            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center text-xl"><i class="fa-solid fa-hospital-user"></i></div>
+            <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-500 flex items-center justify-center text-lg sm:text-xl shrink-0"><i class="fa-solid fa-hospital-user"></i></div>
         </a>
 
         <!-- แยกนอนด้วยโรคทางเดินหายใจ -->
         <a href="{{ route('backend.recruit_infirmary.index', ['intake_batch' => $selectedBatch, 'unit_id' => $selectedUnit, 'reason_category' => 'respiratory', 'status' => 'staying']) }}"
-           class="bg-white p-5 rounded-3xl shadow-sm border-2 {{ $selectedReason === 'respiratory' ? 'border-rose-500 ring-2 ring-rose-100' : 'border-slate-100 hover:border-rose-300' }} flex items-center justify-between transition-all">
-            <div>
-                <span class="text-xs font-bold text-rose-600 uppercase">🦠 โรคทางเดินหายใจ (CI)</span>
-                <h4 class="text-3xl font-black text-rose-600 mt-1">{{ number_format($summary['respiratory']) }} <span class="text-sm font-medium text-slate-400">นาย</span></h4>
+           class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border-2 {{ $selectedReason === 'respiratory' ? 'border-rose-500 ring-2 ring-rose-100' : 'border-slate-100 dark:border-slate-700 hover:border-rose-300' }} flex items-center justify-between gap-2 transition-all">
+            <div class="min-w-0">
+                <span class="text-[11px] sm:text-xs font-bold text-rose-600 dark:text-rose-400 block truncate">🦠 ทางเดินหายใจ (CI)</span>
+                <h4 class="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400 mt-1">{{ number_format($summary['respiratory']) }} <span class="text-xs sm:text-sm font-medium text-slate-400">นาย</span></h4>
             </div>
-            <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center text-xl"><i class="fa-solid fa-head-side-mask"></i></div>
+            <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-rose-50 dark:bg-rose-900/30 text-rose-500 flex items-center justify-center text-lg sm:text-xl shrink-0"><i class="fa-solid fa-head-side-mask"></i></div>
         </a>
     </div>
 
-    <!-- 🛠️ 2. แถบเครื่องมือตัวกรอง + เลือกจำนวน 10/20 รายชื่อ + ปุ่มเพิ่มผู้ป่วยแยกโรงนอน -->
-    <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
-        <form method="GET" action="{{ route('backend.recruit_infirmary.index') }}" class="flex flex-wrap items-center gap-2.5">
-            <select name="intake_batch" onchange="this.form.submit()" class="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
+    <!-- 🛠️ 2. แถบเครื่องมือตัวกรอง (จัดกริดสมดุลบนมือถือ) + ปุ่มเพิ่มผู้ป่วยแยกโรงนอน -->
+    <div class="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
+        <form method="GET" action="{{ route('backend.recruit_infirmary.index') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-2.5 flex-1">
+            <select name="intake_batch" onchange="this.form.submit()" class="w-full lg:w-auto rounded-2xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
                 <option value="all" {{ $selectedBatch == 'all' ? 'selected' : '' }}>ทุกผลัดทหาร</option>
                 @foreach($batches as $b)
                     <option value="{{ $b }}" {{ $selectedBatch == $b ? 'selected' : '' }}>ผลัดที่ {{ $b }}</option>
                 @endforeach
             </select>
 
-            <select name="unit_id" onchange="this.form.submit()" class="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
+            <select name="unit_id" onchange="this.form.submit()" class="w-full lg:w-auto rounded-2xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
                 <option value="">ทุกหน่วยฝึก</option>
                 @foreach($units as $u)
                     <option value="{{ $u->id }}" {{ $selectedUnit == $u->id ? 'selected' : '' }}>{{ $u->short_name ?? $u->name }}</option>
                 @endforeach
             </select>
 
-            <select name="location_type" onchange="this.form.submit()" class="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
+            <select name="location_type" onchange="this.form.submit()" class="w-full lg:w-auto rounded-2xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
                 <option value="">ทุกสถานที่แยกนอน</option>
                 <option value="unit_infirmary" {{ $selectedLocation === 'unit_infirmary' ? 'selected' : '' }}>🏕️ ห้องพยาบาลหน่วยฝึก (แยกโรงนอน)</option>
                 <option value="camp_hospital" {{ $selectedLocation === 'camp_hospital' ? 'selected' : '' }}>🏥 ฝากนอนแยกกักที่ รพ.ค่ายฯ</option>
             </select>
 
-            <select name="reason_category" onchange="this.form.submit()" class="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
+            <select name="reason_category" onchange="this.form.submit()" class="w-full lg:w-auto rounded-2xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
                 <option value="">ทุกสาเหตุการแยกนอน</option>
                 <option value="respiratory" {{ $selectedReason === 'respiratory' ? 'selected' : '' }}>🦠 โรคระบบทางเดินหายใจ</option>
                 <option value="post_admit" {{ $selectedReason === 'post_admit' ? 'selected' : '' }}>🛌 พักฟื้นหลังออกจาก รพ.</option>
@@ -89,15 +89,15 @@
                 <option value="other" {{ $selectedReason === 'other' ? 'selected' : '' }}>📌 สาเหตุอื่นๆ</option>
             </select>
 
-            <select name="status" onchange="this.form.submit()" class="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
+            <select name="status" onchange="this.form.submit()" class="w-full lg:w-auto rounded-2xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 hover:bg-white text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 px-3.5 py-2.5 outline-none focus:border-teal-500 cursor-pointer">
                 <option value="staying" {{ $selectedStatus === 'staying' ? 'selected' : '' }}>🛌 กำลังแยกนอนอยู่ปัจจุบัน</option>
                 <option value="returned" {{ $selectedStatus === 'returned' ? 'selected' : '' }}>✅ กลับโรงนอนปกติแล้ว ({{ $summary['returned_total'] }})</option>
                 <option value="all" {{ $selectedStatus === 'all' ? 'selected' : '' }}>📋 ประวัติทั้งหมด</option>
             </select>
 
-            <div class="flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3 py-1.5">
+            <div class="flex items-center justify-between lg:justify-start bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-2xl px-3.5 py-2">
                 <span class="text-xs font-bold text-slate-400 mr-2">แสดง:</span>
-                <select name="per_page" onchange="this.form.submit()" class="bg-transparent text-xs sm:text-sm font-black text-teal-600 outline-none cursor-pointer pr-1">
+                <select name="per_page" onchange="this.form.submit()" class="bg-transparent text-xs sm:text-sm font-black text-teal-600 dark:text-teal-400 outline-none cursor-pointer pr-1">
                     @foreach([10, 20, 50, 100] as $size)
                         <option value="{{ $size }}" {{ ($perPage ?? 10) == $size ? 'selected' : '' }}>{{ $size }} รายชื่อ</option>
                     @endforeach
@@ -107,37 +107,260 @@
 
         <div class="flex items-center gap-2 shrink-0">
             <button type="button" onclick="openAddInfirmaryModal()"
-                    class="w-full sm:w-auto justify-center px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap">
+                    class="w-full xl:w-auto justify-center px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap">
                 <i class="fa-solid fa-bed-pulse"></i> + บันทึกแยกโรงนอน / ห้องพยาบาล
             </button>
         </div>
     </div>
 
-    <!-- 📋 3. ตารางรายชื่อพลทหารแยกโรงนอน / ห้องพยาบาลหน่วยฝึก (จัดสัดส่วนคอลัมน์ใหม่ให้สมดุล สวยงาม ไม่เบียดกัน) -->
+    <!-- 📋 3. รายชื่อพลทหารแยกโรงนอน (Mobile Cards + Desktop Table) -->
     <div>
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-3 px-1">
-            <h3 class="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-house-medical-flag text-teal-600"></i> ทะเบียนพลทหารนอนห้องพยาบาลหน่วยฝึก & ฝากนอน รพ.
+            <h3 class="text-base sm:text-lg font-black text-slate-800 dark:text-white flex flex-wrap items-center gap-2">
+                <span><i class="fa-solid fa-house-medical-flag text-teal-600 mr-1.5"></i>ทะเบียนพลทหารนอนห้องพยาบาลหน่วยฝึก &amp; ฝากนอน รพ.</span>
                 <span class="text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-1 rounded-full">
                     พบ {{ number_format($stays->total()) }} รายการ
                 </span>
             </h3>
         </div>
 
-        <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left text-slate-600">
-                    <thead class="text-xs text-slate-500 uppercase bg-slate-50/90 border-b border-slate-100">
+        <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+
+            <!-- =========================================================== -->
+            <!-- 📱 โหมดมือถือ: แสดงเป็นการ์ดรายบุคคล (อ่านง่ายเต็มจอ ไม่ต้องปัดตาราง) -->
+            <!-- =========================================================== -->
+            <div class="md:hidden">
+                @php
+                    $mBatchGroup = null;
+                    $mUnitGroup  = null;
+                @endphp
+
+                @forelse($stays as $stay)
+                    @php
+                        $pt = $stay->patient;
+                        $rowBatch = $stay->intake_batch ?? $pt->intake_batch ?? 'ไม่ระบุ';
+                        $rowUnitName = $stay->militaryUnit->name ?? $pt->militaryUnit->name ?? $pt->company ?? 'ไม่ระบุหน่วยฝึก';
+                        $isUnitInf = ($stay->location_type === 'unit_infirmary');
+                        $rMeta = $reasonMeta[$stay->reason_category] ?? $reasonMeta['other'];
+                        $fullPtName = ($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? '');
+
+                        $endRefDate = ($stay->discharged_at ?? now())->copy()->startOfDay();
+                        $startRefDate = $stay->admitted_at->copy()->startOfDay();
+                        $daysStay = max(1, (int) $startRefDate->diffInDays($endRefDate) + 1);
+
+                        $ptTodayVitals = isset($todayVitalsByPatient) && $pt ? ($todayVitalsByPatient->get($pt->id) ?? collect()) : collect();
+                        $hasMorningVs  = $ptTodayVitals->firstWhere('round_time', '06:00');
+                        $hasEveningVs  = $ptTodayVitals->firstWhere('round_time', '18:00');
+                        $ptMedCount    = isset($activeMedsCountByPatient) && $pt ? ($activeMedsCountByPatient[$pt->id] ?? 0) : 0;
+
+                        $cardBorderAccent = $stay->status === 'returned'
+                            ? 'border-l-emerald-500 bg-slate-50/50 dark:bg-slate-800/60 opacity-85'
+                            : ($isUnitInf ? 'border-l-indigo-500 bg-white dark:bg-slate-800' : 'border-l-amber-500 bg-white dark:bg-slate-800');
+
+                        $editPayload = [
+                            'id'               => $stay->id,
+                            'update_url'       => route('backend.recruit_infirmary.update', $stay->id),
+                            'patient_id'       => $pt->id ?? null,
+                            'soldier_name'     => $fullPtName,
+                            'hn'               => $pt->hn ?: 'ไม่มี HN',
+                            'unit_name'        => $stay->militaryUnit->short_name ?? $pt->militaryUnit->short_name ?? $rowUnitName,
+                            'location_type'    => $stay->location_type,
+                            'bed_or_zone'      => $stay->bed_or_zone ?? '',
+                            'reason_category'  => $stay->reason_category,
+                            'diagnosis_text'   => $stay->diagnosis_text ?? '',
+                            'care_instruction' => $stay->care_instruction ?? '',
+                            'admitted_date'    => $stay->admitted_at->format('Y-m-d'),
+                            'admitted_time'    => $stay->admitted_at->format('H:i'),
+                        ];
+                    @endphp
+
+                    @if($mBatchGroup !== $rowBatch)
+                        @php
+                            $mBatchGroup = $rowBatch;
+                            $mUnitGroup  = null;
+                        @endphp
+                        <div class="bg-slate-800 px-4 py-2 text-white font-bold text-xs flex items-center gap-2">
+                            <i class="fa-solid fa-calendar-days text-teal-400"></i>
+                            <span>ทหารกองประจำการ ผลัดที่ {{ $mBatchGroup }}</span>
+                        </div>
+                    @endif
+
+                    @if($mUnitGroup !== $rowUnitName)
+                        @php $mUnitGroup = $rowUnitName; @endphp
+                        <div class="bg-teal-50/80 dark:bg-teal-950/60 px-4 py-2 border-y border-teal-100 dark:border-teal-900 text-teal-800 dark:text-teal-300 font-bold text-xs flex items-center gap-1.5">
+                            <i class="fa-solid fa-tent text-teal-600 shrink-0"></i>
+                            <span class="truncate">{{ $mUnitGroup }}</span>
+                        </div>
+                    @endif
+
+                    <div class="p-4 border-b border-slate-100 dark:border-slate-700 last:border-b-0 border-l-4 {{ $cardBorderAccent }} space-y-3">
+                        
+                        <!-- แถว 1: ชื่อพลทหาร + สถานะ + จำนวนวันนอน -->
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                                <div class="font-black text-slate-900 dark:text-white text-base leading-snug">
+                                    {{ $fullPtName }}
+                                </div>
+                                <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
+                                    <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md font-bold">HN: {{ $pt->hn ?: '-' }}</span>
+                                    <span class="font-mono text-slate-400">{{ $pt->cid ?? '-' }}</span>
+                                </div>
+                                @if($pt && $pt->militaryDischarge)
+                                    <div class="mt-1">
+                                        <span class="bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 rounded-md font-bold text-[10px] inline-flex items-center gap-1">
+                                            <i class="fa-solid fa-folder-open text-purple-600"></i> รอปลด ({{ str_replace(['[ปลดทางสุขภาพจิต]', '[ปลดทางกาย]'], '', $pt->militaryDischarge->diagnosis_text) }})
+                                        </span>
+                                    </div>
+                                @endif
+                            </div>
+
+                            <div class="flex flex-col items-end gap-1 shrink-0">
+                                @if($stay->status === 'staying')
+                                    <span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black inline-flex items-center gap-1">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span> กำลังแยกนอน
+                                    </span>
+                                @else
+                                    <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
+                                        <i class="fa-solid fa-check mr-0.5"></i> กลับโรงนอนแล้ว
+                                    </span>
+                                @endif
+                                <span class="px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-md font-black text-[11px]">
+                                    พัก {{ number_format($daysStay) }} วัน
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- แถว 2: สถานที่แยกนอน + เตียง + วันที่เริ่มพัก -->
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-50 dark:bg-slate-900/60 px-3 py-2 rounded-xl border border-slate-100 dark:border-slate-700">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                @if($isUnitInf)
+                                    <span class="px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 font-black text-[11px]">
+                                        <i class="fa-solid fa-tent-arrows-down mr-1"></i>ห้องพยาบาลหน่วยฝึก
+                                    </span>
+                                @else
+                                    <span class="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 font-black text-[11px]">
+                                        <i class="fa-solid fa-hospital-user mr-1"></i>ฝากนอน รพ.ค่ายฯ
+                                    </span>
+                                @endif
+                                @if($stay->bed_or_zone)
+                                    <span class="text-[11px] font-bold text-slate-600 dark:text-slate-300">({{ $stay->bed_or_zone }})</span>
+                                @endif
+                            </div>
+                            <span class="text-[11px] text-slate-500 font-semibold">
+                                <i class="fa-regular fa-clock text-teal-500 mr-1"></i>เริ่ม {{ $stay->admitted_at->locale('th')->addYears(543)->translatedFormat('j M y') }} {{ $stay->admitted_at->format('H:i') }} น.
+                            </span>
+                        </div>
+
+                        <!-- แถว 3: อาการ (Dx.) + การดูแล -->
+                        <div class="space-y-1.5">
+                            <span class="px-2 py-0.5 rounded-md border text-[10px] font-bold inline-flex items-center gap-1 {{ $rMeta['badge'] }}">
+                                <i class="fa-solid {{ $rMeta['icon'] }}"></i> {{ $rMeta['label'] }}
+                            </span>
+                            <div class="font-black text-slate-800 dark:text-white text-sm leading-snug">
+                                {{ $stay->diagnosis_text }}
+                            </div>
+                            @if($stay->care_instruction)
+                                <div class="text-xs text-teal-800 dark:text-teal-200 bg-teal-50/80 dark:bg-teal-900/30 border border-teal-200/80 dark:border-teal-800 px-3 py-2 rounded-xl font-medium leading-relaxed">
+                                    <i class="fa-solid fa-user-nurse text-teal-600 mr-1"></i><b>การดูแล:</b> {{ $stay->care_instruction }}
+                                </div>
+                            @endif
+                        </div>
+
+                        <!-- แถว 4: สถานะวัดไข้วันนี้ (06:00 / 18:00) แตะเปิดตาราง V/S ได้ทันที -->
+                        @if($stay->status === 'staying')
+                            <div class="grid grid-cols-2 gap-2 text-xs font-bold">
+                                <a href="{{ route('backend.care_chart.show', $pt->id) }}"
+                                   class="px-3 py-2 rounded-xl border text-center transition-colors {{ $hasMorningVs ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200' }}">
+                                    🌅 06:00 • {{ $hasMorningVs ? number_format($hasMorningVs->temperature, 1) . '°C' : 'รอวัด' }}
+                                </a>
+                                <a href="{{ route('backend.care_chart.show', $pt->id) }}"
+                                   class="px-3 py-2 rounded-xl border text-center transition-colors {{ $hasEveningVs ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200' }}">
+                                    🌆 18:00 • {{ $hasEveningVs ? number_format($hasEveningVs->temperature, 1) . '°C' : 'รอวัด' }}
+                                </a>
+                            </div>
+                        @elseif($stay->discharged_at)
+                            <div class="text-[11px] text-slate-400 font-semibold">
+                                <i class="fa-solid fa-house-chimney-check text-emerald-500 mr-1"></i>กลับโรงนอนปกติเมื่อ {{ $stay->discharged_at->addYears(543)->format('d/m/y H:i') }} น.
+                            </div>
+                        @endif
+
+                        <!-- แถว 5: ปุ่มดำเนินการ -->
+                        <div class="space-y-2 pt-1">
+                            <a href="{{ route('backend.care_chart.show', $pt->id) }}"
+                               class="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center justify-center gap-2 transition-colors">
+                                <i class="fa-solid fa-pills"></i>
+                                <span>บันทึก V/S &amp; เช็คกินยา (e-MAR)</span>
+                                @if($ptMedCount > 0)
+                                    <span class="px-2 py-0.5 bg-white text-sky-700 rounded-md font-black text-[10px]">{{ $ptMedCount }} ยา</span>
+                                @endif
+                            </a>
+
+                            <div class="flex items-center gap-1.5">
+                                @if($stay->status === 'staying')
+                                    <button type="button"
+                                            onclick="openDischargeInfirmaryModal('{{ route('backend.recruit_infirmary.discharge', $stay->id) }}', '{{ addslashes($fullPtName) }}')"
+                                            class="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm inline-flex items-center justify-center gap-1.5">
+                                        <i class="fa-solid fa-house-chimney-check"></i> กลับโรงนอน
+                                    </button>
+                                @else
+                                    <form id="revert-inf-mobile-{{ $stay->id }}" action="{{ route('backend.recruit_infirmary.discharge', $stay->id) }}" method="POST" class="flex-1">
+                                        @csrf @method('PATCH')
+                                        <input type="hidden" name="revert_to_staying" value="1">
+                                        <button type="button"
+                                                onclick="confirmAction(event, 'ย้อนสถานะการแยกนอน?', 'ต้องการเปลี่ยน {{ addslashes($fullPtName) }} กลับเป็นกำลังแยกนอนพักใช่หรือไม่?', 'question', 'revert-inf-mobile-{{ $stay->id }}')"
+                                                class="w-full py-2 px-3 bg-slate-100 hover:bg-amber-100 text-slate-700 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1">
+                                            <i class="fa-solid fa-rotate-left"></i> ย้อนสถานะ
+                                        </button>
+                                    </form>
+                                @endif
+
+                                <button type="button" onclick='openEditInfirmaryModal(@json($editPayload))'
+                                        class="w-9 h-9 rounded-xl bg-amber-50 hover:bg-amber-500 text-amber-600 hover:text-white border border-amber-200 flex items-center justify-center shrink-0" title="แก้ไข">
+                                    <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                </button>
+
+                                <a href="{{ route('backend.patients.show', $pt->id) }}"
+                                   class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 flex items-center justify-center shrink-0" title="ดูแฟ้มประวัติ">
+                                    <i class="fa-solid fa-address-card text-xs"></i>
+                                </a>
+
+                                <form id="delete-inf-mobile-{{ $stay->id }}" action="{{ route('backend.recruit_infirmary.destroy', $stay->id) }}" method="POST" class="shrink-0">
+                                    @csrf @method('DELETE')
+                                    <button type="button"
+                                            onclick="confirmAction(event, 'ยืนยันการลบรายการ?', 'ต้องการลบข้อมูลการแยกนอนของ {{ addslashes($fullPtName) }} ใช่หรือไม่?', 'warning', 'delete-inf-mobile-{{ $stay->id }}')"
+                                            class="w-9 h-9 rounded-xl bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-200 flex items-center justify-center" title="ลบรายการ">
+                                        <i class="fa-solid fa-trash-can text-xs"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                    </div>
+                @empty
+                    <div class="px-6 py-14 text-center text-slate-400">
+                        <i class="fa-solid fa-bed text-4xl mb-3 block opacity-30"></i>
+                        <p class="font-bold text-slate-600 dark:text-slate-300 text-sm">ยังไม่มีรายชื่อพลทหารที่แยกโรงนอนในหมวดที่เลือก</p>
+                        <p class="text-xs mt-1">แตะปุ่ม "+ บันทึกแยกโรงนอน / ห้องพยาบาล" ด้านบนได้เลยครับ</p>
+                    </div>
+                @endforelse
+            </div>
+
+            <!-- =========================================================== -->
+            <!-- 💻 โหมดคอมพิวเตอร์: ตารางมาตรฐาน ล็อกความกว้างอ่านสบายตา -->
+            <!-- =========================================================== -->
+            <div class="hidden md:block overflow-x-auto">
+                <table class="w-full min-w-[1050px] text-sm text-left text-slate-600 dark:text-slate-300">
+                    <thead class="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50/90 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700 whitespace-nowrap">
                         <tr>
-                            <th class="px-4 py-3.5 font-bold whitespace-nowrap w-[135px]">วัน-เวลาที่เริ่มพัก</th>
-                            <th class="px-4 py-3.5 font-bold whitespace-nowrap min-w-[185px]">ข้อมูลพลทหาร</th>
-                            <th class="px-4 py-3.5 font-bold whitespace-nowrap min-w-[165px]">สถานที่แยกนอน / เตียง</th>
+                            <th class="px-4 py-3.5 font-bold w-[135px]">วัน-เวลาที่เริ่มพัก</th>
+                            <th class="px-4 py-3.5 font-bold min-w-[185px]">ข้อมูลพลทหาร</th>
+                            <th class="px-4 py-3.5 font-bold min-w-[165px]">สถานที่แยกนอน / เตียง</th>
                             <th class="px-4 py-3.5 font-bold min-w-[260px]">สาเหตุ / อาการ (Dx.) / การดูแล</th>
-                            <th class="px-4 py-3.5 font-bold text-center whitespace-nowrap w-[175px]">สถานะ & วัดไข้วันนี้</th>
-                            <th class="px-4 py-3.5 font-bold text-center whitespace-nowrap w-[230px]">จัดการ</th>
+                            <th class="px-4 py-3.5 font-bold text-center w-[175px]">สถานะ &amp; วัดไข้วันนี้</th>
+                            <th class="px-4 py-3.5 font-bold text-center w-[230px]">จัดการ</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                         @php
                             $currentBatchGroup = null;
                             $currentUnitGroup  = null;
@@ -150,22 +373,22 @@
                                 $rowUnitName = $stay->militaryUnit->name ?? $pt->militaryUnit->name ?? $pt->company ?? 'ไม่ระบุหน่วยฝึก';
                                 $isUnitInf = ($stay->location_type === 'unit_infirmary');
                                 $rMeta = $reasonMeta[$stay->reason_category] ?? $reasonMeta['other'];
+                                $fullPtName = ($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? '');
 
-                                // คำนวณจำนวนวันนอนตามวันปฏิทินและบังคับเป็นเลขจำนวนเต็ม (int)
                                 $endRefDate = ($stay->discharged_at ?? now())->copy()->startOfDay();
                                 $startRefDate = $stay->admitted_at->copy()->startOfDay();
                                 $daysStay = max(1, (int) $startRefDate->diffInDays($endRefDate) + 1);
 
-                                $ptTodayVitals = isset($todayVitalsByPatient) ? ($todayVitalsByPatient->get($pt->id) ?? collect()) : collect();
+                                $ptTodayVitals = isset($todayVitalsByPatient) && $pt ? ($todayVitalsByPatient->get($pt->id) ?? collect()) : collect();
                                 $hasMorningVs  = $ptTodayVitals->firstWhere('round_time', '06:00');
                                 $hasEveningVs  = $ptTodayVitals->firstWhere('round_time', '18:00');
-                                $ptMedCount    = isset($activeMedsCountByPatient) ? ($activeMedsCountByPatient[$pt->id] ?? 0) : 0;
+                                $ptMedCount    = isset($activeMedsCountByPatient) && $pt ? ($activeMedsCountByPatient[$pt->id] ?? 0) : 0;
 
                                 $editPayload = [
                                     'id'               => $stay->id,
                                     'update_url'       => route('backend.recruit_infirmary.update', $stay->id),
                                     'patient_id'       => $pt->id ?? null,
-                                    'soldier_name'     => ($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? ''),
+                                    'soldier_name'     => $fullPtName,
                                     'hn'               => $pt->hn ?: 'ไม่มี HN',
                                     'unit_name'        => $stay->militaryUnit->short_name ?? $pt->militaryUnit->short_name ?? $rowUnitName,
                                     'location_type'    => $stay->location_type,
@@ -194,20 +417,18 @@
 
                             @if($currentUnitGroup !== $rowUnitName)
                                 @php $currentUnitGroup = $rowUnitName; @endphp
-                                <tr class="bg-teal-50/70">
-                                    <td colspan="6" class="px-5 py-2 border-y border-teal-100">
-                                        <div class="flex items-center gap-2 text-teal-800 font-bold text-xs uppercase tracking-wide">
+                                <tr class="bg-teal-50/70 dark:bg-teal-950/50">
+                                    <td colspan="6" class="px-5 py-2 border-y border-teal-100 dark:border-teal-900">
+                                        <div class="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-xs uppercase tracking-wide">
                                             <i class="fa-solid fa-tent text-teal-600"></i> {{ $currentUnitGroup }}
                                         </div>
                                     </td>
                                 </tr>
                             @endif
 
-                            <tr class="hover:bg-slate-50/80 transition-colors align-middle {{ $stay->status === 'returned' ? 'opacity-75 bg-slate-50/40' : '' }}">
-                                
-                                <!-- 1. วัน-เวลาที่เริ่มพัก -->
+                            <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors align-middle {{ $stay->status === 'returned' ? 'opacity-75 bg-slate-50/40' : '' }}">
                                 <td class="px-4 py-3.5 whitespace-nowrap">
-                                    <div class="font-black text-slate-800 text-sm">
+                                    <div class="font-black text-slate-800 dark:text-white text-sm">
                                         {{ $stay->admitted_at->locale('th')->addYears(543)->translatedFormat('j M Y') }}
                                     </div>
                                     <div class="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
@@ -218,10 +439,9 @@
                                     </div>
                                 </td>
 
-                                <!-- 2. ข้อมูลพลทหาร (ชื่อไม่ตัดคำกลางคัน + ป้าย HN/ปชช. กระชับ) -->
                                 <td class="px-4 py-3.5">
-                                    <div class="font-black text-slate-900 text-sm sm:text-base whitespace-nowrap">
-                                        {{ $pt->rank ?? '' }}{{ $pt->first_name ?? '' }} {{ $pt->last_name ?? '' }}
+                                    <div class="font-black text-slate-900 dark:text-white text-sm sm:text-base whitespace-nowrap">
+                                        {{ $fullPtName }}
                                     </div>
                                     <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
                                         <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md font-bold whitespace-nowrap">
@@ -238,7 +458,6 @@
                                     @endif
                                 </td>
 
-                                <!-- 3. สถานที่แยกนอน / เตียง (แสดงเป็นป้ายแนวนอนสะอาดตา ไม่บีบเป็นแท่งแนวตั้ง) -->
                                 <td class="px-4 py-3.5 whitespace-nowrap">
                                     @if($isUnitInf)
                                         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50/90 text-indigo-700 border border-indigo-200 shadow-sm">
@@ -259,46 +478,40 @@
                                     @endif
 
                                     @if($stay->bed_or_zone)
-                                        <div class="text-[11px] font-semibold text-slate-600 mt-1 pl-1">
-                                            <i class="fa-solid fa-location-dot text-slate-400 mr-1"></i>โซน/เตียง: <b class="text-slate-800">{{ $stay->bed_or_zone }}</b>
+                                        <div class="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mt-1 pl-1">
+                                            <i class="fa-solid fa-location-dot text-slate-400 mr-1"></i>โซน/เตียง: <b class="text-slate-800 dark:text-white">{{ $stay->bed_or_zone }}</b>
                                         </div>
                                     @endif
                                 </td>
 
-                                <!-- 4. สาเหตุ / อาการ (Dx.) / การดูแล (ขยายพื้นที่ให้อ่านง่ายใน 1-2 บรรทัด) -->
                                 <td class="px-4 py-3.5 max-w-md">
                                     <div class="flex flex-wrap items-center gap-1.5 mb-1">
                                         <span class="px-2 py-0.5 rounded-md border text-[11px] font-bold inline-flex items-center gap-1 whitespace-nowrap {{ $rMeta['badge'] }}">
                                             <i class="fa-solid {{ $rMeta['icon'] }}"></i> {{ $rMeta['label'] }}
                                         </span>
                                     </div>
-                                    <div class="font-black text-slate-800 text-xs sm:text-sm leading-snug">
+                                    <div class="font-black text-slate-800 dark:text-white text-xs sm:text-sm leading-snug">
                                         {{ $stay->diagnosis_text }}
                                     </div>
                                     @if($stay->care_instruction)
-                                        <div class="text-[11px] text-teal-800 bg-teal-50/70 border border-teal-200/80 px-2.5 py-1 rounded-lg mt-1.5 font-medium leading-relaxed">
+                                        <div class="text-[11px] text-teal-800 dark:text-teal-200 bg-teal-50/70 dark:bg-teal-900/30 border border-teal-200/80 dark:border-teal-800 px-2.5 py-1 rounded-lg mt-1.5 font-medium leading-relaxed">
                                             <i class="fa-solid fa-user-nurse text-teal-600 mr-1"></i><b>การดูแล:</b> {{ $stay->care_instruction }}
                                         </div>
                                     @endif
                                 </td>
 
-                                <!-- 5. สถานะปัจจุบัน & ป้ายเช็คสัญญาณชีพวันนี้ (06:00 / 18:00) -->
                                 <td class="px-4 py-3.5 text-center whitespace-nowrap">
                                     @if($stay->status === 'staying')
                                         <div class="inline-flex flex-col items-center gap-1.5">
                                             <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black inline-flex items-center gap-1.5 shadow-sm">
                                                 <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span> กำลังแยกนอนพัก
                                             </span>
-
-                                            <!-- ป้ายสถานะการวัดสัญญาณชีพวันนี้ (06:00 / 18:00) จัดวางใต้สถานะอย่างลงตัว -->
                                             <div class="flex items-center justify-center gap-1 text-[10px] font-bold">
                                                 <a href="{{ route('backend.care_chart.show', $pt->id) }}"
-                                                   title="คลิกเพื่อลงหรือดูสัญญาณชีพรอบ 06:00 น."
                                                    class="px-2 py-0.5 rounded-md border transition-colors {{ $hasMorningVs ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-sky-300 hover:text-sky-700' }}">
                                                     🌅 06:00 {{ $hasMorningVs ? number_format($hasMorningVs->temperature, 1) . '°C' : 'รอวัด' }}
                                                 </a>
                                                 <a href="{{ route('backend.care_chart.show', $pt->id) }}"
-                                                   title="คลิกเพื่อลงหรือดูสัญญาณชีพรอบ 18:00 น."
                                                    class="px-2 py-0.5 rounded-md border transition-colors {{ $hasEveningVs ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-sky-300 hover:text-sky-700' }}">
                                                     🌆 18:00 {{ $hasEveningVs ? number_format($hasEveningVs->temperature, 1) . '°C' : 'รอวัด' }}
                                                 </a>
@@ -318,60 +531,53 @@
                                     @endif
                                 </td>
 
-                                <!-- 6. ปุ่มจัดการ (จัดเรียง 2 แถวสะอาดตา ไม่ยืดล้นขอบจอ) -->
                                 <td class="px-4 py-3.5 text-center whitespace-nowrap">
                                     <div class="inline-flex flex-col items-center gap-1.5">
-                                        <!-- แถวที่ 1: ปุ่มงานหลัก (V/S & เช็คกินยา) -->
                                         <a href="{{ route('backend.care_chart.show', $pt->id) }}"
-                                           class="w-full justify-center px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors inline-flex items-center gap-1.5"
-                                           title="เปิดใบบันทึกสัญญาณชีพ (06:00/18:00) และตารางรับประทานยา/ทายา">
+                                           class="w-full justify-center px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors inline-flex items-center gap-1.5">
                                             <i class="fa-solid fa-pills"></i>
-                                            <span>V/S & เช็คกินยา</span>
+                                            <span>V/S &amp; เช็คกินยา</span>
                                             @if($ptMedCount > 0)
                                                 <span class="px-1.5 py-0.2 bg-white text-sky-700 rounded-md font-black text-[10px]">{{ $ptMedCount }} ยา</span>
                                             @endif
                                         </a>
 
-                                        <!-- แถวที่ 2: ปุ่มกลับโรงนอนปกติ + ปุ่มแก้ไข / ดูประวัติ / ลบ -->
                                         <div class="flex items-center justify-center gap-1">
                                             @if($stay->status === 'staying')
                                                 <button type="button"
-                                                        onclick="openDischargeInfirmaryModal('{{ route('backend.recruit_infirmary.discharge', $stay->id) }}', '{{ addslashes(($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? '')) }}')"
-                                                        class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold shadow-sm transition-colors inline-flex items-center gap-1"
-                                                        title="จำหน่ายกลับโรงนอนปกติ">
+                                                        onclick="openDischargeInfirmaryModal('{{ route('backend.recruit_infirmary.discharge', $stay->id) }}', '{{ addslashes($fullPtName) }}')"
+                                                        class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold shadow-sm transition-colors inline-flex items-center gap-1">
                                                     <i class="fa-solid fa-house-chimney-check"></i>
                                                     <span>กลับโรงนอน</span>
                                                 </button>
                                             @else
-                                                <form action="{{ route('backend.recruit_infirmary.discharge', $stay->id) }}" method="POST" onsubmit="return confirm('ต้องการย้อนสถานะกลับเป็นกำลังแยกนอนพักใช่หรือไม่?')" class="inline">
+                                                <form id="revert-inf-desktop-{{ $stay->id }}" action="{{ route('backend.recruit_infirmary.discharge', $stay->id) }}" method="POST" class="inline">
                                                     @csrf @method('PATCH')
                                                     <input type="hidden" name="revert_to_staying" value="1">
-                                                    <button type="submit" class="px-2.5 py-1.5 bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-800 rounded-xl text-[11px] font-bold transition-colors inline-flex items-center gap-1" title="ย้อนสถานะกลับเป็นกำลังแยกนอน">
+                                                    <button type="button"
+                                                            onclick="confirmAction(event, 'ย้อนสถานะการแยกนอน?', 'ต้องการเปลี่ยน {{ addslashes($fullPtName) }} กลับเป็นกำลังแยกนอนพักใช่หรือไม่?', 'question', 'revert-inf-desktop-{{ $stay->id }}')"
+                                                            class="px-2.5 py-1.5 bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-800 rounded-xl text-[11px] font-bold transition-colors inline-flex items-center gap-1">
                                                         <i class="fa-solid fa-rotate-left"></i>
                                                         <span>ย้อนสถานะ</span>
                                                     </button>
                                                 </form>
                                             @endif
 
-                                            <!-- ✏️ ปุ่มแก้ไขข้อมูลการแยกโรงนอน -->
-                                            <button type="button"
-                                                    onclick='openEditInfirmaryModal(@json($editPayload))'
-                                                    class="w-7 h-7 rounded-xl bg-amber-50 hover:bg-amber-500 text-amber-600 hover:text-white border border-amber-200 flex items-center justify-center transition-colors shadow-sm"
-                                                    title="แก้ไขข้อมูลการแยกโรงนอน">
+                                            <button type="button" onclick='openEditInfirmaryModal(@json($editPayload))'
+                                                    class="w-7 h-7 rounded-xl bg-amber-50 hover:bg-amber-500 text-amber-600 hover:text-white border border-amber-200 flex items-center justify-center transition-colors shadow-sm" title="แก้ไข">
                                                 <i class="fa-solid fa-pen-to-square text-[11px]"></i>
                                             </button>
 
-                                            <!-- 🪪 ปุ่มดูแฟ้มประวัติ -->
                                             <a href="{{ route('backend.patients.show', $pt->id) }}"
-                                               class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 flex items-center justify-center transition-colors"
-                                               title="ดูแฟ้มประวัติ">
+                                               class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 flex items-center justify-center transition-colors" title="ดูแฟ้มประวัติ">
                                                 <i class="fa-solid fa-address-card text-[11px]"></i>
                                             </a>
 
-                                            <!-- 🗑️ ปุ่มลบรายการ -->
-                                            <form action="{{ route('backend.recruit_infirmary.destroy', $stay->id) }}" method="POST" onsubmit="return confirm('ยืนยันการลบรายการนี้?')" class="inline">
+                                            <form id="delete-inf-desktop-{{ $stay->id }}" action="{{ route('backend.recruit_infirmary.destroy', $stay->id) }}" method="POST" class="inline">
                                                 @csrf @method('DELETE')
-                                                <button type="submit" class="w-7 h-7 rounded-xl bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-200 flex items-center justify-center transition-colors" title="ลบรายการ">
+                                                <button type="button"
+                                                        onclick="confirmAction(event, 'ยืนยันการลบรายการ?', 'ต้องการลบข้อมูลการแยกนอนของ {{ addslashes($fullPtName) }} ใช่หรือไม่?', 'warning', 'delete-inf-desktop-{{ $stay->id }}')"
+                                                        class="w-7 h-7 rounded-xl bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-200 flex items-center justify-center transition-colors" title="ลบรายการ">
                                                     <i class="fa-solid fa-trash-can text-[11px]"></i>
                                                 </button>
                                             </form>
@@ -383,7 +589,7 @@
                             <tr>
                                 <td colspan="6" class="px-6 py-14 text-center text-slate-400">
                                     <i class="fa-solid fa-bed text-4xl mb-3 block opacity-30"></i>
-                                    <p class="font-bold text-slate-600 text-base">ยังไม่มีรายชื่อพลทหารที่แยกโรงนอนในหมวดที่เลือก</p>
+                                    <p class="font-bold text-slate-600 dark:text-slate-300 text-base">ยังไม่มีรายชื่อพลทหารที่แยกโรงนอนในหมวดที่เลือก</p>
                                     <p class="text-xs mt-1">คลิกปุ่ม "+ บันทึกแยกโรงนอน / ห้องพยาบาล" ด้านบนเพื่อเพิ่มข้อมูลได้เลยครับ</p>
                                 </td>
                             </tr>
@@ -392,12 +598,12 @@
                 </table>
             </div>
 
-            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div class="flex items-center gap-2 text-xs text-slate-500 font-semibold">
+            <div class="px-4 sm:px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-semibold">
                     <span>แสดงหน้าละ:</span>
                     @foreach([10, 20, 50] as $pSize)
                         <a href="{{ request()->fullUrlWithQuery(['per_page' => $pSize, 'page' => 1]) }}"
-                           class="px-2.5 py-1 rounded-lg font-bold transition-colors {{ ($perPage ?? 10) == $pSize ? 'bg-teal-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-600 hover:bg-teal-50' }}">
+                           class="px-2.5 py-1 rounded-lg font-bold transition-colors {{ ($perPage ?? 10) == $pSize ? 'bg-teal-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-teal-50' }}">
                             {{ $pSize }}
                         </a>
                     @endforeach
