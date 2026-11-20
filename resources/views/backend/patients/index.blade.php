@@ -398,21 +398,101 @@
 
 
     <!-- ========================================================================= -->
-    <!-- 🚨 โซนที่ 3: ตารางเคสที่กำลังรักษา (High Priority - อัปเดตและเด้งเตือน Real-time 100%) -->
+    <!-- 🚨 โซนที่ 3: ตารางเคสที่กำลังรักษา (High Priority - Responsive Cards + Table) -->
     <!-- ========================================================================= -->
     <div id="realtime-active-cases-container">
         @if(isset($activePatients) && $activePatients->count() > 0)
+        @php
+            $getActivePttypeClass = function (?string $pttypeName): string {
+                if (empty($pttypeName)) return 'bg-amber-50/80 text-amber-700 border-amber-200 font-medium';
+                $n = mb_strtolower($pttypeName);
+                if (str_contains($n, 'บัตรทอง') || str_contains($n, 'หลักประกันสุขภาพ') || str_contains($n, 'uc') || str_contains($n, 'ถ้วนหน้า')) {
+                    return 'bg-amber-100 text-amber-900 border-amber-400 font-bold';
+                }
+                if (str_contains($n, 'ประกันสังคม')) {
+                    return 'bg-blue-600 text-white border-blue-700 font-bold';
+                }
+                if (str_contains($n, 'ข้าราชการพลเรือน') || (str_contains($n, 'ข้าราชการ') && !str_contains($n, 'ทหาร'))) {
+                    return 'bg-sky-100 text-sky-800 border-sky-300 font-bold';
+                }
+                if (str_contains($n, 'ครอบครัว')) {
+                    return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
+                }
+                if (str_contains($n, 'ทหาร') || str_contains($n, 'กองทัพ') || str_contains($n, 'กลาโหม') || str_contains($n, 'พลฯ')) {
+                    return 'bg-emerald-800 text-white border-emerald-900 font-bold';
+                }
+                return 'bg-yellow-100 text-yellow-900 border-yellow-300 font-bold';
+            };
+        @endphp
         <div class="animate-fade-in-up">
-            <h3 class="text-lg font-black text-slate-800 mb-4 flex items-center gap-2 px-1">
+            <h3 class="text-base sm:text-lg font-black text-slate-800 mb-3 sm:mb-4 flex items-center gap-2 px-1">
                 <i class="fa-solid fa-circle-exclamation text-rose-500 animate-pulse"></i> กำลังรับการรักษา (Active Cases)
                 <span class="px-2.5 py-0.5 text-xs font-black bg-rose-100 text-rose-700 border border-rose-200 rounded-full">
                     {{ $activePatients->count() }} ราย
                 </span>
             </h3>
+
             <div class="bg-white rounded-3xl shadow-sm border-2 border-rose-100 overflow-hidden relative">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left text-slate-600">
-                        <thead class="text-xs text-rose-800 uppercase bg-rose-50/50 border-b border-rose-100">
+                
+                <!-- 📱 โหมดมือถือ: การ์ดเคสกำลังรักษา อ่านง่ายเต็มจอ -->
+                <div class="md:hidden divide-y divide-rose-100/80">
+                    @foreach ($activePatients as $activePatient)
+                        @php
+                            $latest = $activePatient->latestMews;
+                            $isEmer = $latest && $latest->risk_level === 'emergency';
+                            $isObs  = $latest && $latest->risk_level === 'observe';
+                            $badgeClass = $isEmer ? 'bg-rose-600 text-white' : ($isObs ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white');
+                            $borderLeft = $isEmer ? 'border-l-rose-500' : ($isObs ? 'border-l-amber-400' : 'border-l-emerald-500');
+                            $fullActiveName = $activePatient->rank . $activePatient->first_name . ' ' . $activePatient->last_name;
+                            $unitActiveName = $activePatient->militaryUnit->short_name ?? $activePatient->militaryUnit->name ?? 'ไม่ระบุ';
+                        @endphp
+                        <div class="p-4 border-l-4 {{ $borderLeft }} space-y-2.5">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-slate-900 font-black text-base leading-snug">{{ $fullActiveName }}</div>
+                                    <div class="text-xs text-slate-600 font-semibold mt-0.5">
+                                        <i class="fa-solid fa-tent text-indigo-500 mr-1"></i>{{ $unitActiveName }}
+                                        <span class="text-indigo-600 font-bold ml-1">(ผลัด {{ $activePatient->intake_batch ?? '-' }})</span>
+                                    </div>
+                                </div>
+                                <span class="{{ $badgeClass }} text-xs font-black px-2.5 py-1.5 rounded-xl inline-flex items-center gap-1 shadow-sm shrink-0">
+                                    <i class="fa-solid fa-heart-pulse animate-pulse text-[11px]"></i> MEWS {{ $latest->total_score ?? 0 }}
+                                </span>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                <span class="font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200"><i class="fa-regular fa-id-card mr-1"></i>{{ $activePatient->cid }}</span>
+                                <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-bold">HN: {{ $activePatient->hn ?? '-' }}</span>
+                                @if($activePatient->pttype_name)
+                                    <span class="border px-2 py-0.5 rounded {{ $getActivePttypeClass($activePatient->pttype_name) }}">
+                                        <i class="fa-solid fa-shield-heart mr-1"></i>{{ $activePatient->pttype_name }}
+                                    </span>
+                                @endif
+                            </div>
+
+                            <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-rose-50">
+                                <span class="text-[11px] text-slate-400 font-medium">
+                                    <i class="fa-regular fa-clock mr-1"></i>อัปเดต {{ $latest ? $latest->updated_at->diffForHumans() : '-' }}
+                                </span>
+                                <div class="flex items-center gap-2 shrink-0">
+                                    @if($latest)
+                                        <a href="{{ route('backend.mews.show', $latest->id) }}" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm inline-flex items-center gap-1.5">
+                                            <i class="fa-solid fa-bed-pulse"></i> ดูเคส
+                                        </a>
+                                    @endif
+                                    <a href="{{ route('backend.patients.show', $activePatient->id) }}" class="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold inline-flex items-center gap-1">
+                                        <i class="fa-solid fa-address-card"></i> แฟ้ม
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+
+                <!-- 💻 โหมดคอมพิวเตอร์: ตารางมาตรฐาน (เก็บ .active-case-row ไว้สำหรับ Real-time Detection) -->
+                <div class="hidden md:block overflow-x-auto">
+                    <table class="w-full min-w-[780px] text-sm text-left text-slate-600">
+                        <thead class="text-xs text-rose-800 uppercase bg-rose-50/50 border-b border-rose-100 whitespace-nowrap">
                             <tr>
                                 <th class="px-6 py-4 font-bold">ข้อมูลผู้ป่วย</th>
                                 <th class="px-6 py-4 font-bold">สังกัด / ผลัด</th>
@@ -440,20 +520,20 @@
                                     <td class="px-6 py-4">
                                         <div class="text-slate-900 font-bold text-base">{{ $fullActiveName }}</div>
                                         <div class="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2">
-                                            <span><i class="fa-regular fa-id-card text-slate-400"></i> {{ $activePatient->cid }}</span>
+                                            <span class="font-mono"><i class="fa-regular fa-id-card text-slate-400"></i> {{ $activePatient->cid }}</span>
                                             <span class="bg-slate-100 px-2 py-0.5 rounded font-semibold">HN: {{ $activePatient->hn ?? '-' }}</span>
                                             @if($activePatient->pttype_name)
-                                                <span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-bold text-[11px]">
+                                                <span class="border px-2 py-0.5 rounded text-[11px] {{ $getActivePttypeClass($activePatient->pttype_name) }}">
                                                     <i class="fa-solid fa-shield-heart mr-1"></i>{{ $activePatient->pttype_name }}
                                                 </span>
                                             @endif
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4">
+                                    <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="font-bold text-slate-700">{{ $unitActiveName }}</div>
                                         <div class="text-xs text-indigo-600 font-semibold mt-0.5">ผลัดที่ {{ $activePatient->intake_batch ?? '-' }}</div>
                                     </td>
-                                    <td class="px-6 py-4 text-center">
+                                    <td class="px-6 py-4 text-center whitespace-nowrap">
                                         <span class="{{ $badgeClass }} text-xs font-black px-3 py-1.5 rounded-xl inline-flex items-center gap-1.5 shadow-sm">
                                             <i class="fa-solid fa-heart-pulse animate-pulse"></i> MEWS: {{ $latest->total_score ?? 0 }}
                                         </span>
@@ -461,7 +541,7 @@
                                             อัปเดต {{ $latest ? $latest->updated_at->diffForHumans() : '-' }}
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 text-center">
+                                    <td class="px-6 py-4 text-center whitespace-nowrap">
                                         <div class="flex items-center justify-center gap-2">
                                             @if($latest)
                                                 <a href="{{ route('backend.mews.show', $latest->id) }}" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5">
@@ -478,6 +558,7 @@
                         </tbody>
                     </table>
                 </div>
+
             </div>
         </div>
         @endif
@@ -767,9 +848,48 @@
         </div>
         @endif
 
-        <!-- 🌟 โซนที่ 4: บัญชีรายชื่อทั้งหมด -->
+        <!-- 🌟 โซนที่ 4: บัญชีรายชื่อทั้งหมด (Mobile Cards + Desktop Table + Batched IPD Query) -->
         <div id="patients-table-container" class="transition-opacity duration-200">
-            
+            @php
+                // 🚀 ดึงข้อมูลเคสนอน รพ. (other_ipd) ทั้งหน้าใน 1 Query เดียว ลด N+1 Query
+                $pagePatientIds = $patients->pluck('id')->all();
+                $batchedActiveIpds = collect();
+                if (!empty($pagePatientIds) && class_exists('\App\Models\RecruitMorbidity')) {
+                    $batchedActiveIpds = \App\Models\RecruitMorbidity::whereIn('patient_id', $pagePatientIds)
+                        ->where('category', 'other_ipd')
+                        ->where('status', 'treating')
+                        ->orderByDesc('onset_date')
+                        ->orderByDesc('id')
+                        ->get()
+                        ->unique('patient_id')
+                        ->keyBy('patient_id');
+                }
+
+                // 🎨 ฟังก์ชันกำหนดสีป้ายสิทธิการรักษาตามหมวดหมู่มาตรฐาน
+                $getPttypeBadgeClass = function (?string $pttypeName): string {
+                    if (empty($pttypeName)) {
+                        return 'bg-amber-50/70 text-amber-700 border-amber-200 font-medium';
+                    }
+                    $n = mb_strtolower($pttypeName);
+                    if (str_contains($n, 'บัตรทอง') || str_contains($n, 'หลักประกันสุขภาพ') || str_contains($n, 'uc') || str_contains($n, 'ถ้วนหน้า')) {
+                        return 'bg-amber-100 text-amber-900 border-amber-400 font-bold';
+                    }
+                    if (str_contains($n, 'ประกันสังคม')) {
+                        return 'bg-blue-600 text-white border-blue-700 font-bold';
+                    }
+                    if (str_contains($n, 'ข้าราชการพลเรือน') || (str_contains($n, 'ข้าราชการ') && !str_contains($n, 'ทหาร'))) {
+                        return 'bg-sky-100 text-sky-800 border-sky-300 font-bold';
+                    }
+                    if (str_contains($n, 'ครอบครัว')) {
+                        return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
+                    }
+                    if (str_contains($n, 'ทหาร') || str_contains($n, 'กองทัพ') || str_contains($n, 'กลาโหม') || str_contains($n, 'พลฯ')) {
+                        return 'bg-emerald-800 text-white border-emerald-900 font-bold';
+                    }
+                    return 'bg-yellow-100 text-yellow-900 border-yellow-300 font-bold';
+                };
+            @endphp
+
             <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4 px-1">
                 <div class="flex flex-wrap items-center gap-2.5">
                     <h3 class="text-lg font-black text-slate-800 flex items-center gap-2">
@@ -799,13 +919,339 @@
             </div>
             
             <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left text-slate-600">
-                        <thead class="text-xs text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100">
+
+                <!-- =========================================================== -->
+                <!-- 📱 โหมดมือถือ: แสดงเป็นการ์ดรายบุคคล (อ่านง่ายไม่บีบข้อความ) -->
+                <!-- =========================================================== -->
+                <div class="md:hidden">
+                    @if($showCheckbox && $patients->count() > 0)
+                        <div class="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                            <label class="inline-flex items-center gap-2.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                                <input type="checkbox" class="check-all-toggle rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer">
+                                <span>เลือกทั้งหมดในหน้านี้ ({{ $patients->count() }} นาย)</span>
+                            </label>
+                            <span class="text-[11px] text-slate-400 font-semibold">หน้า {{ $patients->currentPage() }}/{{ $patients->lastPage() }}</span>
+                        </div>
+                    @endif
+
+                    @php
+                        $mCurrentBatch = null;
+                        $mCurrentUnit  = null;
+                    @endphp
+
+                    @forelse ($patients as $patient)
+                        @php
+                            $patientUnitName = $patient->militaryUnit->name ?? $patient->company ?? 'ไม่ระบุหน่วยฝึก';
+                            $sc = $patient->recruitScreening;
+                            $dc = $patient->militaryDischarge;
+                            $dutyStat = $patient->duty_status ?? 'active';
+                            $isInactiveDuty = in_array($dutyStat, ['absent', 'imprisoned', 'deceased']);
+                            $fullSoldierName = ($patient->rank ?? '') . ($patient->patient_name ?: ($patient->first_name . ' ' . $patient->last_name));
+
+                            $lm = $patient->latestMews;
+                            $activeIpd = $patient->activeIpdMorbidity ?? $batchedActiveIpds->get($patient->id);
+                            $isMewsPending = $lm && $lm->status === 'pending';
+                            $isMewsAdmitOrRefer = $lm && $lm->status === 'completed' && in_array($lm->discharge_type, ['admitted', 'refer']);
+                            $isMewsReturned = $lm && !empty($lm->returned_to_unit_at);
+                            $rawLmSyms = $lm ? (is_string($lm->symptoms) ? json_decode($lm->symptoms, true) : ($lm->symptoms ?? [])) : [];
+                            $hasLmEmergencySym = is_array($rawLmSyms) && count($rawLmSyms) > 0;
+                            $isErPendingCase = $isMewsPending && (
+                                $lm->assessment_type === 'er'
+                                || in_array($lm->risk_level, ['observe', 'emergency'])
+                                || $hasLmEmergencySym
+                            );
+                        @endphp
+
+                        @if($mCurrentBatch !== $patient->intake_batch)
+                            @php
+                                $mCurrentBatch = $patient->intake_batch;
+                                $mCurrentUnit = null;
+                            @endphp
+                            <div class="bg-slate-800 px-4 py-2 text-white font-bold text-xs flex items-center gap-2">
+                                <i class="fa-solid fa-calendar-days text-slate-400"></i>
+                                <span>ทหารกองประจำการ ผลัดที่ {{ $mCurrentBatch ?? 'ไม่ระบุ' }}</span>
+                            </div>
+                        @endif
+
+                        @if($mCurrentUnit !== $patientUnitName)
+                            @php $mCurrentUnit = $patientUnitName; @endphp
+                            <div class="bg-indigo-50/70 px-4 py-2 border-y border-indigo-100 text-indigo-700 font-bold text-xs flex items-center gap-1.5">
+                                <i class="fa-solid fa-tent text-indigo-400"></i>
+                                <span class="truncate">{{ $mCurrentUnit }}</span>
+                            </div>
+                        @endif
+
+                        <div class="p-4 border-b border-slate-100 last:border-b-0 space-y-3 {{ $isInactiveDuty ? 'bg-slate-50/70 opacity-85' : 'bg-white' }}">
+                            
+                            <!-- แถว 1: Checkbox + ชื่อ-สกุล + ป้ายสถานะพิเศษ -->
+                            <div class="flex items-start gap-3">
+                                @if($showCheckbox)
+                                    <div class="pt-1 shrink-0">
+                                        <input type="checkbox" class="patient-checkbox rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" value="{{ $patient->id }}">
+                                    </div>
+                                @endif
+
+                                <div class="flex-1 min-w-0 space-y-1.5">
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <a href="{{ route('backend.patients.show', $patient->id) }}"
+                                           class="js-patient-name-{{ $patient->id }} text-slate-900 hover:text-indigo-600 font-black text-base leading-snug {{ $dutyStat === 'deceased' ? 'line-through text-slate-500' : '' }}">
+                                            {{ $fullSoldierName }}
+                                        </a>
+
+                                        @if($dutyStat === 'absent')
+                                            <button type="button" onclick="openDutyStatusModal({{ $patient->id }}, '{{ addslashes($fullSoldierName) }}', '{{ $dutyStat }}', '{{ addslashes($patient->duty_status_note ?? '') }}')"
+                                                    class="bg-orange-100 text-orange-800 border border-orange-300 font-black px-2 py-0.5 rounded-lg text-[10px] inline-flex items-center gap-1">
+                                                <i class="fa-solid fa-user-xmark text-orange-600"></i> ไม่มารายงานตัว
+                                            </button>
+                                        @elseif($dutyStat === 'imprisoned')
+                                            <button type="button" onclick="openDutyStatusModal({{ $patient->id }}, '{{ addslashes($fullSoldierName) }}', '{{ $dutyStat }}', '{{ addslashes($patient->duty_status_note ?? '') }}')"
+                                                    class="bg-rose-100 text-rose-800 border border-rose-300 font-black px-2 py-0.5 rounded-lg text-[10px] inline-flex items-center gap-1">
+                                                <i class="fa-solid fa-gavel text-rose-600"></i> ต้องโทษ
+                                            </button>
+                                        @elseif($dutyStat === 'deceased')
+                                            <button type="button" onclick="openDutyStatusModal({{ $patient->id }}, '{{ addslashes($fullSoldierName) }}', '{{ $dutyStat }}', '{{ addslashes($patient->duty_status_note ?? '') }}')"
+                                                    class="bg-slate-900 text-white font-black px-2 py-0.5 rounded-lg text-[10px] inline-flex items-center gap-1">
+                                                <i class="fa-solid fa-ribbon text-slate-300"></i> เสียชีวิต
+                                            </button>
+                                        @endif
+                                    </div>
+
+                                    <!-- เลข ปชช. + HN + สิทธิการรักษา -->
+                                    <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                        <span class="font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200/80">
+                                            <i class="fa-regular fa-id-card text-slate-400 mr-1"></i>{{ $patient->cid }}
+                                        </span>
+                                        <span class="js-patient-hn-{{ $patient->id }} {{ $patient->hn ? 'bg-blue-50 text-blue-700 border border-blue-200 font-bold' : 'bg-slate-100 text-slate-500 font-semibold' }} px-2 py-0.5 rounded">
+                                            HN: {{ $patient->hn ?? '-' }}
+                                        </span>
+                                        <span class="js-patient-pttype-{{ $patient->id }} border px-2 py-0.5 rounded {{ $getPttypeBadgeClass($patient->pttype_name) }}">
+                                            <i class="fa-solid fa-shield-heart mr-1"></i>{{ $patient->pttype_name ?: 'รอซิงค์สิทธิ' }}
+                                        </span>
+                                    </div>
+
+                                    <!-- ป้ายข้อมูลคลินิกเพิ่มเติม (โรคประจำตัว / นำปลด / นัดแพทย์ / ห้องพยาบาล) -->
+                                    @php
+                                        $hasExtraBadges = ($isAdmin && in_array($patient->chronic_disease_status ?? 'none', ['yes', 'other']))
+                                            || $dc
+                                            || ($patient->upcomingAppointment && !$isInactiveDuty && !$dc)
+                                            || ($patient->activeInfirmaryStay && (!$dc || $dc->process_status !== 'completed') && !$isInactiveDuty);
+                                    @endphp
+
+                                    @if($hasExtraBadges)
+                                    <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                        @if($isAdmin)
+                                            @if(($patient->chronic_disease_status ?? 'none') === 'yes')
+                                                <span class="bg-rose-50 text-rose-700 border border-rose-200 font-bold px-2 py-0.5 rounded text-[11px]">
+                                                    <i class="fa-solid fa-heart-pulse mr-1 text-rose-500"></i>โรคประจำตัว: {{ $patient->chronic_disease_detail ?: 'ระบุ' }}
+                                                </span>
+                                            @elseif(($patient->chronic_disease_status ?? 'none') === 'other')
+                                                <span class="bg-amber-50 text-amber-700 border border-amber-200 font-bold px-2 py-0.5 rounded text-[11px]">
+                                                    <i class="fa-solid fa-notes-medical mr-1 text-amber-500"></i>อื่นๆ: {{ $patient->chronic_disease_detail ?: 'ระบุ' }}
+                                                </span>
+                                            @endif
+                                        @endif
+
+                                        @if($dc)
+                                            @if($dc->process_status === 'completed')
+                                                <span class="bg-slate-800 text-white font-bold px-2 py-0.5 rounded text-[11px] inline-flex items-center gap-1">
+                                                    <i class="fa-solid fa-user-slash text-rose-400"></i> ปลดทหารแล้ว ({{ $dc->diagnosis_text }})
+                                                </span>
+                                            @else
+                                                <span class="bg-purple-100 text-purple-800 border border-purple-300 font-bold px-2 py-0.5 rounded text-[11px] inline-flex items-center gap-1">
+                                                    <i class="fa-solid fa-folder-open text-purple-600"></i> นำปลด: {{ $dc->diagnosis_text }}
+                                                </span>
+                                            @endif
+                                        @endif
+
+                                        @if($patient->upcomingAppointment && !$isInactiveDuty && !$dc)
+                                            @php
+                                                $upApp = $patient->upcomingAppointment;
+                                                $appDateStr = $upApp->appointment_date->format('Y-m-d');
+                                                $isAppToday = ($appDateStr === date('Y-m-d'));
+                                                $isAppTomorrow = ($appDateStr === date('Y-m-d', strtotime('+1 day')));
+                                                $appDateTh = $upApp->appointment_date->locale('th')->addYears(543)->translatedFormat('j M y');
+                                                $appDateFullTh = $upApp->appointment_date->locale('th')->addYears(543)->translatedFormat('j F Y');
+                                                $hospShort = $upApp->hospital_type === 'public_hospital' ? ($upApp->hospital_name ?: 'รพ.สธ.') : 'รพ.ค่ายฯ';
+                                                $appBadgeClass = $isAppToday
+                                                    ? 'bg-rose-600 text-white border-rose-600 animate-pulse'
+                                                    : ($isAppTomorrow ? 'bg-amber-500 text-white border-amber-500' : 'bg-sky-50 text-sky-700 border-sky-200');
+                                                $appModalPayload = [
+                                                    'app_id'        => $upApp->id,
+                                                    'patient_id'    => $patient->id,
+                                                    'full_name'     => $fullSoldierName,
+                                                    'hn'            => $patient->hn ?: 'ยังไม่มี HN',
+                                                    'unit'          => $patientUnitName,
+                                                    'batch'         => $patient->intake_batch ?: '-',
+                                                    'date_full'     => $appDateFullTh,
+                                                    'time'          => ($upApp->appointment_time ?: '08:30') . ' น.',
+                                                    'hospital_name' => $upApp->hospital_name ?: ($upApp->hospital_type === 'public_hospital' ? 'รพ.สาธารณสุข' : 'รพ.ค่ายกฤษณ์สีวะรา'),
+                                                    'is_camp'       => $upApp->hospital_type === 'camp_hospital',
+                                                    'clinic'        => $upApp->clinic_name ?: 'ไม่ระบุคลินิก',
+                                                    'doctor'        => $upApp->doctor_name ?: '-',
+                                                    'cause'         => $upApp->app_cause ?: 'นัดตรวจติดตามอาการ',
+                                                    'note'          => $upApp->note ?: '',
+                                                    'is_today'      => $isAppToday,
+                                                    'is_tomorrow'   => $isAppTomorrow,
+                                                ];
+                                            @endphp
+                                            <button type="button" onclick='showSingleSoldierAppointmentModal(@json($appModalPayload))'
+                                                    class="{{ $appBadgeClass }} border font-bold px-2 py-0.5 rounded text-[11px] inline-flex items-center gap-1 shadow-sm">
+                                                <i class="fa-solid fa-calendar-day"></i>
+                                                <span>{{ $isAppToday ? 'นัดวันนี้!' : ($isAppTomorrow ? 'นัดพรุ่งนี้!' : 'นัด ' . $appDateTh) }} ({{ $hospShort }})</span>
+                                            </button>
+                                        @endif
+
+                                        @if($patient->activeInfirmaryStay && (!$dc || $dc->process_status !== 'completed') && !$isInactiveDuty)
+                                            @php
+                                                $infStay = $patient->activeInfirmaryStay;
+                                                $isUnitLoc = ($infStay->location_type === 'unit_infirmary');
+                                            @endphp
+                                            <a href="{{ route('backend.recruit_infirmary.index', ['intake_batch' => $patient->intake_batch, 'unit_id' => $patient->military_unit_id]) }}"
+                                               class="{{ $isUnitLoc ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 'bg-teal-100 text-teal-800 border-teal-300' }} border font-bold px-2 py-0.5 rounded text-[11px] inline-flex items-center gap-1">
+                                                <i class="fa-solid {{ $isUnitLoc ? 'fa-tent-arrows-down' : 'fa-bed' }}"></i>
+                                                <span>{{ $isUnitLoc ? 'ห้องพยาบาลหน่วย' : 'ฝากนอน รพ.' }}: {{ $infStay->diagnosis_text }}</span>
+                                            </a>
+                                        @endif
+                                    </div>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <!-- แถว 2: กล่องสรุปสถานะ 2 ช่อง (รักษา MEWS + คัดกรองแรกรับ) -->
+                            <div class="grid grid-cols-2 gap-2 bg-slate-50/90 p-2.5 rounded-2xl border border-slate-100 text-xs">
+                                <!-- ช่องซ้าย: สถานะรักษา MEWS -->
+                                <div class="space-y-1">
+                                    <div class="text-[10px] font-bold text-slate-400 uppercase">สถานะรักษา (MEWS)</div>
+                                    @if($isMewsPending)
+                                        @if($isErPendingCase)
+                                            <a href="{{ route('backend.mews.show', $lm->id) }}" class="text-rose-600 font-bold bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg inline-flex items-center gap-1 text-[11px]">
+                                                <i class="fa-solid fa-spinner fa-spin-pulse"></i> รักษา (ER)
+                                            </a>
+                                        @else
+                                            <a href="{{ route('backend.mews.show', $lm->id) }}" class="text-teal-700 font-bold bg-teal-50 border border-teal-200 px-2 py-1 rounded-lg inline-flex items-center gap-1 text-[11px]">
+                                                <i class="fa-solid fa-stethoscope"></i> รอตรวจ OPD
+                                            </a>
+                                        @endif
+                                    @elseif(($isMewsAdmitOrRefer && !$isMewsReturned) || $activeIpd)
+                                        @php
+                                            $isOutsidePublicHosp = $activeIpd ? ($activeIpd->sub_type === 'public_hospital') : ($lm && $lm->discharge_type === 'refer');
+                                            $targetLink = ($isMewsAdmitOrRefer && !$isMewsReturned && $lm)
+                                                ? route('backend.mews.show', $lm->id)
+                                                : route('backend.morbidity_reports.index', ['intake_batch' => $patient->intake_batch]);
+                                        @endphp
+                                        <a href="{{ $targetLink }}" class="{{ $isOutsidePublicHosp ? 'text-blue-800 bg-blue-100 border-blue-300' : 'text-amber-800 bg-amber-100 border-amber-300' }} font-black border px-2 py-1 rounded-lg inline-flex items-center gap-1 text-[11px]">
+                                            <i class="fa-solid {{ $isOutsidePublicHosp ? 'fa-truck-medical' : 'fa-bed-pulse' }} animate-pulse"></i>
+                                            <span>{{ $isOutsidePublicHosp ? 'นอน รพ.สธ.' : 'Admit รพ.' }}</span>
+                                        </a>
+                                    @elseif($dc)
+                                        <span class="text-slate-600 font-bold text-[11px]"><i class="fa-solid fa-ban text-rose-500 mr-1"></i>ปลดทหาร</span>
+                                    @elseif($isInactiveDuty)
+                                        <span class="text-orange-700 font-bold text-[11px]">งดแจ้ง MEWS</span>
+                                    @elseif($lm)
+                                        @if($lm->status === 'cancelled')
+                                            <span class="text-slate-500 text-[11px]">ยกเลิกเคส</span>
+                                        @elseif($isMewsAdmitOrRefer && $isMewsReturned)
+                                            <a href="{{ route('backend.mews.show', $lm->id) }}" class="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg inline-flex items-center gap-1 text-[11px]">
+                                                <i class="fa-solid fa-house-chimney-check"></i> กลับหน่วยแล้ว
+                                            </a>
+                                        @else
+                                            <a href="{{ route('backend.mews.show', $lm->id) }}" class="text-emerald-600 font-bold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg inline-flex items-center gap-1 text-[11px]">
+                                                <i class="fa-solid fa-house-chimney-medical"></i> กลับหน่วย
+                                            </a>
+                                        @endif
+                                    @else
+                                        <span class="text-slate-400 text-[11px] font-medium">ไม่มีประวัติ</span>
+                                    @endif
+                                </div>
+
+                                <!-- ช่องขวา: คัดกรองแรกรับ -->
+                                <div class="space-y-1 border-l border-slate-200/70 pl-2.5">
+                                    <div class="text-[10px] font-bold text-slate-400 uppercase">คัดกรองแรกรับ</div>
+                                    @if($isInactiveDuty)
+                                        <span class="text-slate-400 text-[11px] font-bold">ไม่ได้คัดกรอง</span>
+                                    @elseif($sc)
+                                        @if($sc->color_group === 'red')
+                                            <span class="text-rose-700 font-bold bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg inline-flex items-center gap-1 text-[11px]">
+                                                <i class="fa-solid fa-virus-covid text-rose-500"></i> พบเชื้อ (แดง)
+                                            </span>
+                                        @elseif($sc->color_group === 'yellow')
+                                            <span class="text-amber-700 font-bold bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg inline-flex items-center gap-1 text-[11px]">
+                                                <i class="fa-solid fa-head-side-cough text-amber-500"></i> กลุ่มเสี่ยง
+                                            </span>
+                                        @else
+                                            <span class="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg inline-flex items-center gap-1 text-[11px]">
+                                                <i class="fa-solid fa-shield-virus text-emerald-500"></i> ปกติ (เขียว)
+                                            </span>
+                                        @endif
+                                    @else
+                                        <span class="text-slate-400 text-[11px] font-medium inline-flex items-center gap-1">
+                                            <i class="fa-regular fa-clock"></i> รอคัดกรอง
+                                        </span>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <!-- แถว 3: แถบปุ่มจัดการ (กดง่ายบนมือถือ) -->
+                            <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                <a href="{{ route('backend.patients.show', $patient->id) }}"
+                                   class="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-indigo-600 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-sm transition-colors">
+                                    <i class="fa-solid fa-address-card"></i> ดูข้อมูล
+                                </a>
+
+                                <a href="{{ route('backend.patients.edit', $patient->id) }}"
+                                   class="py-2 px-3 rounded-xl bg-amber-50 hover:bg-amber-500 text-amber-700 hover:text-white border border-amber-200 text-xs font-bold inline-flex items-center justify-center gap-1 transition-colors">
+                                    <i class="fa-solid fa-pen-to-square"></i> แก้ไข
+                                </a>
+
+                                @if($canSyncHosxp && !$isInactiveDuty && (empty($patient->hn) || empty($patient->pttype_name)))
+                                    <button type="button"
+                                            onclick="syncSinglePatientInTable({{ $patient->id }})"
+                                            class="js-patient-sync-btn-{{ $patient->id }} py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 text-xs font-bold inline-flex items-center justify-center gap-1 transition-colors"
+                                            title="ซิงค์ HN และสิทธิ HosXP">
+                                        <i class="fa-solid fa-rotate"></i> ซิงค์
+                                    </button>
+                                @endif
+
+                                <button type="button"
+                                        onclick="openDutyStatusModal({{ $patient->id }}, '{{ addslashes($fullSoldierName) }}', '{{ $dutyStat }}', '{{ addslashes($patient->duty_status_note ?? '') }}')"
+                                        class="w-9 h-9 rounded-xl border inline-flex items-center justify-center transition-colors shrink-0 {{ $isInactiveDuty ? 'bg-orange-50 border-orange-300 text-orange-600' : 'bg-white border-slate-200 text-slate-500' }}"
+                                        title="เปลี่ยนสถานะกำลังพล">
+                                    <i class="fa-solid fa-user-gear text-xs"></i>
+                                </button>
+
+                                @if($isAdmin)
+                                    <form action="{{ route('backend.patients.destroy', $patient->id) }}" method="POST" id="delete-form-mobile-{{ $patient->id }}" class="inline-block">
+                                        @csrf @method('DELETE')
+                                        <button type="button" onclick="confirmAction(event, 'ยืนยันการลบ?', 'ข้อมูลจะถูกลบถาวร', 'warning', 'delete-form-mobile-{{ $patient->id }}')"
+                                                class="w-9 h-9 rounded-xl bg-white border border-rose-200 text-rose-500 hover:bg-rose-500 hover:text-white inline-flex items-center justify-center transition-colors shrink-0" title="ลบข้อมูล">
+                                            <i class="fa-solid fa-trash-can text-xs"></i>
+                                        </button>
+                                    </form>
+                                @endif
+                            </div>
+
+                        </div>
+                    @empty
+                        <div class="px-6 py-14 text-center text-slate-500">
+                            <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl text-slate-300">
+                                <i class="fa-solid fa-folder-open"></i>
+                            </div>
+                            <p class="text-base font-bold text-slate-700">ไม่พบข้อมูลกำลังพลที่ค้นหา</p>
+                            <p class="text-xs mt-1">ลองเปลี่ยนคำค้นหา หรือกดปุ่มล้างตัวกรองเพื่อดูข้อมูลทั้งหมด</p>
+                        </div>
+                    @endforelse
+                </div>
+
+                <!-- =========================================================== -->
+                <!-- 💻 โหมดคอมพิวเตอร์: ตารางมาตรฐาน จัดสัดส่วนชัดเจนไม่บีบตัวหนังสือ -->
+                <!-- =========================================================== -->
+                <div class="hidden md:block overflow-x-auto">
+                    <table class="w-full min-w-[920px] text-sm text-left text-slate-600">
+                        <thead class="text-xs text-slate-500 uppercase bg-slate-50/80 border-b border-slate-100 whitespace-nowrap">
                             <tr>
                                 @if($showCheckbox)
                                     <th scope="col" class="px-6 py-4 w-10">
-                                        <input type="checkbox" id="check-all" class="rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" title="เลือกทั้งหมดในหน้านี้">
+                                        <input type="checkbox" id="check-all" class="check-all-toggle rounded-md border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" title="เลือกทั้งหมดในหน้านี้">
                                     </th>
                                 @endif
                                 <th scope="col" class="px-6 py-4 font-bold">1. ข้อมูลกำลังพล / สิทธิการรักษา</th>
@@ -863,14 +1309,13 @@
                                         </td>
                                     @endif
 
-                                    <!-- คอลัมน์ 1: ข้อมูลกำลังพล + สิทธิการรักษา + โรคประจำตัว + ป้ายสถานะกำลังพล + ป้ายนัดพบแพทย์ -->
+                                    <!-- คอลัมน์ 1: ข้อมูลกำลังพล + สิทธิการรักษา -->
                                     <td class="px-6 py-4 {{ $showCheckbox ? '' : 'pl-10' }}">
                                         <div class="flex flex-wrap items-center gap-2">
-                                            <div id="row-name-{{ $patient->id }}" class="text-slate-900 font-bold text-base {{ $dutyStat === 'deceased' ? 'line-through text-slate-500' : '' }}">
+                                            <div class="js-patient-name-{{ $patient->id }} text-slate-900 font-bold text-base {{ $dutyStat === 'deceased' ? 'line-through text-slate-500' : '' }}">
                                                 {{ $fullSoldierName }}
                                             </div>
 
-                                            <!-- 🎖️ ป้ายสถานะพิเศษ (คลิกเพื่อแก้ไขสถานะได้ทันที) -->
                                             @if($dutyStat === 'absent')
                                                 <button type="button" onclick="openDutyStatusModal({{ $patient->id }}, '{{ addslashes($fullSoldierName) }}', '{{ $dutyStat }}', '{{ addslashes($patient->duty_status_note ?? '') }}')"
                                                         class="bg-orange-100 hover:bg-orange-200 text-orange-800 border border-orange-300 font-black px-2.5 py-0.5 rounded-lg text-[11px] inline-flex items-center gap-1 shadow-sm transition-colors cursor-pointer" title="คลิกเพื่อเปลี่ยนสถานะกำลังพล">
@@ -891,10 +1336,10 @@
 
                                         <div class="text-xs text-slate-500 mt-1.5 flex flex-wrap items-center gap-2">
                                             <span class="font-mono"><i class="fa-regular fa-id-card text-slate-400 mr-1"></i>{{ $patient->cid }}</span>
-                                            <span id="row-hn-badge-{{ $patient->id }}" class="{{ $patient->hn ? 'bg-blue-50 text-blue-700 border border-blue-200 font-bold' : 'bg-slate-100 text-slate-500 font-semibold' }} px-2 py-0.5 rounded">
+                                            <span class="js-patient-hn-{{ $patient->id }} {{ $patient->hn ? 'bg-blue-50 text-blue-700 border border-blue-200 font-bold' : 'bg-slate-100 text-slate-500 font-semibold' }} px-2 py-0.5 rounded">
                                                 HN: {{ $patient->hn ?? '-' }}
                                             </span>
-                                            <span id="row-pttype-badge-{{ $patient->id }}" class="{{ $patient->pttype_name ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold' : 'bg-amber-50/70 text-amber-600 border border-amber-200 font-medium' }} px-2 py-0.5 rounded text-[11px]">
+                                            <span class="js-patient-pttype-{{ $patient->id }} border px-2 py-0.5 rounded text-[11px] {{ $getPttypeBadgeClass($patient->pttype_name) }}">
                                                 <i class="fa-solid fa-shield-heart mr-1"></i>{{ $patient->pttype_name ?: 'รอซิงค์สิทธิ' }}
                                             </span>
 
@@ -931,8 +1376,8 @@
                                                     $appDateTh = $upApp->appointment_date->locale('th')->addYears(543)->translatedFormat('j M y');
                                                     $appDateFullTh = $upApp->appointment_date->locale('th')->addYears(543)->translatedFormat('j F Y');
                                                     $hospShort = $upApp->hospital_type === 'public_hospital' ? ($upApp->hospital_name ?: 'รพ.สธ.') : 'รพ.ค่ายฯ';
-                                                    $appBadgeClass = $isAppToday 
-                                                        ? 'bg-rose-600 text-white border-rose-600 animate-pulse' 
+                                                    $appBadgeClass = $isAppToday
+                                                        ? 'bg-rose-600 text-white border-rose-600 animate-pulse'
                                                         : ($isAppTomorrow ? 'bg-amber-500 text-white border-amber-500' : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100');
 
                                                     $appModalPayload = [
@@ -954,7 +1399,7 @@
                                                         'is_tomorrow'   => $isAppTomorrow,
                                                     ];
                                                 @endphp
-                                                <button type="button" 
+                                                <button type="button"
                                                         onclick='showSingleSoldierAppointmentModal(@json($appModalPayload))'
                                                         class="{{ $appBadgeClass }} border font-bold px-2.5 py-0.5 rounded text-[11px] inline-flex items-center gap-1 shadow-sm transition-all cursor-pointer"
                                                         title="คลิกเพื่อดูรายละเอียดใบนัดและการเตรียมตัวของ {{ $patient->first_name }}">
@@ -965,7 +1410,7 @@
                                                     </span>
                                                 </button>
                                             @endif
-                                            <!-- 🛌 ป้ายแสดงสถานะเมื่อพลทหารกำลังแยกนอนที่ห้องพยาบาลหน่วยฝึก หรือ ฝากนอนที่ รพ. (แสดงคู่กับป้ายอยู่ระหว่างนำปลดได้) -->
+
                                             @if($patient->activeInfirmaryStay && (!$dc || $dc->process_status !== 'completed') && !$isInactiveDuty)
                                                 @php
                                                     $infStay = $patient->activeInfirmaryStay;
@@ -981,60 +1426,44 @@
                                         </div>
                                     </td>
 
-                                    <!-- 🌟 คอลัมน์ 2: สถานะรักษา (MEWS & การนอน รพ.ค่ายฯ / รพ.สาธารณสุข) -->
-                                    <td class="px-6 py-4 text-center">
+                                    <!-- คอลัมน์ 2: สถานะรักษา (MEWS) -->
+                                    <td class="px-6 py-4 text-center whitespace-nowrap">
                                         @php
                                             $lm = $patient->latestMews;
-                                            $activeIpd = $patient->activeIpdMorbidity 
-                                                ?? \App\Models\RecruitMorbidity::where('patient_id', $patient->id)
-                                                    ->where('category', 'other_ipd')
-                                                    ->where('status', 'treating')
-                                                    ->orderByDesc('onset_date')
-                                                    ->orderByDesc('id')
-                                                    ->first();
-
+                                            $activeIpd = $patient->activeIpdMorbidity ?? $batchedActiveIpds->get($patient->id);
                                             $isMewsPending = $lm && $lm->status === 'pending';
                                             $isMewsAdmitOrRefer = $lm && $lm->status === 'completed' && in_array($lm->discharge_type, ['admitted', 'refer']);
                                             $isMewsReturned = $lm && !empty($lm->returned_to_unit_at);
-
-                                            // ตรวจสอบว่าเคสที่ Pending อยู่ ถูกส่งไปที่ ER หรือ OPD
                                             $rawLmSyms = $lm ? (is_string($lm->symptoms) ? json_decode($lm->symptoms, true) : ($lm->symptoms ?? [])) : [];
                                             $hasLmEmergencySym = is_array($rawLmSyms) && count($rawLmSyms) > 0;
                                             $isErPendingCase = $isMewsPending && (
-                                                $lm->assessment_type === 'er' 
-                                                || in_array($lm->risk_level, ['observe', 'emergency']) 
+                                                $lm->assessment_type === 'er'
+                                                || in_array($lm->risk_level, ['observe', 'emergency'])
                                                 || $hasLmEmergencySym
                                             );
                                         @endphp
 
                                         @if($isMewsPending)
                                             @if($isErPendingCase)
-                                                <!-- 1.1 กำลังรักษาอยู่ในห้องฉุกเฉิน (ER) จริง -->
-                                                <a href="{{ route('backend.mews.show', $lm->id) }}" class="text-rose-600 hover:bg-rose-100 text-xs font-bold bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl inline-flex items-center transition-colors shadow-sm" title="คลิกเพื่อจัดการเคสในห้องฉุกเฉิน (ER)">
+                                                <a href="{{ route('backend.mews.show', $lm->id) }}" class="text-rose-600 hover:bg-rose-100 text-xs font-bold bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl inline-flex items-center transition-colors shadow-sm">
                                                     <i class="fa-solid fa-spinner fa-spin-pulse mr-1.5"></i> กำลังรักษา (ER)
                                                 </a>
                                             @else
-                                                <!-- 1.2 คะแนนสีเขียวปกติและไม่มีอาการฉุกเฉิน -> อยู่ระหว่างรอตรวจที่แผนกผู้ป่วยนอก (OPD) -->
-                                                <a href="{{ route('backend.mews.show', $lm->id) }}" class="text-teal-700 hover:bg-teal-100 text-xs font-bold bg-teal-50 border border-teal-200 px-3 py-1.5 rounded-xl inline-flex items-center transition-colors shadow-sm" title="อยู่ในคิวรอตรวจแผนกผู้ป่วยนอก (OPD) คลิกเพื่อดูหรือปิดเคส">
+                                                <a href="{{ route('backend.mews.show', $lm->id) }}" class="text-teal-700 hover:bg-teal-100 text-xs font-bold bg-teal-50 border border-teal-200 px-3 py-1.5 rounded-xl inline-flex items-center transition-colors shadow-sm">
                                                     <i class="fa-solid fa-stethoscope mr-1.5 text-teal-600"></i> รอตรวจ (OPD)
                                                 </a>
                                             @endif
                                         @elseif(($isMewsAdmitOrRefer && !$isMewsReturned) || $activeIpd)
-                                            <!-- 2. กำลังนอนรักษาตัวใน รพ.ค่ายฯ หรือ ส่งต่อไปนอนนอก รพ. (รพ.สาธารณสุข) และยังไม่กลับหน่วยฝึก -->
                                             @php
-                                                $isOutsidePublicHosp = $activeIpd 
-                                                    ? ($activeIpd->sub_type === 'public_hospital') 
-                                                    : ($lm && $lm->discharge_type === 'refer');
-
+                                                $isOutsidePublicHosp = $activeIpd ? ($activeIpd->sub_type === 'public_hospital') : ($lm && $lm->discharge_type === 'refer');
                                                 $targetLink = ($isMewsAdmitOrRefer && !$isMewsReturned && $lm)
                                                     ? route('backend.mews.show', $lm->id)
                                                     : route('backend.morbidity_reports.index', ['intake_batch' => $patient->intake_batch]);
-
-                                                $dxTooltip = $activeIpd && $activeIpd->diagnosis_text 
+                                                $dxTooltip = $activeIpd && $activeIpd->diagnosis_text
                                                     ? 'Dx.: ' . $activeIpd->diagnosis_text . ' (Admit ' . $activeIpd->onset_date->addYears(543)->format('d/m/Y') . ')'
                                                     : 'คลิกเพื่อดูรายละเอียด หรือบันทึกเมื่อทหารกลับถึงหน่วยฝึกแล้ว';
                                             @endphp
-                                            <a href="{{ $targetLink }}" 
+                                            <a href="{{ $targetLink }}"
                                                class="{{ $isOutsidePublicHosp ? 'text-blue-800 bg-blue-100 border-blue-300 hover:bg-blue-200' : 'text-amber-800 bg-amber-100 border-amber-300 hover:bg-amber-200' }} text-xs font-black border px-3 py-1.5 rounded-xl inline-flex flex-col items-center justify-center shadow-sm transition-all"
                                                title="{{ $dxTooltip }}">
                                                 <span class="flex items-center gap-1.5">
@@ -1042,9 +1471,7 @@
                                                     {{ $isOutsidePublicHosp ? 'นอน รพ.สาธารณสุข' : 'Admit นอน รพ.' }}
                                                 </span>
                                                 @if($activeIpd && $activeIpd->diagnosis_text)
-                                                    <span class="text-[10px] font-bold text-slate-700 max-w-[140px] truncate mt-0.5">
-                                                        {{ $activeIpd->diagnosis_text }}
-                                                    </span>
+                                                    <span class="text-[10px] font-bold text-slate-700 max-w-[140px] truncate mt-0.5">{{ $activeIpd->diagnosis_text }}</span>
                                                 @endif
                                                 <span class="text-[10px] font-bold text-rose-600 mt-0.5">⚠️ ยังไม่กลับหน่วยฝึก</span>
                                             </a>
@@ -1068,15 +1495,11 @@
                                             @if($lm->status === 'cancelled')
                                                 <span class="text-slate-500 text-xs font-medium"><i class="fa-solid fa-ban mr-1"></i> ยกเลิกเคส</span>
                                             @elseif($isMewsAdmitOrRefer && $isMewsReturned)
-                                                <a href="{{ route('backend.mews.show', $lm->id) }}" 
+                                                <a href="{{ route('backend.mews.show', $lm->id) }}"
                                                    class="text-emerald-700 text-xs font-bold bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl inline-flex flex-col items-center justify-center hover:bg-emerald-100 transition-colors shadow-sm"
                                                    title="{{ $lm->return_note ?: 'กลับถึงหน่วยฝึกเรียบร้อยแล้ว' }}">
-                                                    <span class="flex items-center gap-1">
-                                                        <i class="fa-solid fa-house-chimney-check text-emerald-600"></i> กลับหน่วยฝึกแล้ว
-                                                    </span>
-                                                    <span class="text-[10px] text-slate-500 font-medium">
-                                                        ({{ \Carbon\Carbon::parse($lm->returned_to_unit_at)->addYears(543)->format('d/m/y') }})
-                                                    </span>
+                                                    <span class="flex items-center gap-1"><i class="fa-solid fa-house-chimney-check text-emerald-600"></i> กลับหน่วยฝึกแล้ว</span>
+                                                    <span class="text-[10px] text-slate-500 font-medium">({{ \Carbon\Carbon::parse($lm->returned_to_unit_at)->addYears(543)->format('d/m/y') }})</span>
                                                 </a>
                                             @else
                                                 <a href="{{ route('backend.mews.show', $lm->id) }}" class="text-emerald-600 hover:bg-emerald-100 text-xs font-bold bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-xl inline-flex items-center transition-colors">
@@ -1088,8 +1511,8 @@
                                         @endif
                                     </td>
 
-                                    <!-- คอลัมน์ 3: สถานะคัดกรองแรกรับ -->
-                                    <td class="px-6 py-4 text-center">
+                                    <!-- คอลัมน์ 3: คัดกรองแรกรับ -->
+                                    <td class="px-6 py-4 text-center whitespace-nowrap">
                                         @if($isInactiveDuty)
                                             <span class="text-slate-400 text-xs font-bold bg-slate-100 px-3 py-1 rounded-xl border border-slate-200 inline-flex items-center gap-1">
                                                 <i class="fa-solid fa-minus text-[10px]"></i> ไม่ได้คัดกรอง ({{ $dutyStat === 'absent' ? 'ไม่มารายงานตัว' : ($dutyStat === 'imprisoned' ? 'ต้องโทษ' : 'เสียชีวิต') }})
@@ -1121,24 +1544,22 @@
                                         @endif
                                     </td>
                                     
-                                    <!-- คอลัมน์ 4: ปุ่มจัดการ (พร้อมปุ่มเปลี่ยนสถานะกำลังพล 1 คลิก) -->
-                                    <td class="px-6 py-4 text-center">
+                                    <!-- คอลัมน์ 4: ปุ่มจัดการ -->
+                                    <td class="px-6 py-4 text-center whitespace-nowrap">
                                         <div class="flex items-center justify-center gap-1.5">
                                             @if($canSyncHosxp && !$isInactiveDuty && (empty($patient->hn) || empty($patient->pttype_name)))
-                                                <button type="button" 
-                                                        id="btn-row-sync-{{ $patient->id }}"
-                                                        onclick="syncSinglePatientInTable({{ $patient->id }})" 
-                                                        class="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-600 hover:text-white flex items-center justify-center transition-all shadow-sm" 
+                                                <button type="button"
+                                                        onclick="syncSinglePatientInTable({{ $patient->id }})"
+                                                        class="js-patient-sync-btn-{{ $patient->id }} w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-600 hover:text-white flex items-center justify-center transition-all shadow-sm"
                                                         title="ซิงค์ HN และสิทธิการรักษาจาก HosXP">
                                                     <i class="fa-solid fa-rotate"></i>
                                                 </button>
                                             @endif
 
-                                            <!-- 🌟 ปุ่มเปลี่ยนสถานะการรายงานตัว / กำลังพล (มารายงานตัว, ไม่มารายงานตัว, ต้องโทษ, เสียชีวิต) -->
                                             <button type="button"
                                                     onclick="openDutyStatusModal({{ $patient->id }}, '{{ addslashes($fullSoldierName) }}', '{{ $dutyStat }}', '{{ addslashes($patient->duty_status_note ?? '') }}')"
                                                     class="w-9 h-9 rounded-xl border flex items-center justify-center transition-all shadow-sm {{ $isInactiveDuty ? 'bg-orange-50 border-orange-300 text-orange-600 hover:bg-orange-500 hover:text-white' : 'bg-white border-slate-200 text-slate-500 hover:bg-purple-600 hover:text-white hover:border-purple-600' }}"
-                                                    title="เปลี่ยนสถานะกำลังพล (มารายงานตัว / ไม่มารายงานตัว / ต้องโทษ / เสียชีวิต)">
+                                                    title="เปลี่ยนสถานะกำลังพล">
                                                 <i class="fa-solid fa-user-gear"></i>
                                             </button>
 
@@ -1175,7 +1596,7 @@
                 </div>
                 
                 @if($patients->hasPages())
-                    <div class="px-6 py-4 border-t border-slate-100 bg-white">
+                    <div class="px-4 sm:px-6 py-4 border-t border-slate-100 bg-white">
                         {{ $patients->links() }}
                     </div>
                 @endif
@@ -1232,13 +1653,18 @@
         selectedPatientIds.clear();
         saveSelectedToStorage();
         document.querySelectorAll('.patient-checkbox').forEach(cb => cb.checked = false);
-        const checkAll = document.getElementById('check-all');
-        if (checkAll) checkAll.checked = false;
+        document.querySelectorAll('.check-all-toggle').forEach(cb => cb.checked = false);
     }
 
     function initBulkDeleteCheckboxes() {
-        const checkAll = document.getElementById('check-all');
+        const checkAllToggles = document.querySelectorAll('.check-all-toggle');
         const checkboxes = document.querySelectorAll('.patient-checkbox');
+
+        const syncCheckAllState = () => {
+            const uniquePageIds = Array.from(new Set(Array.from(checkboxes).map(c => String(c.value))));
+            const allChecked = uniquePageIds.length > 0 && uniquePageIds.every(id => selectedPatientIds.has(id));
+            checkAllToggles.forEach(toggle => toggle.checked = allChecked);
+        };
 
         checkboxes.forEach(cb => {
             cb.checked = selectedPatientIds.has(String(cb.value));
@@ -1250,29 +1676,33 @@
                 } else {
                     selectedPatientIds.delete(idStr);
                 }
-                if (checkAll) {
-                    checkAll.checked = checkboxes.length > 0 && Array.from(checkboxes).every(c => c.checked);
-                }
+                // ซิงค์ Checkbox ของคนเดียวกันระหว่างโหมดมือถือและคอมพิวเตอร์
+                document.querySelectorAll(`.patient-checkbox[value="${idStr}"]`).forEach(el => {
+                    el.checked = this.checked;
+                });
+                syncCheckAllState();
                 saveSelectedToStorage();
             });
         });
 
-        if (checkAll) {
-            checkAll.checked = checkboxes.length > 0 && Array.from(checkboxes).every(c => c.checked);
+        syncCheckAllState();
 
-            checkAll.addEventListener('change', function() {
+        checkAllToggles.forEach(toggle => {
+            toggle.addEventListener('change', function() {
+                const isChecked = this.checked;
                 checkboxes.forEach(cb => {
-                    cb.checked = this.checked;
+                    cb.checked = isChecked;
                     const idStr = String(cb.value);
-                    if (this.checked) {
+                    if (isChecked) {
                         selectedPatientIds.add(idStr);
                     } else {
                         selectedPatientIds.delete(idStr);
                     }
                 });
+                checkAllToggles.forEach(t => t.checked = isChecked);
                 saveSelectedToStorage();
             });
-        }
+        });
 
         document.querySelectorAll('#patients-table-container a[href*="page="]').forEach(link => {
             link.addEventListener('click', function(e) {
@@ -1833,11 +2263,33 @@
     // =========================================================================
     const singleSyncUrlTemplate = "{{ route('backend.patients.sync_hosxp', '__ID__') }}";
 
+    function getJsPttypeBadgeClass(pttypeName) {
+        if (!pttypeName) return 'bg-amber-50/70 text-amber-700 border-amber-200 font-medium';
+        const n = pttypeName.toLowerCase();
+        if (n.includes('บัตรทอง') || n.includes('หลักประกันสุขภาพ') || n.includes('uc') || n.includes('ถ้วนหน้า')) {
+            return 'bg-amber-100 text-amber-900 border-amber-400 font-bold';
+        }
+        if (n.includes('ประกันสังคม')) {
+            return 'bg-blue-600 text-white border-blue-700 font-bold';
+        }
+        if (n.includes('ข้าราชการพลเรือน') || (n.includes('ข้าราชการ') && !n.includes('ทหาร'))) {
+            return 'bg-sky-100 text-sky-800 border-sky-300 font-bold';
+        }
+        if (n.includes('ครอบครัว')) {
+            return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
+        }
+        if (n.includes('ทหาร') || n.includes('กองทัพ') || n.includes('กลาโหม') || n.includes('พลฯ')) {
+            return 'bg-emerald-800 text-white border-emerald-900 font-bold';
+        }
+        return 'bg-yellow-100 text-yellow-900 border-yellow-300 font-bold';
+    }
+
     function syncSinglePatientInTable(patientId, forceSync = false, updateName = false) {
-        const btn = document.getElementById('btn-row-sync-' + patientId);
-        const icon = btn ? btn.querySelector('i') : null;
-        if (btn) btn.disabled = true;
-        if (icon) icon.classList.add('fa-spin');
+        const btns = document.querySelectorAll('.js-patient-sync-btn-' + patientId);
+        btns.forEach(b => {
+            b.disabled = true;
+            b.querySelector('i')?.classList.add('fa-spin');
+        });
 
         fetch(singleSyncUrlTemplate.replace('__ID__', patientId), {
             method: 'POST',
@@ -1849,26 +2301,29 @@
         })
         .then(res => res.json())
         .then(data => {
-            if (btn) btn.disabled = false;
-            if (icon) icon.classList.remove('fa-spin');
+            btns.forEach(b => {
+                b.disabled = false;
+                b.querySelector('i')?.classList.remove('fa-spin');
+            });
 
             if (data.status === 'synced') {
-                const badge = document.getElementById('row-hn-badge-' + patientId);
-                const ptBadge = document.getElementById('row-pttype-badge-' + patientId); 
-
-                if (ptBadge && data.pttype_name) { 
-                    ptBadge.className = 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2 py-0.5 rounded text-[11px]'; 
-                    ptBadge.innerHTML = '<i class="fa-solid fa-shield-heart mr-1"></i>' + data.pttype_name; 
+                if (data.pttype_name) {
+                    const pttypeCls = getJsPttypeBadgeClass(data.pttype_name);
+                    document.querySelectorAll('.js-patient-pttype-' + patientId).forEach(ptBadge => {
+                        ptBadge.className = `js-patient-pttype-${patientId} border px-2 py-0.5 rounded text-[11px] ${pttypeCls}`;
+                        ptBadge.innerHTML = '<i class="fa-solid fa-shield-heart mr-1"></i>' + data.pttype_name;
+                    });
                 }
-                if (badge) {
-                    badge.className = 'bg-blue-50 text-blue-700 border border-blue-200 font-bold px-2 py-0.5 rounded';
+                document.querySelectorAll('.js-patient-hn-' + patientId).forEach(badge => {
+                    badge.className = `js-patient-hn-${patientId} bg-blue-50 text-blue-700 border border-blue-200 font-bold px-2 py-0.5 rounded`;
                     badge.innerText = 'HN: ' + data.hn;
-                }
+                });
                 if (data.updated_name) {
-                    const nameEl = document.getElementById('row-name-' + patientId);
-                    if (nameEl) nameEl.innerText = data.updated_name;
+                    document.querySelectorAll('.js-patient-name-' + patientId).forEach(nameEl => {
+                        nameEl.innerText = data.updated_name;
+                    });
                 }
-                if (btn) btn.remove();
+                btns.forEach(b => b.remove());
                 Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: data.message, showConfirmButton: false, timer: 3000 });
             } else if (data.status === 'mismatch_registrar') {
                 Swal.fire({
