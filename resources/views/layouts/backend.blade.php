@@ -81,24 +81,35 @@
     </script>
 </head>
 <body class="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans antialiased transition-colors duration-300">
-    <!-- 🌟 แบนเนอร์แนะนำติดตั้งแอป (PWA Install Banner) จะแสดงเฉพาะบนมือถือที่ยังไม่ได้ติดตั้ง -->
-    <div id="pwa-install-banner" class="hidden bg-gradient-to-r from-emerald-600 to-teal-700 text-white px-4 py-3 shadow-md relative z-50 flex items-center justify-between gap-3 animate-fade-in-down">
+    <!-- 🌟 การ์ดลอยแนะนำติดตั้งแอป (Floating PWA Install Card — ใช้ fixed เพื่อไม่ให้ดัน Layout หลัก) -->
+    <div id="pwa-install-banner"
+         class="hidden fixed top-3 left-3 right-3 sm:top-auto sm:bottom-5 sm:left-5 sm:right-auto sm:w-[370px] z-[85] bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-[0_12px_40px_-8px_rgba(15,23,42,0.28)] border border-slate-200/90 dark:border-slate-700 p-3.5 transition-all duration-300">
         <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-white rounded-xl shadow-inner flex items-center justify-center p-1 shrink-0">
-                <img src="{{ asset('images/logo5.png') }}" alt="Logo" class="w-full h-full object-contain">
+            <!-- โลโก้แอป -->
+            <div class="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-slate-900 border border-emerald-200/70 dark:border-slate-700 shadow-sm flex items-center justify-center p-1.5 shrink-0">
+                <img src="{{ asset('images/logo5.png') }}" alt="KSVR Logo" class="w-full h-full object-contain">
             </div>
-            <div>
-                <h4 class="text-xs font-bold leading-tight">ติดตั้งแอป KSVR MEWS</h4>
-                <p class="text-[11px] text-emerald-100 opacity-90">ใช้งานสะดวกลื่นไหล ไม่ต้องเข้าผ่านเบราว์เซอร์</p>
+
+            <!-- ชื่อและคำอธิบายแบบกระชับ -->
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                    <h4 class="text-sm font-black text-slate-800 dark:text-white leading-tight truncate">แอป KSVR MEWS</h4>
+                    <span class="px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[9px] font-black uppercase tracking-wide shrink-0">App</span>
+                </div>
+                <p class="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 truncate">เปิดเต็มจอ ไร้แถบ URL ใช้งานไวขึ้น</p>
             </div>
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-            <button type="button" onclick="installPwaApp()" class="px-3 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs font-black shadow-sm transition-all">
-                ติดตั้งเลย
-            </button>
-            <button type="button" onclick="dismissPwaBanner()" class="text-emerald-200 hover:text-white px-1.5 py-1">
-                <i class="fa-solid fa-xmark text-sm"></i>
-            </button>
+
+            <!-- ปุ่มติดตั้ง + ปุ่มปิด -->
+            <div class="flex items-center gap-1.5 shrink-0">
+                <button type="button" onclick="installPwaApp()"
+                        class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black shadow-sm transition-all whitespace-nowrap">
+                    ติดตั้ง
+                </button>
+                <button type="button" onclick="dismissPwaBanner()" title="ไว้ทีหลัง"
+                        class="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-xmark text-xs"></i>
+                </button>
+            </div>
         </div>
     </div>
     <!-- 🌟 แถบเมนูด้านข้าง (Sidebar) -->
@@ -376,6 +387,19 @@
                     </a>
                 </li>
                 @endif
+                
+                <!-- หมวดหมู่ช่วยเหลือ & คู่มือ (แสดงทุกตำแหน่ง) -->
+                <li class="pt-5 pb-2">
+                    <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-4">ช่วยเหลือ &amp; คู่มือ</span>
+                </li>
+
+                <li>
+                    <a href="{{ \Illuminate\Support\Facades\Route::has('backend.help.index') ? route('backend.help.index') : url('/backend/help') }}"
+                       class="group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 {{ request()->routeIs('backend.help.*') || request()->is('backend/help*') ? 'bg-slate-700/80 border-l-4 border-indigo-400 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-slate-700/50 border-l-4 border-transparent' }}">
+                        <i class="fa-solid fa-book-open-reader w-6 text-center text-indigo-400 drop-shadow-sm group-hover:scale-110 transition-transform duration-300"></i>
+                        <span class="font-medium">คู่มือการใช้งานระบบ</span>
+                    </a>
+                </li>
             </ul>
         </nav>
 
@@ -543,10 +567,10 @@
                                         $borderLeft = $isEmerRow ? 'border-l-rose-500' : ($isObsRow ? 'border-l-amber-400' : 'border-l-emerald-400');
                                         $badgeText  = $hasSym ? 'อาการฉุกเฉิน' : ($isEmerRow ? 'EMERGENCY' : ($isObsRow ? 'OBSERVE' : 'ปกติ (OPD)'));
                                     @endphp
-                                    <a href="{{ route('backend.mews.show', $alert->id) }}" class="block px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors border-l-4 {{ $alert->risk_level === 'emergency' || $hasSym ? 'border-l-rose-500' : 'border-l-amber-400' }}">
+                                    <a href="{{ route('backend.mews.show', $alert->id) }}" class="block px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors border-l-4 {{ $borderLeft }}">
                                         <div class="flex justify-between items-start mb-1">
                                             <p class="text-sm font-bold text-slate-800 dark:text-white">{{ $alert->patient->rank }}{{ $alert->patient->first_name }} {{ $alert->patient->last_name }}</p>
-                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded {{ $badgeColor }}">{{ $hasSym ? 'อาการฉุกเฉิน' : strtoupper($alert->risk_level) }}</span>
+                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded {{ $badgeColor }}">{{ $badgeText }}</span>
                                         </div>
                                         <p class="text-[11px] text-slate-500"><i class="fa-solid fa-tent mr-1"></i> {{ $alert->patient->militaryUnit->short_name ?? '-' }}</p>
                                         <p class="text-xs text-slate-600 mt-1 font-medium">คะแนน MEWS: <span class="font-bold {{ $scoreColor }}">{{ $alert->total_score }} แต้ม</span></p>
@@ -679,7 +703,7 @@
                 <!-- ========================================================================= -->
                 <!-- 🎖️ M-CARE SYSTEM: Modern Hero Identity Banner (แสดงอัตโนมัติทุกหน้าในหมวดทหารใหม่) -->
                 <!-- ========================================================================= -->
-                @if(isset($isRecruitGroupActive) && $isRecruitGroupActive)
+                @if(request()->routeIs('backend.patients.index') && (request('view') === 'overview' || (isset($viewMode) && $viewMode === 'overview')))
                 <div class="max-w-7xl mx-auto mb-6 print:hidden animate-fade-in-down">
                     <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-[#0b3b36] to-slate-900 p-5 sm:p-6 shadow-xl border border-teal-500/30 text-white">
                         
@@ -775,7 +799,7 @@
                             </span>
                         </span>
                         <span class="hidden sm:inline text-slate-300 dark:text-slate-700">|</span>
-                        <span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[11px] text-slate-500 font-mono font-bold">v1.3.6</span>
+                        <span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[11px] text-slate-500 font-mono font-bold">v1.4.2</span>
                     </div>
 
                 </div>
@@ -1698,67 +1722,47 @@
     </script>
     <script>
         let deferredPrompt = null;
+        const isPwaStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
         window.addEventListener('beforeinstallprompt', (e) => {
-            // ป้องกันไม่ให้เบราว์เซอร์แสดงแบนเนอร์ค่าเริ่มต้นของ Chrome
             e.preventDefault();
             deferredPrompt = e;
 
-            // เช็คว่าผู้ใช้เคยกดปิดแบนเนอร์ไปแล้วหรือยัง (ซ่อนไว้ 1 วันถ้าเคยกดปิด)
+            if (isPwaStandalone) return;
+
+            // ซ่อนไว้ 24 ชม. หากผู้ใช้เคยกดปิดไปแล้ว
             const dismissedTime = localStorage.getItem('ksvr_pwa_dismissed');
-            const now = new Date().getTime();
-            if (!dismissedTime || (now - dismissedTime > 24 * 60 * 60 * 1000)) {
-                // แสดงแบนเนอร์ของเราเฉพาะบนมือถือหรือแท็บเล็ต
-                if (window.innerWidth <= 1024) {
-                    document.getElementById('pwa-install-banner')?.classList.remove('hidden');
-                }
+            const now = Date.now();
+            if (!dismissedTime || (now - Number(dismissedTime) > 24 * 60 * 60 * 1000)) {
+                document.getElementById('pwa-install-banner')?.classList.remove('hidden');
             }
         });
 
+        window.addEventListener('appinstalled', () => {
+            deferredPrompt = null;
+            document.getElementById('pwa-install-banner')?.classList.add('hidden');
+        });
+
         async function installPwaApp() {
-            if (!deferredPrompt) {
-                // กรณีเป็นอุปกรณ์ iOS (iPhone / iPad) หรือเบราว์เซอร์ที่ไม่รองรับ Prompt อัตโนมัติ
-                if (/iphone|ipad|ipod/i.test(window.navigator.userAgent)) {
-                    Swal.fire({
-                        icon: 'info',
-                        title: 'วิธีติดตั้งบน iOS (Safari)',
-                        html: `
-                            <div class="text-left text-xs space-y-2 text-slate-600 mt-2">
-                                <p>เนื่องจากข้อจำกัดของ Apple ให้ทำตามนี้ครับ:</p>
-                                <ol class="list-decimal list-inside space-y-1 font-bold text-slate-800">
-                                    <li>แตะปุ่ม <b>แชร์ (Share <i class="fa-solid fa-arrow-up-from-bracket text-blue-500"></i>)</b> ด้านล่างของ Safari</li>
-                                    <li>เลื่อนหาแล้วเลือกเมนู <b>"เพิ่มไปยังหน้าจอโฮม" (Add to Home Screen)</b></li>
-                                    <li>แตะ "เพิ่ม" มุมขวาบน เป็นอันเสร็จสิ้น!</li>
-                                </ol>
-                            </div>
-                        `,
-                        confirmButtonText: 'เข้าใจแล้ว',
-                        customClass: { popup: 'rounded-3xl' }
-                    });
-                } else {
-                    Swal.fire({
-                        toast: true, position: 'top-end', icon: 'info',
-                        title: 'แอปนี้ติดตั้งอยู่ในเครื่องของคุณแล้ว หรือเบราว์เซอร์ติดตั้งเรียบร้อยแล้วครับ',
-                        showConfirmButton: false, timer: 3000
-                    });
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    document.getElementById('pwa-install-banner')?.classList.add('hidden');
                 }
+                deferredPrompt = null;
                 return;
             }
 
-            // แสดงหน้าต่างติดตั้งของระบบปฏิบัติการ
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            
-            if (outcome === 'accepted') {
-                console.log('ผู้ใช้กดติดตั้งแอปสำเร็จ');
+            // กรณีเป็น iOS หรือเบราว์เซอร์ที่ไม่รองรับปุ่มติดตั้งอัตโนมัติ ให้เปิดหน้าต่างคู่มือ 3 ขั้นตอนที่ทำไว้
+            if (typeof window.openPwaInstallModal === 'function') {
+                window.openPwaInstallModal();
             }
-            deferredPrompt = null;
-            document.getElementById('pwa-install-banner')?.classList.add('hidden');
         }
 
         function dismissPwaBanner() {
             document.getElementById('pwa-install-banner')?.classList.add('hidden');
-            localStorage.setItem('ksvr_pwa_dismissed', new Date().getTime().toString());
+            localStorage.setItem('ksvr_pwa_dismissed', String(Date.now()));
         }
     </script>
 
