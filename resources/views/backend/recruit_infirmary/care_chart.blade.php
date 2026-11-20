@@ -8,12 +8,19 @@
     // 🛡️ อัปเกรดคอลัมน์ในฐานข้อมูลอัตโนมัติ (รองรับ take_prn และ custom_slot_text ทันที)
     \App\Http\Controllers\Backend\RecruitInfirmaryController::ensureCareChartSchema();
     $activeStay = $patient->activeInfirmaryStay;
+    $defaultMobileMarDate = collect($dateColumns)->firstWhere('is_today', true)['date_str']
+        ?? ($dateColumns[0]['date_str'] ?? date('Y-m-d'));
 @endphp
+
+<style>
+    .ksvr-no-scrollbar::-webkit-scrollbar { display: none; }
+    .ksvr-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+</style>
 
 <div class="max-w-7xl mx-auto space-y-5 pb-12">
 
     <!-- 🧭 แถบด้านบน: ปุ่มกลับหน้าห้องพยาบาลหน่วยฝึก + ข้อมูลผู้ป่วย + สลับคนตรวจด่วน + เลือกช่วงวันที่ -->
-    <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-200 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 print:border-0 print:shadow-none print:p-0">
+    <div class="bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 print:border-0 print:shadow-none print:p-0">
         <div class="flex items-start sm:items-center gap-3.5">
             <!-- ปุ่มกลับหน้าตารางห้องพยาบาลหน่วยฝึกโดยตรง -->
             <a href="{{ route('backend.recruit_infirmary.index', ['intake_batch' => $patient->intake_batch]) }}"
@@ -25,14 +32,14 @@
 
             <div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <h2 class="text-lg sm:text-xl font-black text-slate-900">
+                    <h2 class="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
                         {{ $patient->rank }}{{ $patient->first_name }} {{ $patient->last_name }}
                     </h2>
                     <span class="px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold">
                         HN: {{ $patient->hn ?: 'ยังไม่มี HN' }}
                     </span>
                     <span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold">
-                        {{ $patient->militaryUnit->short_name ?? $patient->company ?? 'ไม่ระบุหน่วย' }} (ผลัด {{ $patient->intake_batch ?? '-' }})
+                        {{ $patient->militaryUnit?->short_name ?? $patient->company ?? 'ไม่ระบุหน่วย' }} (ผลัด {{ $patient->intake_batch ?? '-' }})
                     </span>
                     <a href="{{ route('backend.patients.show', $patient->id) }}" class="text-xs font-bold text-slate-500 hover:text-indigo-600 underline print:hidden">
                         <i class="fa-regular fa-address-card mr-0.5"></i>ดูแฟ้มประวัติ
@@ -47,13 +54,13 @@
                             {{ $activeStay->location_type === 'unit_infirmary' ? 'ห้องพยาบาลหน่วยฝึก' : 'ฝากนอน รพ.ค่ายฯ' }}
                             {{ $activeStay->bed_or_zone ? '(' . $activeStay->bed_or_zone . ')' : '' }}
                         </span>
-                        <span class="font-bold text-rose-700">Dx: {{ $activeStay->diagnosis_text }}</span>
+                        <span class="font-bold text-rose-700 dark:text-rose-400">Dx: {{ $activeStay->diagnosis_text }}</span>
                         @if($activeStay->care_instruction)
-                            <span class="text-teal-700 font-semibold">• การดูแล: {{ $activeStay->care_instruction }}</span>
+                            <span class="text-teal-700 dark:text-teal-300 font-semibold">• การดูแล: {{ $activeStay->care_instruction }}</span>
                         @endif
                     </div>
                 @else
-                    <p class="text-xs text-slate-500 mt-1">
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
                         แบบฟอร์มติดตามสัญญาณชีพประจำวัน (06.00 น. / 18.00 น.) และตารางเช็คการรับประทานยา/ทายาสำหรับเสนารักษ์และพยาบาล
                     </p>
                 @endif
@@ -81,9 +88,9 @@
                 </div>
             @endif
 
-            <form method="GET" action="{{ route('backend.care_chart.show', $patient->id) }}" class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-1.5">
+            <form method="GET" action="{{ route('backend.care_chart.show', $patient->id) }}" class="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-1.5">
                 <span class="text-xs font-bold text-slate-500">เริ่มแสดงตั้งแต่วันที่:</span>
-                <input type="date" name="start_date" value="{{ $startDateStr }}" onchange="this.form.submit()" class="bg-transparent text-xs sm:text-sm font-black text-indigo-700 outline-none cursor-pointer">
+                <input type="date" name="start_date" value="{{ $startDateStr }}" onchange="this.form.submit()" class="bg-transparent text-xs sm:text-sm font-black text-indigo-700 dark:text-indigo-400 outline-none cursor-pointer">
             </form>
 
             <button type="button" onclick="window.print()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm flex items-center gap-1.5">
@@ -91,16 +98,6 @@
             </button>
         </div>
     </div>
-
-    @php
-        $defaultMobileMarDate = collect($dateColumns)->firstWhere('is_today', true)['date_str']
-            ?? ($dateColumns[0]['date_str'] ?? date('Y-m-d'));
-    @endphp
-
-    <style>
-        .ksvr-no-scrollbar::-webkit-scrollbar { display: none; }
-        .ksvr-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    </style>
 
     <!-- ========================================================================= -->
     <!-- 📊 ส่วนที่ 1: บันทึกสัญญาณชีพ 06.00 น. และ 18.00 น. (Mobile Cards + Desktop/Print Table) -->
@@ -607,6 +604,40 @@
 
 @section('scripts')
 <script>
+    window._hosxpDrugsCache = [];
+
+    function escapeMarHtml(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function submitMarPostForm(actionUrl, fields, arrayFields = {}) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = actionUrl;
+
+        const appendInput = (name, val) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = val ?? '';
+            form.appendChild(input);
+        };
+
+        appendInput('_token', "{{ csrf_token() }}");
+        Object.entries(fields).forEach(([k, v]) => appendInput(k, v));
+        Object.entries(arrayFields).forEach(([k, arr]) => {
+            (arr || []).forEach(v => appendInput(k, v));
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+    }
+
     // 🧮 ฟังก์ชันคำนวณคะแนน MEWS สดในหน้าต่างกรอกสัญญาณชีพ
     function calcLiveModalMews() {
         const temp = parseFloat(document.getElementById('mv_temp')?.value);
@@ -658,44 +689,44 @@
     // 🌡️ เปิดป๊อปอัปกรอกสัญญาณชีพ (06.00 น. / 18.00 น.)
     function openVitalModal(dateStr, roundTime, existingLog = null) {
         Swal.fire({
-            title: `<div class="text-lg font-black text-slate-800"><i class="fa-solid fa-heart-pulse text-rose-500 mr-2"></i>บันทึกสัญญาณชีพ (เวลา ${roundTime} น.)</div>`,
+            title: `<div class="text-lg font-black text-slate-800"><i class="fa-solid fa-heart-pulse text-rose-500 mr-2"></i>บันทึกสัญญาณชีพ (เวลา ${escapeMarHtml(roundTime)} น.)</div>`,
             html: `
                 <div class="text-left space-y-3 mt-2">
                     <div class="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                        <div class="text-xs font-bold text-slate-700">วันที่: <span class="text-indigo-700 font-black">${dateStr}</span> (${roundTime} น.)</div>
+                        <div class="text-xs font-bold text-slate-700">วันที่: <span class="text-indigo-700 font-black">${escapeMarHtml(dateStr)}</span> (${escapeMarHtml(roundTime)} น.)</div>
                         <span id="mv_mews_preview" class="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800">Mew score: 0 คะแนน</span>
                     </div>
 
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">1. อุณหภูมิ (°C) *</label>
-                            <input type="number" step="0.1" id="mv_temp" oninput="calcLiveModalMews()" value="${existingLog?.temperature ?? '36.6'}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
+                            <input type="number" step="0.1" id="mv_temp" oninput="calcLiveModalMews()" value="${escapeMarHtml(existingLog?.temperature ?? '36.6')}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">2. ชีพจร (/นาที) *</label>
-                            <input type="number" id="mv_hr" oninput="calcLiveModalMews()" value="${existingLog?.heart_rate ?? '80'}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
+                            <input type="number" id="mv_hr" oninput="calcLiveModalMews()" value="${escapeMarHtml(existingLog?.heart_rate ?? '80')}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">3. หายใจ (/นาที) *</label>
-                            <input type="number" id="mv_rr" oninput="calcLiveModalMews()" value="${existingLog?.respiratory_rate ?? '18'}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
+                            <input type="number" id="mv_rr" oninput="calcLiveModalMews()" value="${escapeMarHtml(existingLog?.respiratory_rate ?? '18')}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">4. ความดันตัวบน (SBP) *</label>
-                            <input type="number" id="mv_sbp" oninput="calcLiveModalMews()" value="${existingLog?.systolic_bp ?? '120'}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
+                            <input type="number" id="mv_sbp" oninput="calcLiveModalMews()" value="${escapeMarHtml(existingLog?.systolic_bp ?? '120')}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">5. ความดันตัวล่าง (DBP) *</label>
-                            <input type="number" id="mv_dbp" value="${existingLog?.diastolic_bp ?? '80'}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
+                            <input type="number" id="mv_dbp" value="${escapeMarHtml(existingLog?.diastolic_bp ?? '80')}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">6. ออกซิเจนปลายนิ้ว (%) *</label>
-                            <input type="number" id="mv_o2" oninput="calcLiveModalMews()" value="${existingLog?.o2sat ?? '98'}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
+                            <input type="number" id="mv_o2" oninput="calcLiveModalMews()" value="${escapeMarHtml(existingLog?.o2sat ?? '98')}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-black">
                         </div>
                     </div>
 
                     <div>
                         <label class="block text-xs font-bold text-slate-700 mb-1">หมายเหตุอาการ (ถ้ามี)</label>
-                        <input type="text" id="mv_note" value="${existingLog?.note ?? ''}" placeholder="เช่น ไม่มีไข้ อาการปกติ..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-xs sm:text-sm">
+                        <input type="text" id="mv_note" value="${escapeMarHtml(existingLog?.note ?? '')}" placeholder="เช่น ไม่มีไข้ อาการปกติ..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-xs sm:text-sm">
                     </div>
                 </div>
             `,
@@ -730,24 +761,12 @@
             }
         }).then((res) => {
             if (res.isConfirmed && res.value) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = "{{ route('backend.care_chart.store_vital') }}";
-                form.innerHTML = `
-                    <input type="hidden" name="_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="patient_id" value="{{ $patient->id }}">
-                    <input type="hidden" name="record_date" value="${dateStr}">
-                    <input type="hidden" name="round_time" value="${roundTime}">
-                    <input type="hidden" name="temperature" value="${res.value.temperature}">
-                    <input type="hidden" name="heart_rate" value="${res.value.heart_rate}">
-                    <input type="hidden" name="respiratory_rate" value="${res.value.respiratory_rate}">
-                    <input type="hidden" name="systolic_bp" value="${res.value.systolic_bp}">
-                    <input type="hidden" name="diastolic_bp" value="${res.value.diastolic_bp}">
-                    <input type="hidden" name="o2sat" value="${res.value.o2sat}">
-                    <input type="hidden" name="note" value="${res.value.note}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
+                submitMarPostForm("{{ route('backend.care_chart.store_vital') }}", {
+                    patient_id: "{{ $patient->id }}",
+                    record_date: dateStr,
+                    round_time: roundTime,
+                    ...res.value
+                });
             }
         });
     }
@@ -846,13 +865,13 @@
                             <button type="button" onclick="window.applyQuickDrugPreset('ยานวดคลายกล้ามเนื้อ (Balm)', 'ทาบางๆ บริเวณที่ปวด', 'external', false, true, 'ทา/นวดบริเวณที่ปวดเมื่อย เช้า-เย็น หรือเวลามีอาการ')" class="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded text-[10px] font-bold border border-amber-200">🧴 + ยานวดคลายกล้ามเนื้อ</button>
                             <button type="button" onclick="window.applyQuickDrugPreset('ยาทาผื่นคัน / ยาทาแผล', 'ทาบางๆ บริเวณที่เป็น', 'external', false, true, 'ทาบริเวณแผล/ผื่นคัน เช้า-เย็น')" class="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded text-[10px] font-bold border border-amber-200">🧴 + ยาทาผื่น/แผล</button>
                         </div>
-                        <input type="text" id="med_drug_name" value="${drugName}" placeholder="เช่น Paracetamol 500 mg., ยานวดคลายกล้ามเนื้อ, ยาทาผื่น..." class="w-full px-3.5 py-2.5 border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none">
+                        <input type="text" id="med_drug_name" value="${escapeMarHtml(drugName)}" placeholder="เช่น Paracetamol 500 mg., ยานวดคลายกล้ามเนื้อ, ยาทาผื่น..." class="w-full px-3.5 py-2.5 border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none">
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">ปริมาณยา / ขนาดที่ใช้ <span class="text-slate-400 font-normal">(ไม่บังคับ)</span></label>
-                            <input type="text" id="med_dosage" value="${dosage}" placeholder="เช่น ครั้งละ 1 เม็ด, ทาบางๆ บริเวณที่ปวด..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none">
+                            <input type="text" id="med_dosage" value="${escapeMarHtml(dosage)}" placeholder="เช่น ครั้งละ 1 เม็ด, ทาบางๆ บริเวณที่ปวด..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">การรับประทาน / วิธีใช้ <span class="text-rose-500">*</span></label>
@@ -901,7 +920,6 @@
                             </label>
                         </div>
 
-                        <!-- ✍️ ช่องว่างให้พิมพ์ระบุเองสำหรับเวลามีอาการ / ยานวด / ยาทา -->
                         <div class="pt-1">
                             <label class="block text-[11px] font-bold text-slate-600 mb-1">
                                 <i class="fa-solid fa-pen-clip text-teal-600 mr-1"></i>ช่องพิมพ์ระบุเวลา / วิธีใช้เพิ่มเติม (เช่น กินเวลามีอาการ, ยานวด, ยาทา — ไม่บังคับ):
@@ -912,7 +930,7 @@
                                 <button type="button" onclick="window.setSwalCustomSlotTag('ทา/นวดบริเวณที่ปวดเมื่อย')" class="px-2 py-0.5 bg-white hover:bg-amber-50 text-slate-600 hover:text-amber-800 border border-slate-200 rounded text-[10px] font-bold">+ ทา/นวดเวลาปวด</button>
                                 <button type="button" onclick="window.setSwalCustomSlotTag('ทาแผล/ผื่นคัน เช้า-เย็น')" class="px-2 py-0.5 bg-white hover:bg-amber-50 text-slate-600 hover:text-amber-800 border border-slate-200 rounded text-[10px] font-bold">+ ทาแผล/ผื่นคัน</button>
                             </div>
-                            <input type="text" id="med_custom_slot_text" value="${customSlot}"
+                            <input type="text" id="med_custom_slot_text" value="${escapeMarHtml(customSlot)}"
                                    placeholder="พิมพ์ระบุเองได้เลย เช่น กินเวลามีอาการปวด, ทานวดบริเวณข้อเท้า..."
                                    class="w-full px-3 py-2 bg-white border border-slate-300 focus:border-teal-600 rounded-xl text-xs font-semibold text-slate-800 outline-none">
                         </div>
@@ -921,11 +939,11 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">วันที่เริ่มให้ยา <span class="text-rose-500">*</span></label>
-                            <input type="date" id="med_start_date" value="${startDate}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-xs font-bold">
+                            <input type="date" id="med_start_date" value="${escapeMarHtml(startDate)}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-xs font-bold">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">ข้อควรระวัง / หมายเหตุให้เสนารักษ์</label>
-                            <input type="text" id="med_note" value="${noteText}" placeholder="เช่น ห้ามขาดยา, ยาใช้ภายนอกห้ามรับประทาน..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-xs">
+                            <input type="text" id="med_note" value="${escapeMarHtml(noteText)}" placeholder="เช่น ห้ามขาดยา, ยาใช้ภายนอกห้ามรับประทาน..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-xs">
                         </div>
                     </div>
                 </div>
@@ -948,7 +966,6 @@
                     return false;
                 }
 
-                // หากไม่ได้ติ๊กมื้อใดเลย ให้กำหนดเป็น 'prn' (เวลามีอาการ/กำหนดเอง) อัตโนมัติโดยไม่บล็อกผู้ใช้!
                 if (checkedSlots.length === 0) {
                     checkedSlots = ['prn'];
                 }
@@ -967,25 +984,11 @@
             }
         }).then((res) => {
             if (res.isConfirmed && res.value) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = "{{ route('backend.care_chart.store_medication') }}";
-                let slotsInputs = res.value.slots.map(s => `<input type="hidden" name="slots[]" value="${s}">`).join('');
-                form.innerHTML = `
-                    <input type="hidden" name="_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="medication_id" value="${res.value.medication_id}">
-                    <input type="hidden" name="patient_id" value="{{ $patient->id }}">
-                    <input type="hidden" name="care_group" value="${res.value.care_group}">
-                    <input type="hidden" name="drug_name" value="${res.value.drug_name}">
-                    <input type="hidden" name="dosage" value="${res.value.dosage}">
-                    <input type="hidden" name="meal_timing" value="${res.value.meal_timing}">
-                    <input type="hidden" name="custom_slot_text" value="${res.value.custom_slot_text}">
-                    <input type="hidden" name="start_date" value="${res.value.start_date}">
-                    <input type="hidden" name="instruction_note" value="${res.value.instruction_note}">
-                    ${slotsInputs}
-                `;
-                document.body.appendChild(form);
-                form.submit();
+                const { slots, ...scalarFields } = res.value;
+                submitMarPostForm("{{ route('backend.care_chart.store_medication') }}", {
+                    patient_id: "{{ $patient->id }}",
+                    ...scalarFields
+                }, { 'slots[]': slots });
             }
         });
     }
@@ -1050,7 +1053,6 @@
         .then(res => {
             if (res.status !== 'success') return;
 
-            // 1. อัปเดตช่องตาราง Desktop
             if (desktopCell) {
                 if (res.state === 'taken') {
                     desktopCell.innerHTML = `<span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500 text-white font-black text-xs shadow-sm">✓</span>`;
@@ -1061,7 +1063,6 @@
                 }
             }
 
-            // 2. อัปเดตปุ่มการ์ดมือถือ
             if (mobileBtn) {
                 const isPrn = mobileBtn.getAttribute('data-is-prn') === '1';
                 const colSpanCls = mobileBtn.classList.contains('col-span-2') ? 'col-span-2 ' : '';
@@ -1096,27 +1097,33 @@
         });
     }
 
-    // 🏥 ดึงรายการยาล่าสุดจาก HosXP มาให้เลือกเพิ่มเข้าตาราง
+    // 🏥 ดึงรายการยาล่าสุดจาก HosXP มาให้เลือกเพิ่มเข้าตาราง (ใช้ Cache ตาม Index กันบั๊กเครื่องหมายคำพูด)
+    function selectHosxpDrugByIndex(idx) {
+        const drug = window._hosxpDrugsCache[idx];
+        if (!drug) return;
+        Swal.close();
+        openAddMedicationModal(drug.drug_name || '', drug.usage || '');
+    }
+
     function fetchDrugsFromHosxp() {
         Swal.fire({ title: 'กำลังดึงรายการยาล่าสุดจาก HosXP...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         fetch("{{ route('backend.care_chart.hosxp_drugs', $patient->id) }}")
             .then(r => r.json())
             .then(res => {
-                if (res.status !== 'success' || !res.data) {
+                if (res.status !== 'success' || !res.data || res.data.length === 0) {
                     Swal.fire({ icon: 'info', title: 'แจ้งเตือน', text: res.message || 'ไม่พบรายการยา' });
                     return;
                 }
 
+                window._hosxpDrugsCache = res.data;
                 let listHtml = '<div class="text-left space-y-2 mt-2 max-h-64 overflow-y-auto">';
-                res.data.forEach(d => {
-                    const safeName = d.drug_name.replace(/'/g, "\\'");
-                    const safeUsage = d.usage.replace(/'/g, "\\'");
+                res.data.forEach((d, idx) => {
                     listHtml += `
                         <div class="p-3 bg-slate-50 hover:bg-teal-50 rounded-xl border border-slate-200 flex items-center justify-between gap-2 cursor-pointer"
-                             onclick="Swal.close(); openAddMedicationModal('${safeName}', '${safeUsage}');">
-                            <div>
-                                <div class="font-black text-slate-800 text-sm">${d.drug_name}</div>
-                                <div class="text-xs text-slate-500">${d.usage}</div>
+                             onclick="selectHosxpDrugByIndex(${idx})">
+                            <div class="min-w-0">
+                                <div class="font-black text-slate-800 text-sm">${escapeMarHtml(d.drug_name)}</div>
+                                <div class="text-xs text-slate-500">${escapeMarHtml(d.usage)}</div>
                             </div>
                             <span class="px-2.5 py-1 bg-teal-600 text-white rounded-lg text-xs font-bold shrink-0">+ เลือกยานี้</span>
                         </div>
@@ -1131,6 +1138,9 @@
                     showCloseButton: true,
                     customClass: { popup: 'rounded-3xl p-6' }
                 });
+            })
+            .catch(() => {
+                Swal.fire({ icon: 'error', title: 'เชื่อมต่อไม่สำเร็จ', text: 'ไม่สามารถดึงรายการยาจาก HosXP ได้ในขณะนี้' });
             });
     }
 </script>

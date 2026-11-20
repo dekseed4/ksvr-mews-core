@@ -138,11 +138,11 @@
                 @forelse($stays as $stay)
                     @php
                         $pt = $stay->patient;
-                        $rowBatch = $stay->intake_batch ?? $pt->intake_batch ?? 'ไม่ระบุ';
-                        $rowUnitName = $stay->militaryUnit->name ?? $pt->militaryUnit->name ?? $pt->company ?? 'ไม่ระบุหน่วยฝึก';
+                        $rowBatch = $stay->intake_batch ?? $pt?->intake_batch ?? 'ไม่ระบุ';
+                        $rowUnitName = $stay->militaryUnit?->name ?? $pt?->militaryUnit?->name ?? $pt?->company ?? 'ไม่ระบุหน่วยฝึก';
                         $isUnitInf = ($stay->location_type === 'unit_infirmary');
                         $rMeta = $reasonMeta[$stay->reason_category] ?? $reasonMeta['other'];
-                        $fullPtName = ($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? '');
+                        $fullPtName = trim(($pt?->rank ?? '') . ($pt?->first_name ?? '') . ' ' . ($pt?->last_name ?? '')) ?: 'ไม่ระบุชื่อ';
 
                         $endRefDate = ($stay->discharged_at ?? now())->copy()->startOfDay();
                         $startRefDate = $stay->admitted_at->copy()->startOfDay();
@@ -160,10 +160,10 @@
                         $editPayload = [
                             'id'               => $stay->id,
                             'update_url'       => route('backend.recruit_infirmary.update', $stay->id),
-                            'patient_id'       => $pt->id ?? null,
+                            'patient_id'       => $pt?->id ?? '',
                             'soldier_name'     => $fullPtName,
-                            'hn'               => $pt->hn ?: 'ไม่มี HN',
-                            'unit_name'        => $stay->militaryUnit->short_name ?? $pt->militaryUnit->short_name ?? $rowUnitName,
+                            'hn'               => $pt?->hn ?: 'ไม่มี HN',
+                            'unit_name'        => $stay->militaryUnit?->short_name ?? $pt?->militaryUnit?->short_name ?? $rowUnitName,
                             'location_type'    => $stay->location_type,
                             'bed_or_zone'      => $stay->bed_or_zone ?? '',
                             'reason_category'  => $stay->reason_category,
@@ -202,10 +202,10 @@
                                     {{ $fullPtName }}
                                 </div>
                                 <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
-                                    <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md font-bold">HN: {{ $pt->hn ?: '-' }}</span>
-                                    <span class="font-mono text-slate-400">{{ $pt->cid ?? '-' }}</span>
+                                    <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md font-bold">HN: {{ $pt?->hn ?: '-' }}</span>
+                                    <span class="font-mono text-slate-400">{{ $pt?->cid ?: '-' }}</span>
                                 </div>
-                                @if($pt && $pt->militaryDischarge)
+                                @if($pt?->militaryDischarge)
                                     <div class="mt-1">
                                         <span class="bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 rounded-md font-bold text-[10px] inline-flex items-center gap-1">
                                             <i class="fa-solid fa-folder-open text-purple-600"></i> รอปลด ({{ str_replace(['[ปลดทางสุขภาพจิต]', '[ปลดทางกาย]'], '', $pt->militaryDischarge->diagnosis_text) }})
@@ -267,7 +267,7 @@
                         </div>
 
                         <!-- แถว 4: สถานะวัดไข้วันนี้ (06:00 / 18:00) แตะเปิดตาราง V/S ได้ทันที -->
-                        @if($stay->status === 'staying')
+                        @if($stay->status === 'staying' && $pt)
                             <div class="grid grid-cols-2 gap-2 text-xs font-bold">
                                 <a href="{{ route('backend.care_chart.show', $pt->id) }}"
                                    class="px-3 py-2 rounded-xl border text-center transition-colors {{ $hasMorningVs ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200' }}">
@@ -286,14 +286,16 @@
 
                         <!-- แถว 5: ปุ่มดำเนินการ -->
                         <div class="space-y-2 pt-1">
-                            <a href="{{ route('backend.care_chart.show', $pt->id) }}"
-                               class="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center justify-center gap-2 transition-colors">
-                                <i class="fa-solid fa-pills"></i>
-                                <span>บันทึก V/S &amp; เช็คกินยา (e-MAR)</span>
-                                @if($ptMedCount > 0)
-                                    <span class="px-2 py-0.5 bg-white text-sky-700 rounded-md font-black text-[10px]">{{ $ptMedCount }} ยา</span>
-                                @endif
-                            </a>
+                            @if($pt)
+                                <a href="{{ route('backend.care_chart.show', $pt->id) }}"
+                                   class="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center justify-center gap-2 transition-colors">
+                                    <i class="fa-solid fa-pills"></i>
+                                    <span>บันทึก V/S &amp; เช็คกินยา (e-MAR)</span>
+                                    @if($ptMedCount > 0)
+                                        <span class="px-2 py-0.5 bg-white text-sky-700 rounded-md font-black text-[10px]">{{ $ptMedCount }} ยา</span>
+                                    @endif
+                                </a>
+                            @endif
 
                             <div class="flex items-center gap-1.5">
                                 @if($stay->status === 'staying')
@@ -319,10 +321,12 @@
                                     <i class="fa-solid fa-pen-to-square text-xs"></i>
                                 </button>
 
-                                <a href="{{ route('backend.patients.show', $pt->id) }}"
-                                   class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 flex items-center justify-center shrink-0" title="ดูแฟ้มประวัติ">
-                                    <i class="fa-solid fa-address-card text-xs"></i>
-                                </a>
+                                @if($pt)
+                                    <a href="{{ route('backend.patients.show', $pt->id) }}"
+                                       class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 flex items-center justify-center shrink-0" title="ดูแฟ้มประวัติ">
+                                        <i class="fa-solid fa-address-card text-xs"></i>
+                                    </a>
+                                @endif
 
                                 <form id="delete-inf-mobile-{{ $stay->id }}" action="{{ route('backend.recruit_infirmary.destroy', $stay->id) }}" method="POST" class="shrink-0">
                                     @csrf @method('DELETE')
@@ -369,11 +373,11 @@
                         @forelse($stays as $stay)
                             @php
                                 $pt = $stay->patient;
-                                $rowBatch = $stay->intake_batch ?? $pt->intake_batch ?? 'ไม่ระบุ';
-                                $rowUnitName = $stay->militaryUnit->name ?? $pt->militaryUnit->name ?? $pt->company ?? 'ไม่ระบุหน่วยฝึก';
+                                $rowBatch = $stay->intake_batch ?? $pt?->intake_batch ?? 'ไม่ระบุ';
+                                $rowUnitName = $stay->militaryUnit?->name ?? $pt?->militaryUnit?->name ?? $pt?->company ?? 'ไม่ระบุหน่วยฝึก';
                                 $isUnitInf = ($stay->location_type === 'unit_infirmary');
                                 $rMeta = $reasonMeta[$stay->reason_category] ?? $reasonMeta['other'];
-                                $fullPtName = ($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? '');
+                                $fullPtName = trim(($pt?->rank ?? '') . ($pt?->first_name ?? '') . ' ' . ($pt?->last_name ?? '')) ?: 'ไม่ระบุชื่อ';
 
                                 $endRefDate = ($stay->discharged_at ?? now())->copy()->startOfDay();
                                 $startRefDate = $stay->admitted_at->copy()->startOfDay();
@@ -387,10 +391,10 @@
                                 $editPayload = [
                                     'id'               => $stay->id,
                                     'update_url'       => route('backend.recruit_infirmary.update', $stay->id),
-                                    'patient_id'       => $pt->id ?? null,
+                                    'patient_id'       => $pt?->id ?? '',
                                     'soldier_name'     => $fullPtName,
-                                    'hn'               => $pt->hn ?: 'ไม่มี HN',
-                                    'unit_name'        => $stay->militaryUnit->short_name ?? $pt->militaryUnit->short_name ?? $rowUnitName,
+                                    'hn'               => $pt?->hn ?: 'ไม่มี HN',
+                                    'unit_name'        => $stay->militaryUnit?->short_name ?? $pt?->militaryUnit?->short_name ?? $rowUnitName,
                                     'location_type'    => $stay->location_type,
                                     'bed_or_zone'      => $stay->bed_or_zone ?? '',
                                     'reason_category'  => $stay->reason_category,
@@ -445,11 +449,11 @@
                                     </div>
                                     <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
                                         <span class="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md font-bold whitespace-nowrap">
-                                            HN: {{ $pt->hn ?: '-' }}
+                                            HN: {{ $pt?->hn ?: '-' }}
                                         </span>
-                                        <span class="font-mono text-slate-400 whitespace-nowrap">{{ $pt->cid ?? '-' }}</span>
+                                        <span class="font-mono text-slate-400 whitespace-nowrap">{{ $pt?->cid ?: '-' }}</span>
                                     </div>
-                                    @if($pt && $pt->militaryDischarge)
+                                    @if($pt?->militaryDischarge)
                                         <div class="mt-1">
                                             <span class="bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 rounded-md font-bold text-[10px] inline-flex items-center gap-1">
                                                 <i class="fa-solid fa-folder-open text-purple-600"></i> รอปลด ({{ str_replace(['[ปลดทางสุขภาพจิต]', '[ปลดทางกาย]'], '', $pt->militaryDischarge->diagnosis_text) }})
@@ -506,16 +510,18 @@
                                             <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black inline-flex items-center gap-1.5 shadow-sm">
                                                 <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span> กำลังแยกนอนพัก
                                             </span>
-                                            <div class="flex items-center justify-center gap-1 text-[10px] font-bold">
-                                                <a href="{{ route('backend.care_chart.show', $pt->id) }}"
-                                                   class="px-2 py-0.5 rounded-md border transition-colors {{ $hasMorningVs ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-sky-300 hover:text-sky-700' }}">
-                                                    🌅 06:00 {{ $hasMorningVs ? number_format($hasMorningVs->temperature, 1) . '°C' : 'รอวัด' }}
-                                                </a>
-                                                <a href="{{ route('backend.care_chart.show', $pt->id) }}"
-                                                   class="px-2 py-0.5 rounded-md border transition-colors {{ $hasEveningVs ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-sky-300 hover:text-sky-700' }}">
-                                                    🌆 18:00 {{ $hasEveningVs ? number_format($hasEveningVs->temperature, 1) . '°C' : 'รอวัด' }}
-                                                </a>
-                                            </div>
+                                            @if($pt)
+                                                <div class="flex items-center justify-center gap-1 text-[10px] font-bold">
+                                                    <a href="{{ route('backend.care_chart.show', $pt->id) }}"
+                                                       class="px-2 py-0.5 rounded-md border transition-colors {{ $hasMorningVs ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-sky-300 hover:text-sky-700' }}">
+                                                        🌅 06:00 {{ $hasMorningVs ? number_format($hasMorningVs->temperature, 1) . '°C' : 'รอวัด' }}
+                                                    </a>
+                                                    <a href="{{ route('backend.care_chart.show', $pt->id) }}"
+                                                       class="px-2 py-0.5 rounded-md border transition-colors {{ $hasEveningVs ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-sky-300 hover:text-sky-700' }}">
+                                                        🌆 18:00 {{ $hasEveningVs ? number_format($hasEveningVs->temperature, 1) . '°C' : 'รอวัด' }}
+                                                    </a>
+                                                </div>
+                                            @endif
                                         </div>
                                     @else
                                         <div class="inline-flex flex-col items-center">
@@ -533,14 +539,16 @@
 
                                 <td class="px-4 py-3.5 text-center whitespace-nowrap">
                                     <div class="inline-flex flex-col items-center gap-1.5">
-                                        <a href="{{ route('backend.care_chart.show', $pt->id) }}"
-                                           class="w-full justify-center px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors inline-flex items-center gap-1.5">
-                                            <i class="fa-solid fa-pills"></i>
-                                            <span>V/S &amp; เช็คกินยา</span>
-                                            @if($ptMedCount > 0)
-                                                <span class="px-1.5 py-0.2 bg-white text-sky-700 rounded-md font-black text-[10px]">{{ $ptMedCount }} ยา</span>
-                                            @endif
-                                        </a>
+                                        @if($pt)
+                                            <a href="{{ route('backend.care_chart.show', $pt->id) }}"
+                                               class="w-full justify-center px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors inline-flex items-center gap-1.5">
+                                                <i class="fa-solid fa-pills"></i>
+                                                <span>V/S &amp; เช็คกินยา</span>
+                                                @if($ptMedCount > 0)
+                                                    <span class="px-1.5 py-0.2 bg-white text-sky-700 rounded-md font-black text-[10px]">{{ $ptMedCount }} ยา</span>
+                                                @endif
+                                            </a>
+                                        @endif
 
                                         <div class="flex items-center justify-center gap-1">
                                             @if($stay->status === 'staying')
@@ -568,10 +576,12 @@
                                                 <i class="fa-solid fa-pen-to-square text-[11px]"></i>
                                             </button>
 
-                                            <a href="{{ route('backend.patients.show', $pt->id) }}"
-                                               class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 flex items-center justify-center transition-colors" title="ดูแฟ้มประวัติ">
-                                                <i class="fa-solid fa-address-card text-[11px]"></i>
-                                            </a>
+                                            @if($pt)
+                                                <a href="{{ route('backend.patients.show', $pt->id) }}"
+                                                   class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 flex items-center justify-center transition-colors" title="ดูแฟ้มประวัติ">
+                                                    <i class="fa-solid fa-address-card text-[11px]"></i>
+                                                </a>
+                                            @endif
 
                                             <form id="delete-inf-desktop-{{ $stay->id }}" action="{{ route('backend.recruit_infirmary.destroy', $stay->id) }}" method="POST" class="inline">
                                                 @csrf @method('DELETE')
@@ -622,9 +632,9 @@
 </div>
 
 <!-- ========================================================================= -->
-<!-- ➕ Modal บันทึกแยกโรงนอน / นอนห้องพยาบาลหน่วยฝึก / ฝากนอน รพ. -->
+<!-- ➕ Modal บันทึกแยกโรงนอน / นอนห้องพยาบาลหน่วยฝึก / ฝากนอน รพ. (z-[90] เหนือปุ่ม AI) -->
 <!-- ========================================================================= -->
-<div id="addInfirmaryModal" class="{{ $errors->any() ? '' : 'hidden' }} fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+<div id="addInfirmaryModal" class="{{ $errors->any() ? '' : 'hidden' }} fixed inset-0 z-[90] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
     <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8">
         <div class="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
             <h3 class="text-lg font-black text-slate-800"><i class="fa-solid fa-bed-pulse text-teal-600 mr-2"></i>บันทึกแยกโรงนอน / ห้องพยาบาลหน่วยฝึก</h3>
@@ -657,7 +667,7 @@
                 <div id="inf_patient_dropdown" class="hidden absolute left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-white rounded-2xl shadow-xl border-2 border-slate-200 z-50 divide-y divide-slate-100">
                     @foreach($batchPatients as $pt)
                         @php
-                            $uName = $pt->militaryUnit->short_name ?? 'ไม่ระบุหน่วย';
+                            $uName = $pt->militaryUnit?->short_name ?? 'ไม่ระบุหน่วย';
                             $fName = ($pt->rank ?? '') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? '');
                             $dcObj = $pt->militaryDischarge;
                             $dcDx  = $dcObj ? $dcObj->diagnosis_text : '';
@@ -791,6 +801,33 @@
 
 @section('scripts')
 <script>
+    function escapeInfHtml(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function submitInfPostForm(actionUrl, method, fields) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = actionUrl;
+
+        const allFields = { _token: "{{ csrf_token() }}", _method: method, ...fields };
+        Object.entries(allFields).forEach(([key, val]) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = val ?? '';
+            form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+    }
+
     function openAddInfirmaryModal() {
         document.getElementById('addInfirmaryModal').classList.remove('hidden');
         setTimeout(() => document.getElementById('inf_patient_search')?.focus(), 100);
@@ -925,10 +962,13 @@
                 } else {
                     Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: data.message || 'ไม่พบ Dx. ใน HosXP', showConfirmButton: false, timer: 3000 });
                 }
+            })
+            .catch(() => {
+                Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'เชื่อมต่อ HosXP ไม่สำเร็จ', showConfirmButton: false, timer: 3000 });
             });
     }
 
-    // ✏️ ฟังก์ชันเปิดหน้าต่างแก้ไขข้อมูลการแยกโรงนอนรายบุคคล
+    // ✏️ ฟังก์ชันเปิดหน้าต่างแก้ไขข้อมูลการแยกโรงนอนรายบุคคล (รองรับอักขระพิเศษจาก HosXP 100%)
     function openEditInfirmaryModal(item) {
         Swal.fire({
             title: '<div class="text-lg font-black text-slate-800"><i class="fa-solid fa-pen-to-square text-amber-500 mr-2"></i>แก้ไขข้อมูลการแยกโรงนอน</div>',
@@ -936,10 +976,10 @@
                 <div class="text-left space-y-3.5 mt-2">
                     <div class="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm flex justify-between items-center">
                         <div>
-                            <div class="font-black text-slate-900 text-base">${item.soldier_name}</div>
-                            <div class="text-xs text-slate-500">หน่วยฝึก: <b class="text-indigo-600">${item.unit_name}</b></div>
+                            <div class="font-black text-slate-900 text-base">${escapeInfHtml(item.soldier_name)}</div>
+                            <div class="text-xs text-slate-500">หน่วยฝึก: <b class="text-indigo-600">${escapeInfHtml(item.unit_name)}</b></div>
                         </div>
-                        <span class="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold">HN: ${item.hn}</span>
+                        <span class="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold">HN: ${escapeInfHtml(item.hn)}</span>
                     </div>
 
                     <div>
@@ -974,18 +1014,18 @@
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">ระบุโซน / เตียง (ถ้ามี)</label>
-                            <input type="text" id="swal_edit_bed" value="${item.bed_or_zone}" placeholder="เช่น โซนทางเดินหายใจ, เตียง 2" class="w-full rounded-xl border-2 border-slate-300 bg-white p-2 text-xs text-slate-800 outline-none">
+                            <input type="text" id="swal_edit_bed" value="${escapeInfHtml(item.bed_or_zone)}" placeholder="เช่น โซนทางเดินหายใจ, เตียง 2" class="w-full rounded-xl border-2 border-slate-300 bg-white p-2 text-xs text-slate-800 outline-none">
                         </div>
                     </div>
 
                     <div>
                         <div class="flex justify-between items-center mb-1">
                             <label class="text-xs font-bold text-slate-700">อาการสำคัญ / การวินิจฉัยโรค (Dx.) <span class="text-rose-500">*</span></label>
-                            <button type="button" onclick="fetchHosxpDxForInfirmary('swal_edit_dx', '${item.patient_id}')" class="text-[11px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200">
+                            <button type="button" onclick="fetchHosxpDxForInfirmary('swal_edit_dx', '${escapeInfHtml(item.patient_id)}')" class="text-[11px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200">
                                 <i class="fa-solid fa-cloud-arrow-down mr-1"></i> ดึง Dx. จาก HosXP
                             </button>
                         </div>
-                        <input type="text" id="swal_edit_dx" value="${item.diagnosis_text}" placeholder="ระบุอาการสำคัญ หรือการวินิจฉัยโรค..." class="w-full rounded-xl border-2 border-slate-300 bg-white p-2.5 text-xs sm:text-sm font-semibold text-slate-800 outline-none">
+                        <input type="text" id="swal_edit_dx" value="${escapeInfHtml(item.diagnosis_text)}" placeholder="ระบุอาการสำคัญ หรือการวินิจฉัยโรค..." class="w-full rounded-xl border-2 border-slate-300 bg-white p-2.5 text-xs sm:text-sm font-semibold text-slate-800 outline-none">
                     </div>
 
                     <div>
@@ -994,17 +1034,17 @@
                             <button type="button" onclick="document.getElementById('swal_edit_care').value='สวมหน้ากากอนามัย แยกของใช้ และวัดไข้เช้า-เย็น'" class="px-2 py-0.5 bg-slate-100 hover:bg-teal-50 text-slate-600 rounded text-[10px] font-bold border border-slate-200">+ แยกกักทางเดินหายใจ</button>
                             <button type="button" onclick="document.getElementById('swal_edit_care').value='งดฝึกภาคสนามและงดวิ่ง 3 วัน ทานยาต่อเนื่อง'" class="px-2 py-0.5 bg-slate-100 hover:bg-teal-50 text-slate-600 rounded text-[10px] font-bold border border-slate-200">+ งดฝึกหนัก 3 วัน</button>
                         </div>
-                        <input type="text" id="swal_edit_care" value="${item.care_instruction}" placeholder="ระบุคำสั่งการดูแลหรือจำนวนวันที่ให้แยกนอน..." class="w-full rounded-xl border-2 border-slate-300 bg-white p-2 text-xs text-slate-800 outline-none">
+                        <input type="text" id="swal_edit_care" value="${escapeInfHtml(item.care_instruction)}" placeholder="ระบุคำสั่งการดูแลหรือจำนวนวันที่ให้แยกนอน..." class="w-full rounded-xl border-2 border-slate-300 bg-white p-2 text-xs text-slate-800 outline-none">
                     </div>
 
                     <div class="grid grid-cols-2 gap-2.5">
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">วันที่เริ่มแยกนอน <span class="text-rose-500">*</span></label>
-                            <input type="date" id="swal_edit_date" value="${item.admitted_date}" class="w-full rounded-xl border-2 border-slate-300 p-2 text-xs font-bold">
+                            <input type="date" id="swal_edit_date" value="${escapeInfHtml(item.admitted_date)}" class="w-full rounded-xl border-2 border-slate-300 p-2 text-xs font-bold">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">เวลา <span class="text-rose-500">*</span></label>
-                            <input type="time" id="swal_edit_time" value="${item.admitted_time}" class="w-full rounded-xl border-2 border-slate-300 p-2 text-xs font-bold">
+                            <input type="time" id="swal_edit_time" value="${escapeInfHtml(item.admitted_time)}" class="w-full rounded-xl border-2 border-slate-300 p-2 text-xs font-bold">
                         </div>
                     </div>
                 </div>
@@ -1042,22 +1082,7 @@
             }
         }).then((res) => {
             if (res.isConfirmed && res.value) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = item.update_url;
-                form.innerHTML = `
-                    <input type="hidden" name="_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="_method" value="PUT">
-                    <input type="hidden" name="location_type" value="${res.value.location_type}">
-                    <input type="hidden" name="reason_category" value="${res.value.reason_category}">
-                    <input type="hidden" name="bed_or_zone" value="${res.value.bed_or_zone}">
-                    <input type="hidden" name="diagnosis_text" value="${res.value.diagnosis_text}">
-                    <input type="hidden" name="care_instruction" value="${res.value.care_instruction}">
-                    <input type="hidden" name="admitted_date" value="${res.value.admitted_date}">
-                    <input type="hidden" name="admitted_time" value="${res.value.admitted_time}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
+                submitInfPostForm(item.update_url, 'PUT', res.value);
             }
         });
     }
@@ -1068,7 +1093,7 @@
             html: `
                 <div class="text-left space-y-3 mt-2">
                     <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs sm:text-sm text-emerald-900">
-                        ยืนยันให้ <b class="text-emerald-800">${soldierName}</b> ออกจากห้องพยาบาล/จุดแยกกัก กลับเข้าโรงนอนปกติของกองร้อย
+                        ยืนยันให้ <b class="text-emerald-800">${escapeInfHtml(soldierName)}</b> ออกจากห้องพยาบาล/จุดแยกกัก กลับเข้าโรงนอนปกติของกองร้อย
                     </div>
                     <div class="grid grid-cols-2 gap-2.5">
                         <div>
@@ -1091,27 +1116,14 @@
             cancelButtonText: 'ยกเลิก',
             confirmButtonColor: '#059669',
             customClass: { popup: 'rounded-3xl p-6' },
-            preConfirm: () => {
-                return {
-                    discharged_date: document.getElementById('swal_inf_date').value,
-                    discharged_time: document.getElementById('swal_inf_time').value,
-                    discharge_note: document.getElementById('swal_inf_note').value.trim()
-                };
-            }
+            preConfirm: () => ({
+                discharged_date: document.getElementById('swal_inf_date').value,
+                discharged_time: document.getElementById('swal_inf_time').value,
+                discharge_note: document.getElementById('swal_inf_note').value.trim()
+            })
         }).then((res) => {
             if (res.isConfirmed && res.value) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = actionUrl;
-                form.innerHTML = `
-                    <input type="hidden" name="_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="_method" value="PATCH">
-                    <input type="hidden" name="discharged_date" value="${res.value.discharged_date}">
-                    <input type="hidden" name="discharged_time" value="${res.value.discharged_time}">
-                    <input type="hidden" name="discharge_note" value="${res.value.discharge_note}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
+                submitInfPostForm(actionUrl, 'PATCH', res.value);
             }
         });
     }
