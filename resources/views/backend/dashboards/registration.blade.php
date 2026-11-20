@@ -112,10 +112,48 @@
                 </a>
             </div>
         </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
+        <!-- 📱 โหมดมือถือ: การ์ดซิงค์ HN อ่านง่ายเต็มจอ -->
+        <div class="md:hidden divide-y divide-slate-100 dark:divide-slate-700">
+            @foreach($actionNeededPatients as $pt)
+            <div class="p-4 space-y-2.5">
+                <div class="flex items-start justify-between gap-2">
+                    <div>
+                        <div class="js-reg-name-{{ $pt->id }} font-bold text-slate-800 dark:text-white text-sm">
+                            {{ $pt->rank }}{{ $pt->first_name }} {{ $pt->last_name }}
+                        </div>
+                        <div class="text-xs text-slate-500 font-mono mt-0.5">
+                            <i class="fa-regular fa-id-card mr-1"></i>{{ $pt->cid }}
+                        </div>
+                        <div class="text-xs text-slate-500 mt-0.5">
+                            <i class="fa-solid fa-tent text-indigo-400 mr-1"></i>{{ $pt->militaryUnit->short_name ?? $pt->militaryUnit->name ?? $pt->company ?? '-' }}
+                            @if($pt->intake_batch)
+                                <span class="text-indigo-500 font-semibold">(ผลัด {{ $pt->intake_batch }})</span>
+                            @endif
+                        </div>
+                    </div>
+                    <span class="js-reg-badge-{{ $pt->id }} px-2.5 py-1 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-[11px] font-bold shrink-0">
+                        รอซิงค์ HN
+                    </span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <button type="button" onclick="syncPatientInRegDashboard({{ $pt->id }})"
+                            class="js-reg-btn-{{ $pt->id }} py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-rotate"></i> ซิงค์ HosXP
+                    </button>
+                    <a href="{{ route('backend.patients.show', $pt->id) }}"
+                       class="py-2 px-3 bg-slate-100 text-slate-700 hover:bg-blue-600 hover:text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-user-pen"></i> ดูข้อมูล
+                    </a>
+                </div>
+            </div>
+            @endforeach
+        </div>
+
+        <!-- 💻 โหมดคอมพิวเตอร์: ตารางอ่านง่ายไม่บีบข้อความ -->
+        <div class="hidden md:block overflow-x-auto">
+            <table class="w-full min-w-[760px] text-left border-collapse">
                 <thead>
-                    <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                    <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider whitespace-nowrap">
                         <th class="px-6 py-4 font-bold border-b border-slate-100">ยศ ชื่อ-นามสกุล</th>
                         <th class="px-6 py-4 font-bold border-b border-slate-100">เลขบัตร ปชช.</th>
                         <th class="px-6 py-4 font-bold border-b border-slate-100">สังกัด</th>
@@ -126,24 +164,23 @@
                 <tbody class="text-sm">
                     @foreach($actionNeededPatients as $pt)
                     <tr id="reg-row-{{ $pt->id }}" class="hover:bg-slate-50 transition-colors group border-b border-slate-50 last:border-0">
-                        <td id="reg-name-{{ $pt->id }}" class="px-6 py-4 font-bold text-slate-800">{{ $pt->rank }}{{ $pt->first_name }} {{ $pt->last_name }}</td>
-                        <td class="px-6 py-4 font-medium text-slate-500 font-mono">{{ $pt->cid }}</td>
-                        <td class="px-6 py-4 text-slate-500">
+                        <td class="js-reg-name-{{ $pt->id }} px-6 py-4 font-bold text-slate-800 whitespace-nowrap">{{ $pt->rank }}{{ $pt->first_name }} {{ $pt->last_name }}</td>
+                        <td class="px-6 py-4 font-medium text-slate-500 font-mono whitespace-nowrap">{{ $pt->cid }}</td>
+                        <td class="px-6 py-4 text-slate-500 whitespace-nowrap">
                             {{ $pt->militaryUnit->short_name ?? $pt->militaryUnit->name ?? $pt->company ?? '-' }}
                             @if($pt->intake_batch)
                                 <span class="text-xs text-indigo-500 font-semibold">(ผลัด {{ $pt->intake_batch }})</span>
                             @endif
                         </td>
-                        <td class="px-6 py-4 text-center">
-                            <span id="reg-hn-badge-{{ $pt->id }}" class="px-2.5 py-1 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold">
+                        <td class="px-6 py-4 text-center whitespace-nowrap">
+                            <span class="js-reg-badge-{{ $pt->id }} px-2.5 py-1 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold">
                                 รอซิงค์ HN
                             </span>
                         </td>
-                        <td class="px-6 py-4 text-right">
+                        <td class="px-6 py-4 text-right whitespace-nowrap">
                             <div class="inline-flex items-center justify-end gap-2">
-                                <!-- 🌟 ปุ่มกดซิงค์ HosXP ทันทีจากหน้า Dashboard ทะเบียน -->
-                                <button type="button" id="btn-reg-sync-{{ $pt->id }}" onclick="syncPatientInRegDashboard({{ $pt->id }})" 
-                                        class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors text-xs shadow-sm">
+                                <button type="button" onclick="syncPatientInRegDashboard({{ $pt->id }})"
+                                        class="js-reg-btn-{{ $pt->id }} inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors text-xs shadow-sm">
                                     <i class="fa-solid fa-rotate"></i> ซิงค์ HosXP
                                 </button>
                                 <a href="{{ route('backend.patients.show', $pt->id) }}" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 text-slate-700 hover:bg-blue-600 hover:text-white rounded-lg font-bold transition-colors text-xs shadow-sm">
@@ -176,12 +213,12 @@
         }
     });
 
-    // 🔄 ฟังก์ชันซิงค์ HosXP รายบุคคลจากตารางหน้า Registration Dashboard
     function syncPatientInRegDashboard(patientId, forceSync = false, updateName = false) {
-        const btn = document.getElementById('btn-reg-sync-' + patientId);
-        const icon = btn ? btn.querySelector('i') : null;
-        if (btn) btn.disabled = true;
-        if (icon) icon.classList.add('fa-spin');
+        const btns = document.querySelectorAll('.js-reg-btn-' + patientId);
+        btns.forEach(b => {
+            b.disabled = true;
+            b.querySelector('i')?.classList.add('fa-spin');
+        });
 
         fetch(singleSyncUrlTemplate.replace('__ID__', patientId), {
             method: 'POST',
@@ -193,20 +230,22 @@
         })
         .then(res => res.json())
         .then(data => {
-            if (btn) btn.disabled = false;
-            if (icon) icon.classList.remove('fa-spin');
+            btns.forEach(b => {
+                b.disabled = false;
+                b.querySelector('i')?.classList.remove('fa-spin');
+            });
 
             if (data.status === 'synced') {
-                const badge = document.getElementById('reg-hn-badge-' + patientId);
-                if (badge) {
-                    badge.className = 'px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-black';
+                document.querySelectorAll('.js-reg-badge-' + patientId).forEach(badge => {
+                    badge.className = 'js-reg-badge-' + patientId + ' px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-black shrink-0';
                     badge.innerHTML = '<i class="fa-solid fa-check mr-1"></i>HN: ' + data.hn;
-                }
+                });
                 if (data.updated_name) {
-                    const nameEl = document.getElementById('reg-name-' + patientId);
-                    if (nameEl) nameEl.innerText = data.updated_name;
+                    document.querySelectorAll('.js-reg-name-' + patientId).forEach(el => {
+                        el.innerText = data.updated_name;
+                    });
                 }
-                if (btn) btn.remove();
+                btns.forEach(b => b.remove());
 
                 Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: data.message, showConfirmButton: false, timer: 2500 });
             } else if (data.status === 'mismatch_registrar') {

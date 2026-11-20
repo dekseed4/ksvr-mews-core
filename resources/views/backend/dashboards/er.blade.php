@@ -240,16 +240,61 @@
 
     </div>
 
-    <!-- 🗄️ โซน 3: ประวัติการรักษาย้อนหลัง (Completed / Cancelled Cases Today) -->
-    <div class="mt-8 bg-slate-50/80 rounded-3xl p-6 md:p-8 border border-slate-200">
-        <h3 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-200 pb-3">
-            <i class="fa-solid fa-clock-rotate-left text-slate-500"></i> ประวัติการจำหน่ายผู้ป่วย / ยกเลิก (ประจำวัน)
+    <!-- 🗄️ โซน 3: ประวัติการรักษาย้อนหลัง (Mobile Cards + Desktop Table) -->
+    <div class="mt-8 bg-slate-50/80 dark:bg-slate-800/60 rounded-3xl p-5 md:p-8 border border-slate-200 dark:border-slate-700">
+        <h3 class="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-5 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
+            <i class="fa-solid fa-clock-rotate-left text-slate-500 shrink-0"></i>
+            <span>ประวัติการจำหน่ายผู้ป่วย / ยกเลิก (ประจำวัน)</span>
+            <span class="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs px-2.5 py-0.5 rounded-full font-bold ml-auto shrink-0">{{ $completedCasesToday->count() }} ราย</span>
         </h3>
 
-        <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
+        <!-- 📱 โหมดมือถือ -->
+        <div class="md:hidden space-y-3">
+            @forelse($completedCasesToday as $history)
+                @php $isReturnedToUnit = !empty($history->returned_to_unit_at); @endphp
+                <div class="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-700 shadow-sm space-y-2.5">
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <div class="font-bold text-slate-800 dark:text-white text-sm">
+                                {{ $history->patient->rank }}{{ $history->patient->first_name }} {{ $history->patient->last_name }}
+                            </div>
+                            <div class="text-xs text-slate-400 mt-0.5"><i class="fa-regular fa-clock mr-1"></i>{{ $history->updated_at->format('H:i') }} น.</div>
+                        </div>
+                        <span class="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-2.5 py-0.5 rounded-lg font-black text-xs shrink-0">
+                            MEWS {{ $history->total_score }}
+                        </span>
+                    </div>
+                    <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                        <div class="min-w-0">
+                            @if($history->status === 'cancelled')
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-bold text-[11px] border border-slate-200"><i class="fa-solid fa-ban"></i> ถูกยกเลิก</span>
+                            @elseif($history->discharge_type === 'admitted')
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg {{ $isReturnedToUnit ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200' }} font-bold text-[11px] border">
+                                    Admit {{ $history->discharge_details ? "({$history->discharge_details})" : '' }} {{ $isReturnedToUnit ? '• กลับหน่วยแล้ว' : '(นอน รพ.)' }}
+                                </span>
+                            @elseif($history->discharge_type === 'refer')
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg {{ $isReturnedToUnit ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-blue-50 text-blue-700 border-blue-200' }} font-bold text-[11px] border">
+                                    Refer {{ $history->discharge_details ? "({$history->discharge_details})" : '' }} {{ $isReturnedToUnit ? '• กลับหน่วยแล้ว' : '' }}
+                                </span>
+                            @else
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-[11px] border border-emerald-200"><i class="fa-solid fa-house-chimney-medical"></i> จำหน่ายกลับหน่วย</span>
+                            @endif
+                        </div>
+                        <a href="{{ route('backend.mews.show', $history->id) }}" class="text-indigo-600 font-bold text-xs bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 shrink-0">
+                            <i class="fa-solid fa-folder-open mr-1"></i> ดูแฟ้ม
+                        </a>
+                    </div>
+                </div>
+            @empty
+                <div class="py-8 text-center text-slate-400 text-xs">ยังไม่มีประวัติการจำหน่ายผู้ป่วยในวันนี้</div>
+            @endforelse
+        </div>
+
+        <!-- 💻 โหมดคอมพิวเตอร์ -->
+        <div class="hidden md:block overflow-x-auto">
+            <table class="w-full min-w-[720px] text-left border-collapse">
                 <thead>
-                    <tr class="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-200">
+                    <tr class="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">
                         <th class="px-4 py-3 font-bold">เวลา</th>
                         <th class="px-4 py-3 font-bold">ชื่อ-นามสกุลผู้ป่วย</th>
                         <th class="px-4 py-3 font-bold text-center">MEWS ล่าสุด</th>
@@ -259,54 +304,51 @@
                 </thead>
                 <tbody class="text-sm">
                     @forelse($completedCasesToday as $history)
-                        <tr class="border-b border-slate-100 hover:bg-white transition-colors">
-                            <td class="px-4 py-4 text-slate-500 font-medium">{{ $history->updated_at->format('H:i') }} น.</td>
-                            <td class="px-4 py-4 font-bold text-slate-700">
+                        <tr class="border-b border-slate-100 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-colors">
+                            <td class="px-4 py-4 text-slate-500 font-medium whitespace-nowrap">{{ $history->updated_at->format('H:i') }} น.</td>
+                            <td class="px-4 py-4 font-bold text-slate-700 dark:text-white whitespace-nowrap">
                                 {{ $history->patient->rank }}{{ $history->patient->first_name }} {{ $history->patient->last_name }}
                             </td>
-                            <td class="px-4 py-4 text-center">
-                                <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded font-black">{{ $history->total_score }}</span>
+                            <td class="px-4 py-4 text-center whitespace-nowrap">
+                                <span class="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 px-2.5 py-1 rounded font-black">{{ $history->total_score }}</span>
                             </td>
                             <td class="px-4 py-4">
-                                @php
-                                    $isReturnedToUnit = !empty($history->returned_to_unit_at);
-                                @endphp
-
+                                @php $isReturnedToUnit = !empty($history->returned_to_unit_at); @endphp
                                 @if($history->status === 'cancelled')
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-bold text-xs border border-slate-200">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-bold text-xs border border-slate-200 whitespace-nowrap">
                                         <i class="fa-solid fa-ban"></i> ถูกยกเลิก
                                     </span>
                                 @elseif($history->discharge_type === 'admitted')
                                     @if($isReturnedToUnit)
                                         <span class="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
-                                            <i class="fa-solid fa-house-chimney-check text-emerald-600"></i> 
+                                            <i class="fa-solid fa-house-chimney-check text-emerald-600"></i>
                                             Admit {{ $history->discharge_details ? "({$history->discharge_details})" : '' }} • กลับหน่วยฝึกแล้ว
                                         </span>
                                     @else
                                         <span class="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 font-bold text-xs border border-amber-200">
-                                            <i class="fa-solid fa-bed-pulse text-amber-600"></i> 
+                                            <i class="fa-solid fa-bed-pulse text-amber-600"></i>
                                             Admit {{ $history->discharge_details ? "({$history->discharge_details})" : '' }} (กำลังนอน รพ.)
                                         </span>
                                     @endif
                                 @elseif($history->discharge_type === 'refer')
                                     @if($isReturnedToUnit)
                                         <span class="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
-                                            <i class="fa-solid fa-house-chimney-check text-emerald-600"></i> 
+                                            <i class="fa-solid fa-house-chimney-check text-emerald-600"></i>
                                             ส่งต่อ Refer {{ $history->discharge_details ? "({$history->discharge_details})" : '' }} • กลับหน่วยฝึกแล้ว
                                         </span>
                                     @else
                                         <span class="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold text-xs border border-blue-200">
-                                            <i class="fa-solid fa-ambulance text-blue-600"></i> 
+                                            <i class="fa-solid fa-ambulance text-blue-600"></i>
                                             ส่งต่อ (Refer) {{ $history->discharge_details ? "({$history->discharge_details})" : '' }}
                                         </span>
                                     @endif
                                 @else
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200 whitespace-nowrap">
                                         <i class="fa-solid fa-house-chimney-medical"></i> จำหน่ายกลับหน่วย
                                     </span>
                                 @endif
                             </td>
-                            <td class="px-4 py-4 text-right">
+                            <td class="px-4 py-4 text-right whitespace-nowrap">
                                 <a href="{{ route('backend.mews.show', $history->id) }}" class="text-indigo-500 hover:text-indigo-700 font-bold text-xs transition-colors bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 shadow-sm">
                                     <i class="fa-solid fa-folder-open mr-1"></i> ดูแฟ้ม
                                 </a>

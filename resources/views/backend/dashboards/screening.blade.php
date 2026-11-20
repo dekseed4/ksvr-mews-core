@@ -213,9 +213,43 @@
                 ประวัติที่ดำเนินการเสร็จสิ้นวันนี้ ({{ $completedToday->count() }} ราย)
             </h3>
         </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-xs text-left">
-                <thead class="bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-b border-slate-100 dark:border-slate-700">
+        <!-- 📱 โหมดมือถือ -->
+        <div class="md:hidden divide-y divide-slate-100 dark:divide-slate-700/70">
+            @foreach($completedToday as $done)
+                <div class="p-4 flex items-center justify-between gap-3">
+                    <div class="min-w-0 space-y-1">
+                        <div class="font-bold text-slate-800 dark:text-white text-sm truncate">
+                            {{ $done->patient->rank ?? '' }}{{ $done->patient->first_name ?? '' }} {{ $done->patient->last_name ?? '' }}
+                        </div>
+                        <div class="text-[11px] text-slate-400">
+                            {{ $done->patient->militaryUnit->short_name ?? '-' }} • {{ $done->updated_at->format('H:i น.') }}
+                        </div>
+                        <div class="text-xs font-bold">
+                            @if($done->status === 'cancelled')
+                                <span class="text-slate-400">ยกเลิกเคส</span>
+                            @elseif($done->discharge_type === 'admitted')
+                                <span class="text-amber-600">Admit {{ $done->discharge_details }}</span>
+                            @elseif($done->discharge_type === 'refer')
+                                <span class="text-blue-600">Refer {{ $done->discharge_details }}</span>
+                            @else
+                                <span class="text-emerald-600">จำหน่ายกลับหน่วย</span>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end gap-2 shrink-0">
+                        <span class="px-2.5 py-0.5 rounded-lg font-black text-xs {{ $done->total_score >= 4 ? 'bg-rose-100 text-rose-700' : ($done->total_score >= 2 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700') }}">
+                            MEWS {{ $done->total_score }}
+                        </span>
+                        <a href="{{ route('backend.mews.show', $done->id) }}" class="text-xs text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100 font-bold">ดูแฟ้ม</a>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+
+        <!-- 💻 โหมดคอมพิวเตอร์ -->
+        <div class="hidden md:block overflow-x-auto">
+            <table class="w-full min-w-[640px] text-xs text-left">
+                <thead class="bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-b border-slate-100 dark:border-slate-700 whitespace-nowrap">
                     <tr>
                         <th class="px-4 py-3 font-bold">ผู้ป่วย / หน่วยฝึก</th>
                         <th class="px-4 py-3 font-bold text-center">MEWS</th>
@@ -226,11 +260,11 @@
                 <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
                     @foreach($completedToday as $done)
                         <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                            <td class="px-4 py-3">
+                            <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="font-bold text-slate-800 dark:text-white">{{ $done->patient->rank ?? '' }}{{ $done->patient->first_name ?? '' }} {{ $done->patient->last_name ?? '' }}</div>
                                 <div class="text-[11px] text-slate-400">{{ $done->patient->militaryUnit->short_name ?? '-' }} • {{ $done->updated_at->format('H:i น.') }}</div>
                             </td>
-                            <td class="px-4 py-3 text-center">
+                            <td class="px-4 py-3 text-center whitespace-nowrap">
                                 <span class="px-2.5 py-1 rounded-lg font-black {{ $done->total_score >= 4 ? 'bg-rose-100 text-rose-700' : ($done->total_score >= 2 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700') }}">
                                     {{ $done->total_score }}
                                 </span>
@@ -246,7 +280,7 @@
                                     <span class="text-emerald-600">จำหน่ายกลับหน่วย</span>
                                 @endif
                             </td>
-                            <td class="px-4 py-3 text-right">
+                            <td class="px-4 py-3 text-right whitespace-nowrap">
                                 <a href="{{ route('backend.mews.show', $done->id) }}" class="text-indigo-600 hover:underline font-bold">ดูแฟ้ม</a>
                             </td>
                         </tr>
