@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Patient;
 use App\Models\MewsAssessment;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
@@ -31,7 +32,7 @@ class DashboardController extends Controller
         if ($requestedView === 'er' && $isER) return $this->erDashboard();
         if ($requestedView === 'screening' && $isScreening) return $this->screeningDashboard();
         if ($requestedView === 'medic' && $isMedic) return $this->medicDashboard();
-        if ($requestedView === 'registration' && $isRegistration) return $this->registrationDashboard();
+        if ($requestedView === 'registration' && $isRegistration) return $this->registrationDashboard($request);
         if ($requestedView === 'opd' && $isOPD) return $this->opdDashboard();
 
         if ($isExecutive) {
@@ -50,41 +51,248 @@ class DashboardController extends Controller
     }
 
     // =================================================================
-    // 📇 1. แดชบอร์ดทะเบียน (Registration Dashboard)
+    // 🛡️ ตัวช่วยตรวจเลขบัตรประชาชน 13 หลักตามสูตร Mod-11
     // =================================================================
-    private function registrationDashboard()
+    private function isValidThaiCid(?string $cid): bool
     {
-        $totalPatients = \App\Models\Patient::count();
-        
-        // 🌟 นับเฉพาะคนที่ยังไม่มีรหัส HN (NULL, ค่าว่าง, หรือ '-')
-        $unsyncedQuery = \App\Models\Patient::where(function($q) {
+        $clean = preg_replace('/\D/', '', (string) $cid);
+        if (strlen($clean) !== 13) {
+            return false;
+        }
+        $sum = 0;
+        for ($i = 0; $i < 12; $i++) {
+            $sum += (int) $clean[$i] * (13 - $i);
+        }
+        return ((11 - ($sum % 11)) % 10) === (int) $clean[12];
+    }
+
+    // =================================================================
+    // 🎨 ตัวช่วยจำแนกหมวดสิทธิการรักษาพยาบาลตามรหัสสีมาตรฐาน KSVR
+    // =================================================================
+    private function classifyHealthCoverage(?string $pttypeName): string
+    {
+        $text = trim((string) $pttypeName);
+        if ($text === '' || $text === '-') {
+            return 'unsynced';
+        }
+        $n = mb_strtolower($text);
+        if (str_contains($n, 'บัตรทอง') || str_contains($n, 'หลักประกันสุขภาพ') || str_contains($n, 'uc') || str_contains($n, 'ถ้วนหน้า')) {
+            return 'uc';
+        }
+        if (str_contains($n, 'ประกันสังคม')) {
+            return 'sss';
+        }
+        if (str_contains($n, 'ข้าราชการพลเรือน') || (str_contains($n, 'ข้าราชการ') && !str_contains($n, 'ทหาร'))) {
+            return 'civil';
+        }
+        if (str_contains($n, 'ครอบครัว')) {
+            return 'family';
+        }
+        if (str_contains($n, 'ทหาร') || str_contains($n, 'กองทัพ') || str_contains($n, 'กลาโหม') || str_contains($n, 'พลฯ')) {
+            return 'military';
+        }
+        return 'other';
+    }
+
+    // =================================================================
+    // 📇 1. แดชบอร์ดทะเบียน (Registration Dashboard — Full Control Edition)
+    // คำนวณทุกสถิติจากฐานข้อมูล KSVR 100% ไม่รบกวน HosXP ตอนเปิดหน้า
+    // =================================================================
+    private function registrationDashboard(Request $request)
+    {
+        $selectedBatch = $request->query('batch', 'all');
+        $hasDutyStatus = Schema::hasColumn('patients', 'duty_status');
+        $hasPttypeName = Schema::hasColumn('patients', 'pttype_name');
+        $hasDob        = Schema::hasColumn('patients', 'dob');
+        $hasPhone      = Schema::hasColumn('patients', 'phone');
+
+        // 1. ดึงรายการผลัดทั้งหมดที่มีในระบบสำหรับ Dropdown กรองผลัด
+        $availableBatches = Patient::whereNotNull('intake_batch')
+            ->where('intake_batch', '!=', '')
+            ->distinct()
+            ->orderByDesc('intake_batch')
+            ->pluck('intake_batch')
+            ->values();
+
+        // 2. Query หลักสำหรับกำลังพล (กรองตามผลัด และตัดกลุ่มไม่มารายงานตัว/ต้องโทษ/เสียชีวิต ออกจากงานรอซิงค์)
+        $basePatientQuery = Patient::query();
+        if ($selectedBatch !== 'all' && $selectedBatch !== '') {
+            $basePatientQuery->where('intake_batch', $selectedBatch);
+        }
+
+        // ยอดกำลังพลทั้งหมดในผลัดที่เลือก (รวมทุกสถานะ)
+        $totalPatients = (clone $basePatientQuery)->count();
+
+        // ยอดกลุ่มไม่ได้ประจำการ (ไม่มารายงานตัว / ต้องโทษ / เสียชีวิต)
+        $inactiveExcludedCount = 0;
+        $activeDutyQuery = clone $basePatientQuery;
+        if ($hasDutyStatus) {
+            $inactiveExcludedCount = (clone $basePatientQuery)
+                ->whereIn('duty_status', ['absent', 'imprisoned', 'deceased'])
+                ->count();
+
+            $activeDutyQuery->where(function ($q) {
+                $q->whereNull('duty_status')
+                  ->orWhereNotIn('duty_status', ['absent', 'imprisoned', 'deceased']);
+            });
+        }
+
+        // 3. นับยอดมี HN แล้ว vs รอซิงค์ HN (เฉพาะผู้ประจำการปกติ เพื่อไม่ให้มีงานค้างหลอกตา)
+        $activeDutyTotal = (clone $activeDutyQuery)->count();
+        $unsyncedQuery = (clone $activeDutyQuery)->where(function ($q) {
             $q->whereNull('hn')->orWhere('hn', '')->orWhere('hn', '-');
         });
         $unsyncedPatients = (clone $unsyncedQuery)->count();
+        $syncedPatients   = max(0, $activeDutyTotal - $unsyncedPatients);
+        $hnSyncPercent    = $activeDutyTotal > 0 ? round(($syncedPatients / $activeDutyTotal) * 100, 1) : 100;
 
-        // 1. หา ID ของใบล่าสุดของแต่ละแฟ้มประวัติ (Case)
-        $latestMewsIds = \App\Models\MewsAssessment::select(\Illuminate\Support\Facades\DB::raw('MAX(id) as id'))
+        // 4. ดึงเคส MEWS ที่กำลังเปิดรักษาอยู่ (Pending) และคัดแยก "เคสด่วนที่ยังไม่มี HN"
+        $latestMewsIds = MewsAssessment::select(DB::raw('MAX(id) as id'))
             ->groupBy('case_id')
             ->pluck('id');
 
-        // 2. ดึงเฉพาะเคสที่ "ใบล่าสุด" มีสถานะเป็น pending พร้อมดึงข้อมูลคนไข้มาด้วย
-        $activePatientsList = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
+        $activePatientsList = MewsAssessment::with(['patient.militaryUnit'])
             ->whereIn('id', $latestMewsIds)
             ->where('status', 'pending')
-            ->orderBy('updated_at', 'desc')
+            ->whereHas('patient', function ($q) use ($selectedBatch) {
+                if ($selectedBatch !== 'all' && $selectedBatch !== '') {
+                    $q->where('intake_batch', $selectedBatch);
+                }
+            })
+            ->orderByDesc('total_score')
+            ->orderByDesc('updated_at')
             ->get();
 
         $activeCases = $activePatientsList->count();
 
-        // 🌟 3. ดึง 5 รายการที่ยังไม่มี HN พร้อม Eager Load หน่วยทหาร
+        // 🚨 เคสด่วน: กำลังส่งเข้า ER/OPD แต่ยังไม่มี HN (ต้องเปิดบัตรใน HosXP ด่วนที่สุด!)
+        $urgentNoHnCases = $activePatientsList->filter(function ($mews) {
+            $hn = trim((string) ($mews->patient?->hn ?? ''));
+            return $mews->patient && ($hn === '' || $hn === '-');
+        })->values();
+
+        // 5. ดึงรายการรอซิงค์ HN สูงสุด 10 รายการล่าสุด (ไม่นับรวมเคสไม่มารายงานตัว/ต้องโทษ/เสียชีวิต)
         $actionNeededPatients = (clone $unsyncedQuery)
             ->with('militaryUnit')
-            ->orderBy('created_at', 'desc')
-            ->take(5)
+            ->orderByDesc('created_at')
+            ->take(10)
             ->get();
 
+        // 6. ศูนย์ตรวจสอบคุณภาพข้อมูล (Data Quality Audit) + สรุปสิทธิการรักษา (Query เบาเฉพาะคอลัมน์จำเป็น)
+        $selectCols = ['id', 'rank', 'first_name', 'last_name', 'cid', 'hn', 'intake_batch', 'military_unit_id', 'company'];
+        if ($hasPttypeName) $selectCols[] = 'pttype_name';
+        if ($hasDob)        $selectCols[] = 'dob';
+        if ($hasPhone)      $selectCols[] = 'phone';
+
+        $auditRecords = (clone $activeDutyQuery)
+            ->select($selectCols)
+            ->with('militaryUnit:id,short_name,name')
+            ->get();
+
+        $invalidCidList     = [];
+        $missingContactList = [];
+        $missingPttypeCount = 0;
+        $cidGroups          = [];
+
+        $coverageSummary = [
+            'uc'       => ['label' => 'บัตรทอง (UC)',       'count' => 0, 'badge' => 'bg-amber-100 text-amber-900 border-amber-400',     'bar' => 'bg-amber-500'],
+            'sss'      => ['label' => 'ประกันสังคม',        'count' => 0, 'badge' => 'bg-blue-600 text-white border-blue-700',           'bar' => 'bg-blue-600'],
+            'civil'    => ['label' => 'ข้าราชการพลเรือน',   'count' => 0, 'badge' => 'bg-sky-100 text-sky-800 border-sky-300',           'bar' => 'bg-sky-400'],
+            'military' => ['label' => 'ทหาร',               'count' => 0, 'badge' => 'bg-emerald-800 text-white border-emerald-900',     'bar' => 'bg-emerald-800'],
+            'family'   => ['label' => 'ครอบครัว',           'count' => 0, 'badge' => 'bg-emerald-100 text-emerald-800 border-emerald-300','bar' => 'bg-emerald-400'],
+            'other'    => ['label' => 'อื่นๆ',              'count' => 0, 'badge' => 'bg-yellow-100 text-yellow-900 border-yellow-300',  'bar' => 'bg-yellow-400'],
+            'unsynced' => ['label' => 'ยังไม่ซิงค์สิทธิ',    'count' => 0, 'badge' => 'bg-slate-100 text-slate-600 border-slate-300',     'bar' => 'bg-slate-400'],
+        ];
+
+        foreach ($auditRecords as $p) {
+            $fullName = trim(($p->rank ?? '') . ($p->first_name ?? '') . ' ' . ($p->last_name ?? ''));
+            $unitShort = $p->militaryUnit?->short_name ?? $p->militaryUnit?->name ?? $p->company ?? '-';
+            $cleanCid = preg_replace('/\D/', '', (string) ($p->cid ?? ''));
+            $hasHn = !empty(trim((string) ($p->hn ?? ''))) && trim((string) $p->hn) !== '-';
+
+            // 6.1 ตรวจ Mod-11
+            if (!$this->isValidThaiCid($p->cid)) {
+                $invalidCidList[] = [
+                    'id'    => $p->id,
+                    'name'  => $fullName,
+                    'cid'   => $p->cid ?: '(ว่าง)',
+                    'hn'    => $p->hn ?: 'ไม่มี HN',
+                    'unit'  => $unitShort,
+                    'batch' => $p->intake_batch ?: '-',
+                ];
+            }
+
+            // 6.2 เก็บกลุ่มตรวจเลข ปชช. ซ้ำ
+            if ($cleanCid !== '') {
+                $cidGroups[$cleanCid][] = [
+                    'id'    => $p->id,
+                    'name'  => $fullName,
+                    'cid'   => $p->cid,
+                    'hn'    => $p->hn ?: 'ไม่มี HN',
+                    'unit'  => $unitShort,
+                    'batch' => $p->intake_batch ?: '-',
+                ];
+            }
+
+            // 6.3 มี HN แล้วแต่ยังไม่มีสิทธิการรักษา + นับกลุ่มสีสิทธิ
+            $pttypeText = $hasPttypeName ? trim((string) ($p->pttype_name ?? '')) : '';
+            if ($hasHn && ($pttypeText === '' || $pttypeText === '-')) {
+                $missingPttypeCount++;
+            }
+            $covKey = $this->classifyHealthCoverage($pttypeText);
+            $coverageSummary[$covKey]['count']++;
+
+            // 6.4 ตรวจข้อมูลวันเกิดหรือเบอร์โทรว่าง
+            $missDob   = $hasDob && empty($p->dob);
+            $missPhone = $hasPhone && empty(trim((string) ($p->phone ?? '')));
+            if ($missDob || $missPhone) {
+                $missingContactList[] = [
+                    'id'      => $p->id,
+                    'name'    => $fullName,
+                    'cid'     => $p->cid ?: '-',
+                    'hn'      => $p->hn ?: 'ไม่มี HN',
+                    'unit'    => $unitShort,
+                    'batch'   => $p->intake_batch ?: '-',
+                    'missing' => trim(($missDob ? 'วันเกิด' : '') . ($missDob && $missPhone ? ', ' : '') . ($missPhone ? 'เบอร์โทร' : '')),
+                ];
+            }
+        }
+
+        // คัดเฉพาะเลข ปชช. ที่ซ้ำตั้งแต่ 2 รายการขึ้นไป
+        $duplicateCidList = [];
+        foreach ($cidGroups as $dupCid => $items) {
+            if (count($items) > 1) {
+                foreach ($items as $it) {
+                    $duplicateCidList[] = $it;
+                }
+            }
+        }
+
+        $dataAudit = [
+            'invalid_cid_count'     => count($invalidCidList),
+            'invalid_cid_list'      => array_slice($invalidCidList, 0, 100),
+            'duplicate_cid_count'   => count($duplicateCidList),
+            'duplicate_cid_list'    => array_slice($duplicateCidList, 0, 100),
+            'missing_pttype_count'  => $missingPttypeCount,
+            'missing_contact_count' => count($missingContactList),
+            'missing_contact_list'  => array_slice($missingContactList, 0, 100),
+        ];
+
         return view('backend.dashboards.registration', compact(
-            'totalPatients', 'unsyncedPatients', 'activeCases', 'actionNeededPatients', 'activePatientsList'
+            'totalPatients',
+            'activeDutyTotal',
+            'syncedPatients',
+            'unsyncedPatients',
+            'hnSyncPercent',
+            'inactiveExcludedCount',
+            'activeCases',
+            'actionNeededPatients',
+            'activePatientsList',
+            'urgentNoHnCases',
+            'availableBatches',
+            'selectedBatch',
+            'dataAudit',
+            'coverageSummary'
         ));
     }
 
@@ -97,17 +305,14 @@ class DashboardController extends Controller
             return false;
         }
 
-        // 1. หากประเมินหรือรับเข้าห้องฉุกเฉินแล้ว (assessment_type === 'er') ถือเป็นเคส ER
         if ($mews->assessment_type === 'er') {
             return true;
         }
 
-        // 2. หากคะแนนความเสี่ยงเป็น สีเหลือง (observe) หรือ สีแดง (emergency) ถือเป็นเคส ER
         if (in_array($mews->risk_level, ['observe', 'emergency'], true)) {
             return true;
         }
 
-        // 3. หากเป็นสีเขียว (normal) แต่มีการติ๊กอาการฉุกเฉินเฉพาะโรค ถือเป็นเคส ER
         $rawSyms = is_string($mews->symptoms) ? json_decode($mews->symptoms, true) : ($mews->symptoms ?? []);
         if (is_array($rawSyms)) {
             $filteredSyms = array_filter($rawSyms, fn($v) => !empty(trim((string)$v)));
@@ -116,7 +321,6 @@ class DashboardController extends Controller
             }
         }
 
-        // หากไม่เข้าเกณฑ์ข้างต้นเลย (คือ ประเมินจากหน่วยฝึก + สีเขียวปกติ + ไม่มีอาการฉุกเฉิน) ถือเป็นเคส OPD 100%
         return false;
     }
 
@@ -130,13 +334,11 @@ class DashboardController extends Controller
             ->groupBy('case_id')
             ->pluck('id');
 
-        // ดึงใบประเมินล่าสุดของแต่ละแฟ้มที่ยัง Pending อยู่
         $pendingLatestList = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
             ->whereIn('id', $latestIds)
             ->where('status', 'pending')
             ->get();
 
-        // 🔴 1. คิวรอรับเข้า ER (ส่งมาจากภาคสนาม และต้องเข้าเกณฑ์ ER เท่านั้น ห้ามเคส OPD หลุดเข้ามา)
         $incomingCases = $pendingLatestList
             ->filter(fn($item) => $item->assessment_type === 'field' && $this->isErCase($item))
             ->sortBy([
@@ -145,13 +347,11 @@ class DashboardController extends Controller
             ])
             ->values();
 
-        // 🟡 2. กำลังติดตามอาการในห้องฉุกเฉิน (Active in ER)
         $activeCases = $pendingLatestList
             ->filter(fn($item) => $item->assessment_type === 'er')
             ->sortByDesc('updated_at')
             ->values();
 
-        // 🗄️ 3. ประวัติการจำหน่ายผู้ป่วย / ยกเลิก (ประจำวัน) — กรองเฉพาะเคสของ ER เท่านั้น! (ไม่เอาเคส OPD มาปน)
         $completedCasesToday = \App\Models\MewsAssessment::with('patient')
             ->whereIn('id', $latestIds)
             ->whereIn('status', ['completed', 'cancelled'])
@@ -183,7 +383,6 @@ class DashboardController extends Controller
         $userRoles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
         $isAdmin = in_array('admin', $userRoles);
 
-        // 🌟 1. สถิติผลงานวันนี้ (นับเฉพาะใบที่ "ตัวฉัน" เป็นคนประเมินจริงๆ)
         $myStats = [
             'evaluated_today' => \App\Models\MewsAssessment::where('evaluator_id', $user->id)
                                     ->whereDate('created_at', $today)
@@ -192,21 +391,18 @@ class DashboardController extends Controller
                                     ->count('patient_id'),
         ];
 
-        // 🌟 2. หาคนไข้ที่อยู่ในความดูแล (ถ้าไม่ใช่ Admin ต้องตรงทั้ง "หน่วยฝึก" และ "ประจำผลัด")
         $unitPatientIdsQuery = \App\Models\Patient::query();
         if (!$isAdmin) {
             $unitPatientIdsQuery->where('military_unit_id', $user->military_unit_id)
-                                ->where('intake_batch', $user->intake_batch); // 🌟 เพิ่มกรองผลัดตรงนี้!
+                                ->where('intake_batch', $user->intake_batch);
         }
         $unitPatientIds = $unitPatientIdsQuery->pluck('id');
 
-        // 🌟 3. หา ID ใบล่าสุดของคนไข้ในหน่วยและผลัดนั้น
         $absoluteLatestIds = \App\Models\MewsAssessment::whereIn('patient_id', $unitPatientIds)
             ->select(\Illuminate\Support\Facades\DB::raw('MAX(id) as id'))
             ->groupBy('patient_id')
             ->pluck('id');
 
-        // 🌟 4. ดึงข้อมูลใบล่าสุดมาแสดงผล
         $myPatients = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
             ->whereIn('id', $absoluteLatestIds)
             ->where(function($q) use ($today) {
@@ -231,9 +427,8 @@ class DashboardController extends Controller
     // =================================================================
     private function executiveDashboard(Request $request)
     {
-        // 1. รับค่าจากตัวกรอง
         $filterBatch    = $request->query('batch', 'all');
-        $filterMode     = $request->query('filter_mode', 'month'); // month, year, custom
+        $filterMode     = $request->query('filter_mode', 'month');
         $filterMonth    = $request->query('month', date('m'));
         $filterYear     = $request->query('year', date('Y'));
         $startDateInput = $request->query('start_date', date('Y-m-d'));
@@ -241,12 +436,10 @@ class DashboardController extends Controller
 
         $thaiMonthsShort = [1 => 'ม.ค.', 2 => 'ก.พ.', 3 => 'มี.ค.', 4 => 'เม.ย.', 5 => 'พ.ค.', 6 => 'มิ.ย.', 7 => 'ก.ค.', 8 => 'ส.ค.', 9 => 'ก.ย.', 10 => 'ต.ค.', 11 => 'พ.ย.', 12 => 'ธ.ค.'];
 
-        // 🌟 2. คำนวณช่วงเวลา (Date Range) & สร้างข้อความภาษาไทยอัตโนมัติ
         if ($filterMode === 'custom') {
             $startDate = Carbon::parse($startDateInput)->startOfDay();
             $endDate   = Carbon::parse($endDateInput)->endOfDay();
             
-            // ป้องกันกรณีเลือกวันสิ้นสุดน้อยกว่าวันเริ่มต้น
             if ($endDate->lt($startDate)) {
                 $endDate = $startDate->copy()->endOfDay();
                 $endDateInput = $startDateInput;
@@ -277,7 +470,6 @@ class DashboardController extends Controller
             $trendText  = 'ตลอดทั้งปี ' . ($filterYear + 543);
             $badgeText  = 'ตลอดทั้งปี ' . ($filterYear + 543);
         } else {
-            // โหมด Month (Default)
             $startDate = Carbon::createFromDate($filterYear, $filterMonth, 1)->startOfMonth();
             $endDate   = $startDate->copy()->endOfMonth();
             $prevStartDate = $startDate->copy()->subMonth()->startOfMonth();
@@ -289,7 +481,6 @@ class DashboardController extends Controller
             $badgeText  = 'ประจำเดือน ' . $monthName . ' ' . ($filterYear + 543);
         }
 
-        // 🌟 3. สร้าง Query Optimizer (กรองวันที่ + ตัดเคสยกเลิก + กรองผลัดทหาร)
         $applyBaseFilters = function ($query) use ($startDate, $endDate, $filterBatch) {
             $query->whereBetween('created_at', [$startDate, $endDate])
                   ->where('status', '!=', 'cancelled');
@@ -312,9 +503,6 @@ class DashboardController extends Controller
             }
         };
 
-        // ==========================================
-        // 📊 4. คำนวณภาพรวมปฏิบัติการ (KPI Cards)
-        // ==========================================
         $patientsPeriod     = \App\Models\MewsAssessment::where($applyBaseFilters)->distinct('patient_id')->count('patient_id');
         $patientsPrevPeriod = \App\Models\MewsAssessment::where($applyPrevFilters)->distinct('patient_id')->count('patient_id');
         $growthPercent      = $patientsPrevPeriod > 0 ? round((($patientsPeriod - $patientsPrevPeriod) / $patientsPrevPeriod) * 100, 1) : ($patientsPeriod > 0 ? 100 : 0);
@@ -327,9 +515,6 @@ class DashboardController extends Controller
             'admit_refer'       => \App\Models\MewsAssessment::where($applyBaseFilters)->whereIn('discharge_type', ['admitted', 'refer'])->distinct('patient_id')->count('patient_id'),
         ];
 
-        // ==========================================
-        // 🏥 5. ผลลัพธ์การรักษา (Discharge Status)
-        // ==========================================
         $dischargeStats = \App\Models\MewsAssessment::where($applyBaseFilters)
                                 ->where('status', 'completed')
                                 ->select('discharge_type', \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
@@ -337,9 +522,6 @@ class DashboardController extends Controller
                                 ->pluck('total', 'discharge_type')
                                 ->toArray();
 
-        // ==========================================
-        // ⭕ 6. กราฟวงแหวน: ระดับความเสี่ยงล่าสุดของแต่ละคน (Risk Levels)
-        // ==========================================
         $riskLevels = ['normal' => 0, 'observe' => 0, 'emergency' => 0];
         $latestAssessmentsIds = \App\Models\MewsAssessment::where($applyBaseFilters)
             ->select(\Illuminate\Support\Facades\DB::raw('MAX(id) as id'))
@@ -353,9 +535,6 @@ class DashboardController extends Controller
             }
         }
 
-        // ==========================================
-        // 📊 7. กราฟแท่ง: 5 อันดับอาการฉุกเฉิน (ไม่ซ้ำคน - ครบทั้ง 23 อาการ)
-        // ==========================================
         $allAssessments = \App\Models\MewsAssessment::where($applyBaseFilters)->whereNotNull('symptoms')->get();
                                 
         $symptomPatients = []; 
@@ -377,7 +556,6 @@ class DashboardController extends Controller
             $top5Raw = array_slice($symptomCounts, 0, 5, true);
         }
 
-        // 🌟 พจนานุกรมอาการฉุกเฉินฉบับเต็มครบทุกโรค
         $dict = [
             'mi_chest_pain'           => 'MI (เจ็บหน้าอก)', 
             'mi_dyspnea'              => 'MI (เหนื่อยหอบ)', 
@@ -410,15 +588,11 @@ class DashboardController extends Controller
             $top5Data[]   = $count;
         }
 
-        // ==========================================
-        // 📈 8. แนวโน้มผู้ป่วย (Trend Chart)
-        // ==========================================
         $trendLabels = []; 
         $trendData   = [];
         $diffDays    = $startDate->diffInDays($endDate);
 
         if ($filterMode === 'year' || $diffDays > 60) {
-            // กรณีดูทั้งปี หรือช่วงวันเกิน 60 วัน -> จัดกลุ่มเป็น "รายเดือน"
             $trendRaw = \App\Models\MewsAssessment::where($applyBaseFilters)
                 ->select(\Illuminate\Support\Facades\DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month_year'), \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
                 ->groupBy('month_year')->pluck('total', 'month_year')->toArray();
@@ -431,7 +605,6 @@ class DashboardController extends Controller
                 $current->addMonth();
             }
         } elseif ($filterMode === 'month') {
-            // กรณีดูรายเดือน -> แสดงเลขวันที่ 1 ถึง 30/31 เหมือนต้นฉบับเป๊ะ
             $trendRaw = \App\Models\MewsAssessment::where($applyBaseFilters)
                 ->select(\Illuminate\Support\Facades\DB::raw('DATE(created_at) as date'), \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
                 ->groupBy('date')->pluck('total', 'date')->toArray();
@@ -442,7 +615,6 @@ class DashboardController extends Controller
                 $trendData[]   = $trendRaw[$dateStr] ?? 0;
             }
         } else {
-            // กรณี Custom Date Range (ไม่เกิน 60 วัน) -> แสดงเป็น "22 ต.ค."
             $trendRaw = \App\Models\MewsAssessment::where($applyBaseFilters)
                 ->select(\Illuminate\Support\Facades\DB::raw('DATE(created_at) as date'), \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
                 ->groupBy('date')->pluck('total', 'date')->toArray();
@@ -456,9 +628,6 @@ class DashboardController extends Controller
             }
         }
 
-        // ==========================================
-        // 🏕️ 9. 5 อันดับหน่วยที่มีผู้ป่วยสูงสุด (Top 5 Units)
-        // ==========================================
         $topUnitsQuery = \Illuminate\Support\Facades\DB::table('mews_assessments')
             ->join('patients', 'mews_assessments.patient_id', '=', 'patients.id')
             ->whereBetween('mews_assessments.created_at', [$startDate, $endDate])
@@ -472,16 +641,12 @@ class DashboardController extends Controller
             ->whereNotNull('patients.company')->where('patients.company', '!=', '')
             ->groupBy('patients.company')->orderByDesc('total')->limit(5)->get();
 
-        // ==========================================
-        // 🚦 10. จำนวนเคสจำแนกตามสี + ข้อมูลเจาะลึกสำหรับผู้บริหาร (สีเหลือง & สีแดง)
-        // ==========================================
         $mewsLevelsToday = \App\Models\MewsAssessment::where($applyBaseFilters)
             ->select('risk_level', \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
             ->groupBy('risk_level')
             ->pluck('total', 'risk_level')
             ->toArray();
 
-        // 🌟 ดึงใบประเมินล่าสุดของแต่ละคนครบทั้ง 3 กลุ่ม (สีเขียว normal, สีเหลือง observe, สีแดง emergency)
         $executivePatientDetails = ['normal' => [], 'observe' => [], 'emergency' => []];
 
         foreach (['normal', 'observe', 'emergency'] as $targetLevel) {
@@ -505,7 +670,6 @@ class DashboardController extends Controller
                 $battalion = $p->militaryUnit->battalion ?? $p->battalion ?? '';
                 if ($battalion) $unitName .= " ({$battalion})";
 
-                // แปลรหัสอาการฉุกเฉินให้เป็นภาษาไทย
                 $rawSyms = is_string($c->symptoms) ? json_decode($c->symptoms, true) : ($c->symptoms ?? []);
                 $symNames = [];
                 if (is_array($rawSyms)) {
@@ -514,7 +678,6 @@ class DashboardController extends Controller
                     }
                 }
 
-                // สรุปสถานะการรักษา / การส่งต่อ (Disposition) ให้ตรงกับสถานะการกลับหน่วยฝึกจริง
                 $hasReturnedExec = !empty($c->returned_to_unit_at);
                 if ($c->status === 'completed') {
                     if ($c->discharge_type === 'admitted') {
@@ -571,12 +734,6 @@ class DashboardController extends Controller
             }
         }
 
-       
-
-        // ==========================================
-        // 🦠 11. ระบบตรวจจับกลุ่มเสี่ยงระบาด 48 ชม. ล่าสุด (Outbreak & Influenza Radar)
-        // ==========================================
-        // 11.1 ค้นหาหน่วยฝึกที่มีทหารไข้สูง (>= 38.0°C) ในรอบ 48 ชม.
         $outbreakUnits = \Illuminate\Support\Facades\DB::table('mews_assessments')
             ->join('patients', 'mews_assessments.patient_id', '=', 'patients.id')
             ->leftJoin('recruit_screenings', 'patients.id', '=', 'recruit_screenings.patient_id')
@@ -615,7 +772,6 @@ class DashboardController extends Controller
             ->groupBy('case_id')
             ->pluck('id');
 
-        // 🟢 1. ดึงข้อมูลคิวรอตรวจ OPD (เฉพาะใบล่าสุดที่ Pending และเป็นเคส OPD คือไม่เข้าเกณฑ์ ER)
         $opdQueue = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
             ->whereIn('id', $latestIds)
             ->where('status', 'pending')
@@ -624,7 +780,6 @@ class DashboardController extends Controller
             ->filter(fn($item) => !$this->isErCase($item))
             ->values();
 
-        // 🗄️ 2. ดึงประวัติการจำหน่ายผู้ป่วยนอก / ยกเลิก (เฉพาะเคส OPD ของวันนี้)
         $completedOpdToday = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
             ->whereIn('id', $latestIds)
             ->whereIn('status', ['completed', 'cancelled'])
@@ -648,7 +803,6 @@ class DashboardController extends Controller
             ->groupBy('case_id')
             ->pluck('id');
 
-        // 1. ดึงเคสที่กำลังรอคัดกรอง/ดำเนินการ (Pending) ทั้งหมด แล้วเรียง MEWS สูงสุดขึ้นอันดับ 1
         $screeningQueue = \App\Models\MewsAssessment::with(['patient.militaryUnit', 'evaluator'])
             ->whereIn('id', $latestIds)
             ->where('status', 'pending')
@@ -662,20 +816,16 @@ class DashboardController extends Controller
                 return $item;
             })
             ->sort(function ($a, $b) {
-                // ลำดับที่ 1: คะแนน MEWS สูงสุดขึ้นก่อนเสมอ
                 if ((int)$a->total_score !== (int)$b->total_score) {
                     return (int)$b->total_score <=> (int)$a->total_score;
                 }
-                // ลำดับที่ 2: หาก MEWS เท่ากัน เอาคนที่มีอาการฉุกเฉินเฉพาะโรคขึ้นก่อน
                 if ($a->has_emergency_symptom !== $b->has_emergency_symptom) {
                     return $b->has_emergency_symptom <=> $a->has_emergency_symptom;
                 }
-                // ลำดับที่ 3: เอาคนที่ส่งมาก่อน (รอคิวนานกว่า) ขึ้นก่อน
                 return $a->created_at <=> $b->created_at;
             })
             ->values();
 
-        // 2. สรุปยอด KPI จุดคัดกรอง
         $stats = [
             'total_pending' => $screeningQueue->count(),
             'emergency'     => $screeningQueue->filter(fn($c) => $c->risk_level === 'emergency' || $c->has_emergency_symptom)->count(),
@@ -683,7 +833,6 @@ class DashboardController extends Controller
             'normal'        => $screeningQueue->filter(fn($c) => $c->risk_level === 'normal' && !$c->has_emergency_symptom)->count(),
         ];
 
-        // 3. ประวัติที่ปิดเคส/จำหน่ายแล้ววันนี้
         $completedToday = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
             ->whereIn('id', $latestIds)
             ->whereIn('status', ['completed', 'cancelled'])
