@@ -38,12 +38,10 @@
         $userRoles = is_string($rawRoles) ? json_decode($rawRoles, true) : (array) $rawRoles;
         $isAdmin = in_array('admin', $userRoles);
 
-        // ดึงค่า AVPU และ O2 Sat ให้รองรับทั้งสองชื่อฟิลด์
         $avpuVal = $mews->consciousness ?? $mews->avpu ?? null;
         $o2satVal = $mews->o2sat ?? $mews->o2_sat ?? null;
         $noteText = trim((string)($mews->symptoms_note ?? ''));
 
-        // ดึงประวัติการประเมินทั้งหมดในรอบการรักษาเดียวกัน (case_id เดียวกัน) มาแสดงในตาราง Note ด้านล่าง
         $caseAssessments = \App\Models\MewsAssessment::where('case_id', $mews->case_id)
             ->orderBy('created_at', 'asc')
             ->get();
@@ -94,7 +92,6 @@
                 <span class="flex-1"><b>สิทธิการรักษา</b> {{ $mews->patient->pttype_name ?: '.....................................................' }}</span>
             </div>
             <div class="flex justify-between items-baseline mt-1 gap-2">
-                <!-- 🌟 แสดงโน้ตอาการสำคัญ / มาทำแผล (ถ้าไม่กรอกจะแสดงเส้นประอัตโนมัติ) -->
                 <span class="flex-1">
                     <b>อาการสำคัญ / บันทึกเพิ่มเติม</b> 
                     @if($noteText !== '')
@@ -105,6 +102,8 @@
                 </span>
                 <span class="shrink-0"><b>นน.</b> {{ $mews->patient->weight ?: '.......' }} กก. &nbsp;&nbsp;<b>ส่วนสูง</b> {{ $mews->patient->height ?: '.......' }} ซม.</span>
             </div>
+            <!-- 🌟 เพิ่มจุดไข่ปลาบรรทัดถัดไป สำหรับเจ้าหน้าที่จุดคัดกรองเขียนบันทึกเพิ่มเติม -->
+            <div class="mt-2 border-b-[1.5px] border-dotted border-black w-full h-3"></div>
         </div>
 
         <!-- ส่วนที่ 2: หัวเรื่อง -->
@@ -130,7 +129,7 @@
                 <table class="mews-table w-full mb-2">
                     <thead>
                         <tr>
-                            <th colspan="9" class="text-xs">Krit-Siwara Modified Early Warning Score (KSVR MEWS)</th>
+                            <th colspan="10" class="text-xs">Krit-Siwara Modified Early Warning Score (KSVR MEWS)</th>
                         </tr>
                         <tr>
                             <th>Score</th>
@@ -141,7 +140,9 @@
                             <th class="bg-[#fde047]">1</th>
                             <th class="bg-[#f97316] text-white">2</th>
                             <th class="bg-[#ef4444] text-white">3</th>
-                            <th class="w-12">Data</th>
+                            <th class="w-11">Data</th>
+                            <!-- 🌟 ช่องรับรองจุดคัดกรอง (เขียนมือ) ต่อจาก Data -->
+                            <th class="w-14 bg-slate-100 leading-tight text-[10px]">จุดคัดกรอง</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -155,6 +156,7 @@
                             <td class="bg-[#f97316] text-white">180-199</td>
                             <td class="bg-[#ef4444] text-white">≥200</td>
                             <td class="font-bold">{{ $mews->systolic_bp ?? '-' }}</td>
+                            <td></td>
                         </tr>
                         <tr>
                             <td class="font-bold text-left px-1">Pulse</td>
@@ -166,6 +168,7 @@
                             <td class="bg-[#f97316] text-white">111-120</td>
                             <td class="bg-[#ef4444] text-white">≥121</td>
                             <td class="font-bold">{{ $mews->heart_rate ?? '-' }}</td>
+                            <td></td>
                         </tr>
                         <tr>
                             <td class="font-bold text-left px-1">RR</td>
@@ -177,6 +180,7 @@
                             <td class="bg-[#f97316] text-white">26-29</td>
                             <td class="bg-[#ef4444] text-white">≥30</td>
                             <td class="font-bold">{{ $mews->respiratory_rate ?? '-' }}</td>
+                            <td></td>
                         </tr>
                         <tr>
                             <td class="font-bold text-left px-1">Temp</td>
@@ -188,6 +192,7 @@
                             <td class="bg-[#f97316] text-white">38.1-39.5</td>
                             <td class="bg-[#ef4444] text-white">≥39.6</td>
                             <td class="font-bold">{{ $mews->temperature ?? '-' }}</td>
+                            <td></td>
                         </tr>
                         <tr>
                             <td class="font-bold text-left px-1">AVPU</td>
@@ -198,8 +203,8 @@
                             <td class="bg-[#fde047]">Response<br>to pain</td>
                             <td class="bg-[#f97316] text-white">Response<br>to voice</td>
                             <td class="bg-[#ef4444] text-white">Unresponsive</td>
-                            <!-- 🌟 ดึงค่าจาก consciousness (หรือ avpu) ให้แสดงผลถูกต้อง 100% -->
                             <td class="font-bold">{{ $avpuVal ? strtoupper($avpuVal) : '-' }}</td>
+                            <td></td>
                         </tr>
                         <tr>
                             <td class="font-bold text-left px-1">O2 sat</td>
@@ -210,47 +215,47 @@
                             <td class="bg-gray-200"></td>
                             <td class="bg-gray-200"></td>
                             <td class="bg-gray-200"></td>
-                            <!-- 🌟 ดึงค่าจาก o2sat (หรือ o2_sat) ให้แสดงผลถูกต้อง 100% -->
                             <td class="font-bold">{{ $o2satVal ?? '-' }}</td>
+                            <td></td>
                         </tr>
                     </tbody>
                 </table>
 
-                <!-- แถบล่าง: Pain Score และ ผลรวม -->
-                <div class="flex items-stretch border border-black h-[96px]">
+                <!-- แถบล่าง: Pain Score และ ตารางผลรวม (เพิ่มช่องรับรอง จุดคัดกรอง แบบเขียนมือ) -->
+                <div class="flex items-stretch border border-black h-[108px]">
                     
                     <!-- ฝั่งซ้าย: Wong-Baker FACES Scale -->
-                    <div class="w-[75%] p-1 flex flex-col justify-between border-r border-black bg-white relative">
+                    <div class="w-[62%] p-1 flex flex-col justify-between border-r border-black bg-white relative">
                         <div class="text-[10px] text-center font-bold underline mb-1">Pain Measurements score</div>
                         
-                        <div class="grid grid-cols-6 items-end px-1 pb-4 w-full text-[9px] font-bold text-center leading-tight">
+                        <div class="grid grid-cols-6 items-end px-0.5 pb-4 w-full text-[8.5px] font-bold text-center leading-tight">
                             <div class="flex flex-col items-center justify-end w-full">
                                 <span class="mb-1 text-center w-full">No Pain</span>
-                                <i class="fa-solid fa-face-smile text-[#16a34a] text-[28px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
+                                <i class="fa-solid fa-face-smile text-[#16a34a] text-[24px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
                             </div>
                             <div class="flex flex-col items-center justify-end w-full">
                                 <span class="mb-1 text-center w-full">Mild</span>
-                                <i class="fa-solid fa-face-smile text-[#84cc16] text-[28px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
+                                <i class="fa-solid fa-face-smile text-[#84cc16] text-[24px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
                             </div>
                             <div class="flex flex-col items-center justify-end w-full">
                                 <span class="mb-1 text-center w-full">Moderate</span>
-                                <i class="fa-solid fa-face-meh text-[#facc15] text-[28px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
+                                <i class="fa-solid fa-face-meh text-[#facc15] text-[24px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
                             </div>
                             <div class="flex flex-col items-center justify-end w-full">
                                 <span class="mb-1 text-center w-full">Severe</span>
-                                <i class="fa-solid fa-face-frown text-[#f59e0b] text-[28px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
+                                <i class="fa-solid fa-face-frown text-[#f59e0b] text-[24px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
                             </div>
                             <div class="flex flex-col items-center justify-end w-full">
                                 <span class="mb-1 text-center w-full">Very Severe</span>
-                                <i class="fa-solid fa-face-angry text-[#ea580c] text-[28px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
+                                <i class="fa-solid fa-face-angry text-[#ea580c] text-[24px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
                             </div>
                             <div class="flex flex-col items-center justify-end w-full">
-                                <span class="mb-1 text-center w-full whitespace-nowrap leading-[10px]">Worst Pain<br>Possible</span>
-                                <i class="fa-solid fa-face-sad-cry text-[#dc2626] text-[28px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
+                                <span class="mb-1 text-center w-full whitespace-nowrap leading-[9px]">Worst Pain<br>Possible</span>
+                                <i class="fa-solid fa-face-sad-cry text-[#dc2626] text-[24px]" style="-webkit-text-stroke: 0.7px #000; line-height: 1;"></i>
                             </div>
                         </div>
 
-                        <div class="absolute bottom-1.5 left-0 w-full grid grid-cols-6 px-1 text-[10px] font-bold text-center">
+                        <div class="absolute bottom-1.5 left-0 w-full grid grid-cols-6 px-0.5 text-[10px] font-bold text-center">
                             <div>0</div>
                             <div>1-3</div>
                             <div class="col-span-2">4-6</div>
@@ -259,28 +264,40 @@
                         </div>
                     </div>
 
-                    <!-- ฝั่งขวา: ผลรวมคะแนน และชื่อผู้ประเมิน -->
-                    <div class="w-[25%] text-[11px]">
-                        <div class="flex border-b border-black h-1/3">
-                            <div class="w-1/2 border-r border-black flex items-center justify-center font-bold bg-slate-100">MEWS รวม</div>
-                            <div class="w-1/2 flex items-center justify-center font-black text-xl">{{ $mews->total_score }}</div>
+                    <!-- ฝั่งขวา: ผลรวมคะแนน, Pain score และผู้ประเมิน (มีช่องเขียนรับรองของจุดคัดกรองต่อท้าย) -->
+                    <div class="w-[38%] flex flex-col text-[10px]">
+                        <!-- หัวคอลัมน์ย่อย -->
+                        <div class="grid grid-cols-12 border-b border-black bg-slate-100 font-bold text-[9.5px] h-[18px]">
+                            <div class="col-span-4 border-r border-black flex items-center justify-center">รายการ</div>
+                            <div class="col-span-4 border-r border-black flex items-center justify-center">Data</div>
+                            <div class="col-span-4 flex items-center justify-center">จุดคัดกรอง</div>
                         </div>
-                        <div class="flex border-b border-black h-1/3">
-                            <div class="w-1/2 border-r border-black flex items-center justify-center font-bold bg-slate-100">Pain score</div>
-                            <div class="w-1/2 flex items-center justify-center font-black text-base">{{ $mews->pain_score ?? '-' }}</div>
+                        <!-- แถว MEWS รวม -->
+                        <div class="grid grid-cols-12 border-b border-black flex-1">
+                            <div class="col-span-4 border-r border-black flex items-center justify-center font-bold bg-slate-50">MEWS รวม</div>
+                            <div class="col-span-4 border-r border-black flex items-center justify-center font-black text-lg">{{ $mews->total_score }}</div>
+                            <div class="col-span-4 flex items-center justify-center bg-white"></div>
                         </div>
-                        <div class="flex h-1/3">
-                            <div class="w-1/2 border-r border-black flex items-center justify-center font-bold bg-slate-100">ผู้ประเมิน</div>
-                            <div class="w-1/2 flex items-center justify-center text-[9px] leading-tight text-center px-1">
+                        <!-- แถว Pain score -->
+                        <div class="grid grid-cols-12 border-b border-black flex-1">
+                            <div class="col-span-4 border-r border-black flex items-center justify-center font-bold bg-slate-50">Pain score</div>
+                            <div class="col-span-4 border-r border-black flex items-center justify-center font-black text-sm">{{ $mews->pain_score ?? '-' }}</div>
+                            <div class="col-span-4 flex items-center justify-center bg-white"></div>
+                        </div>
+                        <!-- แถว ผู้ประเมิน -->
+                        <div class="grid grid-cols-12 flex-1">
+                            <div class="col-span-4 border-r border-black flex items-center justify-center font-bold bg-slate-50">ผู้ประเมิน</div>
+                            <div class="col-span-4 border-r border-black flex items-center justify-center text-[8.5px] leading-tight text-center px-0.5">
                                 {{ $mews->evaluator->rank ?? '' }}{{ $mews->evaluator->name ?? 'ไม่ระบุ' }}
                             </div>
+                            <div class="col-span-4 flex items-center justify-center bg-white"></div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- ฝั่งขวา: Normal V/S by age -->
-            <div class="w-48">
+            <div class="w-44 shrink-0">
                 <table class="mews-table w-full">
                     <thead>
                         <tr><th colspan="3">Normal V/S by age</th></tr>
@@ -367,10 +384,10 @@
             </div>
         </div>
 
-        <!-- ส่วนที่ 5: Note Table (ดึงทุกการประเมินในรอบการรักษานี้มาแสดงพร้อมโน้ต) -->
+        <!-- ส่วนที่ 5: Note Table -->
         <div class="mt-2">
             <div class="text-[11px] underline mb-1 font-bold">Note (บันทึกการประเมินและอาการปัจจุบัน)</div>
-            <table class="mews-table w-full min-h-[150px]">
+            <table class="mews-table w-full min-h-[140px]">
                 <thead>
                     <tr class="bg-slate-50">
                         <th class="w-20">ว/ด/ป/เวลา</th>
@@ -387,7 +404,7 @@
                             $rowAvpu = $item->consciousness ?? $item->avpu ?? '-';
                             $rowStatus = $item->treatment_note ?? ($item->status === 'completed' ? ($item->discharge_type === 'admitted' ? 'Admit: ' . $item->discharge_details : ($item->discharge_type === 'refer' ? 'Refer: ' . $item->discharge_details : 'จำหน่ายกลับกองร้อย')) : '');
                         @endphp
-                        <tr class="h-9">
+                        <tr class="h-8">
                             <td>{{ $item->created_at->addYears(543)->format('d/m/y H:i') }}</td>
                             <td class="text-[10px]">
                                 T:{{ $item->temperature ?? '-' }} BP:{{ $item->systolic_bp ?? '-' }} PR:{{ $item->heart_rate ?? '-' }}<br>
@@ -401,7 +418,7 @@
 
                     <!-- เติมแถวว่างให้ครบ 5 แถวสำหรับเขียนมือต่อ -->
                     @for($i = $caseAssessments->count(); $i < 5; $i++)
-                        <tr class="h-9"><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="h-8"><td></td><td></td><td></td><td></td><td></td></tr>
                     @endfor
                 </tbody>
             </table>

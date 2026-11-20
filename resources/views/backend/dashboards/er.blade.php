@@ -5,66 +5,8 @@
 
 @section('content')
 <div class="max-w-7xl mx-auto mt-4 pb-12 space-y-8">
-    <!-- 🌟 แท็บสลับมุมมอง (Dynamic Dashboard Switcher - Enterprise Grade) -->
-    @php
-        $user = auth()->user();
-        
-        // 1. ป้องกัน JSON Parsing Error
-        $userRoles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        
-        // 2. เช็คสิทธิ์แบบแยกขาดจากกัน (Strict Check)
-        $isAdmin = in_array('admin', $userRoles);
-        $isExecutive = $isAdmin || in_array('executive', $userRoles);
-        $isER = $isAdmin || in_array('er_nurse', $userRoles);
-        $isMedic = $isAdmin || in_array('medic', $userRoles);
-        $isRegistration = $isAdmin || in_array('registration', $userRoles);
-        $isOPD = $isAdmin || in_array('opd_nurse', $userRoles);
-        
-        // 3. นับจำนวนสิทธิ์ที่มี เพื่อตัดสินใจว่าจะโชว์แท็บสลับหน้าจอไหม
-        $accessCount = ($isExecutive ? 1 : 0) + ($isER ? 1 : 0) + ($isMedic ? 1 : 0) + ($isRegistration ? 1 : 0) + ($isOPD ? 1 : 0); 
-        $hasMultipleRoles = $accessCount > 1;
-        
-        // ค่า Default ของหน้านี้
-        $currentView = request('view') ?? 'er'; 
-    @endphp
-
-    @if($hasMultipleRoles)
-    <div class="flex justify-center mb-6 animate-fade-in-up">
-        <div class="bg-slate-100 p-1 rounded-2xl inline-flex border border-slate-200 shadow-sm max-w-full overflow-x-auto">
-            
-            @if($isExecutive)
-            <a href="{{ route('backend.dashboard', ['view' => 'executive']) }}" class="px-4 md:px-6 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap {{ $currentView === 'executive' ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-900/5' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50' }}">
-                <i class="fa-solid fa-chart-pie"></i> <span class="hidden sm:inline">ผู้บริหาร</span>
-            </a>
-            @endif
-            
-            @if($isER)
-            <a href="{{ route('backend.dashboard', ['view' => 'er']) }}" class="px-4 md:px-6 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap {{ $currentView === 'er' ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-slate-900/5' : 'text-slate-500 hover:text-emerald-600 hover:bg-slate-200/50' }}">
-                <i class="fa-solid fa-truck-medical"></i> <span class="hidden sm:inline">ER</span>
-            </a>
-            @endif
-            
-            @if($isMedic)
-            <a href="{{ route('backend.dashboard', ['view' => 'medic']) }}" class="px-4 md:px-6 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap {{ $currentView === 'medic' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-900/5' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-200/50' }}">
-                <i class="fa-solid fa-walkie-talkie"></i> <span class="hidden sm:inline">เสนารักษ์</span>
-            </a>
-            @endif
-
-            @if($isRegistration)
-            <a href="{{ route('backend.dashboard', ['view' => 'registration']) }}" class="px-4 md:px-6 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap {{ $currentView === 'registration' ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-900/5' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-200/50' }}">
-                <i class="fa-solid fa-id-card-clip"></i> <span class="hidden sm:inline">ทะเบียน</span>
-            </a>
-            @endif
-
-            @if($isOPD)
-            <a href="{{ route('backend.dashboard', ['view' => 'opd']) }}" class="px-4 md:px-6 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap {{ $currentView === 'opd' ? 'bg-white text-teal-700 shadow-sm ring-1 ring-slate-900/5' : 'text-slate-500 hover:text-teal-600 hover:bg-slate-200/50' }}">
-                <i class="fa-solid fa-stethoscope"></i> <span class="hidden sm:inline">OPD</span>
-            </a>
-            @endif
-
-        </div>
-    </div>
-    @endif
+    
+    @include('backend.dashboards.partials.view_tabs')
 
     <!-- 🟢 Header ทักทายพยาบาล + ปุ่มลัดประเมินผู้ป่วยด่วน -->
     <div class="bg-gradient-to-r from-emerald-800 to-teal-700 rounded-3xl p-6 md:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg text-white">

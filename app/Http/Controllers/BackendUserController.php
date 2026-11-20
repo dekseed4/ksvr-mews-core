@@ -63,7 +63,7 @@ class BackendUserController extends Controller
             'phone'    => ['required', 'string', 'regex:/^[0-9]{9,10}$/', 'unique:users,phone'],
             'roles'    => 'required|array|min:1',
             // 🌟 เพิ่ม medical_staff เข้าไปในรายการสิทธิ์ที่ระบบอนุญาต
-            'roles.*'  => 'in:admin,executive,er_nurse,opd_nurse,medic,registration,medical_staff',
+            'roles.*'  => 'in:admin,executive,er_nurse,opd_nurse,medic,registration,medical_staff,screening',
             
             // บังคับกรอกหน่วยฝึกและผลัดที่ "เฉพาะเมื่อเป็นเสนารักษ์เท่านั้น"
             'military_unit_id' => in_array('medic', $request->roles ?? []) ? 'required|exists:military_units,id' : 'nullable',
@@ -174,8 +174,8 @@ class BackendUserController extends Controller
             'email'    => 'required|string|email|max:255|unique:users,email,' . $user->id,
             'phone'    => ['required', 'string', 'regex:/^[0-9]{9,10}$/', 'unique:users,phone,' . $user->id],
             'roles'    => 'required|array|min:1',
-            // 🌟 เพิ่ม medical_staff เข้าไปในรายการสิทธิ์ที่ระบบอนุญาต
-            'roles.*'  => 'in:admin,executive,er_nurse,opd_nurse,medic,registration,medical_staff',
+            // 🌟 เพิ่ม medical_staff และ screening เข้าไปในรายการสิทธิ์ที่ระบบอนุญาต
+            'roles.*'  => 'in:admin,executive,er_nurse,opd_nurse,medic,registration,medical_staff,screening',
             
             'military_unit_id' => $isMedic ? 'required|exists:military_units,id' : 'nullable',
             'intake_batch'     => $isMedic ? 'required|string|max:20' : 'nullable',

@@ -121,7 +121,8 @@ class MewsAssessmentController extends Controller
                         || in_array('er_nurse', $userRoles) 
                         || in_array('opd_nurse', $userRoles) 
                         || in_array('medic', $userRoles)
-                        || in_array('medical_staff', $userRoles);
+                        || in_array('medical_staff', $userRoles)
+                        || in_array('screening', $userRoles);
 
         if (!$isClinical) {
             abort(403, 'คุณไม่มีสิทธิ์เข้าถึงหน้าจอประเมินทางการแพทย์ครับ');
@@ -140,7 +141,7 @@ class MewsAssessmentController extends Controller
         $latestMews = \App\Models\MewsAssessment::where('patient_id', $patient_id)->orderBy('id', 'desc')->first();
 
         // ป้องกันชั้นที่ 1: ตรวจสอบว่าเป็นเคสค้าง (Pending) และผู้ใช้ไม่ใช่ ER หรือไม่?
-        $isERorAdmin = in_array('admin', $userRoles) || in_array('er_nurse', $userRoles);
+        $isERorAdmin = in_array('admin', $userRoles) || in_array('er_nurse', $userRoles) || in_array('screening', $userRoles);
         if ($latestMews && $latestMews->status === 'pending' && !$isERorAdmin) {
             return redirect()->route('backend.patients.index')->with('error', 'ผู้ป่วยรายนี้ถูกส่งตัวเข้า ER ไปแล้วครับ การประเมินซ้ำ (ครั้งที่ 2) ต้องเป็นหน้าที่ของพยาบาล ER เท่านั้นครับ');
         }
@@ -190,7 +191,7 @@ class MewsAssessmentController extends Controller
 
             // 2. เช็คสิทธิ์ผู้ประเมิน
             $userRoles = is_string(auth()->user()->roles) ? json_decode(auth()->user()->roles, true) : (array)(auth()->user()->roles ?? auth()->user()->role);
-            $isERorAdmin = in_array('admin', $userRoles) || in_array('er_nurse', $userRoles);
+            $isERorAdmin = in_array('admin', $userRoles) || in_array('er_nurse', $userRoles) || in_array('screening', $userRoles);
 
             // 3. เช็คว่าเป็นการ "เปิดแฟ้มใหม่ (ประเมินครั้งที่ 1)" หรือ "ประเมินซ้ำในแฟ้มเดิม (ครั้งที่ 2+)"
             $isNewCase = (!$latestMews || in_array($latestMews->status, ['completed', 'cancelled']));
@@ -249,8 +250,8 @@ class MewsAssessmentController extends Controller
                 return back()->withInput()->with('error', 'ระบบขัดข้อง ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแลระบบ');
             }
 
-            // ยิงแจ้งเตือนเข้า Discord เฉพาะ "ประเมินครั้งที่ 1 จากหน่วย (field)" เท่านั้น
-            if ($isNewCase && $realAssessmentType === 'field') {
+            // ✅ 1. ยิงแจ้งเตือนเข้า Discord เฉพาะ "ประเมินรอบแรก (เปิดแฟ้มใหม่)" ทุกเคส (รอบถัดไปไม่เด้ง)
+            if ($isNewCase) {
                 try {
                     $this->sendDiscordAlert($assessment, false, false);
                     $this->checkAndSendOutbreakAlert($assessment, $patient);
@@ -259,38 +260,44 @@ class MewsAssessmentController extends Controller
                 }
             }
 
-            // ยิงสัญญาณ Real-time WebSocket (Reverb) บนหน้าเว็บ
+            // ✅ 2. ยิงสัญญาณ Real-time WebSocket & Web Push เฉพาะรอบแรก ($isNewCase) ทุกเคส (รวมสีเขียว)
             try {
                 broadcast(new PatientMewsUpdated($request->patient_id));
 
-                $hasEmergencyConditions = !empty($request->emergency_conditions) && count($request->emergency_conditions) > 0;
-                $isHighRiskMews = in_array($request->risk_level, ['observe', 'emergency']);
-                $isRouteToER = $isHighRiskMews || $hasEmergencyConditions;
+                if ($isNewCase) {
+                    $hasEmergencyConditions = !empty($request->emergency_conditions) && count($request->emergency_conditions) > 0;
+                    $isHighRiskMews = in_array($request->risk_level, ['observe', 'emergency']);
+                    $isUrgentCase = $isHighRiskMews || $hasEmergencyConditions;
 
-                if ($isRouteToER && $isNewCase && $realAssessmentType === 'field') {
                     $displayRisk = $request->risk_level;
                     if ($request->risk_level === 'normal' && $hasEmergencyConditions) {
                         $displayRisk = 'emergency_condition';
                     }
 
                     $patientData = [
-                        'mews_id'      => $assessment->id, 
+                        'mews_id'      => $assessment->id,
                         'name'         => $patient->rank . $patient->first_name . ' ' . $patient->last_name,
-                        'unit'         => $patient->militaryUnit->name ?? $patient->company ?? '-', 
-                        'score'        => $request->total_score, 
+                        'unit'         => $patient->militaryUnit->name ?? $patient->company ?? '-',
+                        'score'        => $request->total_score,
                         'risk_level'   => $displayRisk,
-                        'evaluator_id' => auth()->id() 
+                        'evaluator_id' => auth()->id()
                     ];
                     broadcast(new EmergencyMewsAlert($patientData));
 
-                    // 🚀 ยิง Background Web Push ปลุกมือถือ/คอมพิวเตอร์ของพยาบาล ER ทันทีแม้ปิดหน้าจออยู่
+                    $pushTitle = $displayRisk === 'emergency' || $displayRisk === 'emergency_condition'
+                        ? "🚨 เคสฉุกเฉินใหม่ (MEWS: {$request->total_score} คะแนน)"
+                        : ($displayRisk === 'observe'
+                            ? "⚠️ เคสเฝ้าระวังใหม่ (MEWS: {$request->total_score} คะแนน)"
+                            : "✅ เคสประเมิน MEWS ใหม่ (ปกติ: {$request->total_score} คะแนน)");
+
+                    // 🚀 ยิง Background Web Push ให้จุดคัดกรอง, ER, OPD และ Admin ทุกเคสในรอบแรก
                     \App\Services\WebPushService::sendToHospitalRoles(
-                        ['er_nurse', 'admin'],
-                        "🚨 เคสใหม่ส่งเข้า ER (MEWS: {$request->total_score} คะแนน)",
+                        ['er_nurse', 'opd_nurse', 'screening', 'admin'],
+                        $pushTitle,
                         "ผู้ป่วย: {$patient->rank}{$patient->first_name} {$patient->last_name} (" . ($patient->militaryUnit->short_name ?? 'ไม่ระบุหน่วย') . ")",
                         route('backend.mews.show', $assessment->id),
-                        "mews-er-{$assessment->id}",
-                        true
+                        "mews-new-{$assessment->id}",
+                        $isUrgentCase
                     );
                 }
             } catch (\Throwable $broadcastError) {
@@ -690,18 +697,13 @@ class MewsAssessmentController extends Controller
     // =========================================================================
     private function sendDiscordAlert($assessment, bool $isReassessment = false, bool $isEdited = false)
     {
-        // 🔒 ป้องกันชั้นที่ 2: หากเป็นการประเมินซ้ำ (ครั้งที่ 2+), การแก้ไข หรือไม่ได้มาจากภาคสนาม/หน่วยฝึก ให้หยุดส่งทันที
-        if ($isReassessment || $isEdited || $assessment->assessment_type !== 'field') {
+        // 🔒 ส่งแจ้งเตือนเฉพาะการประเมินรอบแรกเท่านั้น (ประเมินซ้ำหรือแก้ไขจะไม่ส่ง)
+        if ($isReassessment || $isEdited) {
             return;
         }
 
         $rawSymptoms = is_string($assessment->symptoms) ? json_decode($assessment->symptoms, true) : ($assessment->symptoms ?? []);
         $hasEmergencyConditions = is_array($rawSymptoms) && count($rawSymptoms) > 0;
-        
-        // 🛑 ป้องกันชั้นที่ 3 (ใหม่!): บล็อกไม่ให้ส่งเคส Normal ล้วนเข้า Discord (ยกเว้นสีเขียวแต่มีอาการเฉพาะโรค)
-        if ($assessment->risk_level === 'normal' && !$hasEmergencyConditions) {
-            return; // จบการทำงานทันที ไม่ยิง Discord ให้รกห้องฉุกเฉิน
-        }
 
         $webhookUrl = $this->getDiscordWebhookUrl();
         

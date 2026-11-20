@@ -21,7 +21,8 @@ class PatientController extends Controller
             || in_array('opd_nurse', $roles) 
             || in_array('executive', $roles) 
             || in_array('registration', $roles)
-            || in_array('medical_staff', $roles);
+            || in_array('medical_staff', $roles)
+            || in_array('screening', $roles);
     }
 
     // 🌟 2. ฟังก์ชันตัวช่วยกรอง Query สำหรับ "เสนารักษ์" (ผูกทั้งหน่วยฝึก + ผลัดที่)
@@ -655,20 +656,29 @@ class PatientController extends Controller
     public function processSearch(Request $request)
     {
         $request->validate([
-            'search_term' => 'required|string|min:2'
+            'search_term'  => 'required|string|min:2',
+            'scanned_name' => 'nullable|string|max:255',
+            'is_scanned'   => 'nullable|boolean',
         ], [
             'search_term.required' => 'กรุณากรอกข้อมูลที่ต้องการค้นหา',
-            'search_term.min' => 'กรุณากรอกข้อมูลอย่างน้อย 2 ตัวอักษร',
+            'search_term.min'      => 'กรุณากรอกข้อมูลอย่างน้อย 2 ตัวอักษร',
         ]);
 
-        $term = trim($request->search_term);
+        $term        = trim($request->search_term);
         $termNoSpace = str_replace(' ', '', $term);
-        $user = auth()->user();
-        
-        $userRoles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        $isClinical = in_array('admin', $userRoles) || in_array('er_nurse', $userRoles) || in_array('opd_nurse', $userRoles) || in_array('medic', $userRoles) || in_array('medical_staff', $userRoles);
+        $cleanDigits = preg_replace('/[^0-9]/', '', $term);
+        $scannedName = trim((string) $request->input('scanned_name', ''));
+        $isScanned   = $request->boolean('is_scanned');
+        $user        = auth()->user();
 
-        $query = Patient::with(['militaryUnit', 'militaryDischarge'])->where(function($q) use ($term, $termNoSpace) {
+        $userRoles  = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
+        $isClinical = in_array('admin', $userRoles)
+            || in_array('er_nurse', $userRoles)
+            || in_array('opd_nurse', $userRoles)
+            || in_array('medic', $userRoles)
+            || in_array('medical_staff', $userRoles);
+
+        $query = Patient::with(['militaryUnit', 'militaryDischarge'])->where(function ($q) use ($term, $termNoSpace) {
             $q->where('cid', 'LIKE', "%{$term}%")
               ->orWhere('hn', 'LIKE', "%{$term}%")
               ->orWhereRaw("CONCAT(IFNULL(first_name,''), IFNULL(last_name,'')) LIKE ?", ["%{$termNoSpace}%"])
@@ -676,11 +686,11 @@ class PatientController extends Controller
               ->orWhere('first_name', 'LIKE', "%{$term}%")
               ->orWhere('last_name', 'LIKE', "%{$term}%");
         });
-        
+
         $this->scopeForMedic($query, $user);
-        
+
         $ksvrResults = $query->get();
-        
+
         if ($ksvrResults->count() === 1) {
             $patient = $ksvrResults->first();
 
@@ -689,22 +699,100 @@ class PatientController extends Controller
                 return redirect()->route('backend.patients.show', $patient->id)
                                  ->with('error', "พลทหาร {$patient->first_name} อยู่ในสถานะ \"{$patient->duty_status_label}\" ไม่สามารถแจ้งหรือประเมิน MEWS ได้ครับ");
             }
-        
+
             if ($isClinical) {
                 return redirect()->route('backend.mews.create', ['patient_id' => $patient->id])
                                  ->with('success', 'พบข้อมูลประวัติในระบบ KSVR เรียบร้อยแล้ว');
-            } else {
-                return redirect()->route('backend.patients.show', $patient->id)
-                                 ->with('success', 'พบข้อมูลประวัติผู้ป่วยแล้ว');
             }
-        } 
-        
+
+            return redirect()->route('backend.patients.show', $patient->id)
+                             ->with('success', 'พบข้อมูลประวัติผู้ป่วยแล้ว');
+        }
+
         if ($ksvrResults->count() > 1) {
             return redirect()->route('backend.patients.index', ['view' => 'list', 'search' => $term])
                              ->with('info', 'พบข้อมูลมากกว่า 1 รายการ กรุณาเลือกจากตารางด้านล่างครับ');
         }
 
-        return back()->with('error', 'ไม่พบประวัติผู้ป่วย กรุณาตรวจสอบข้อมูล หรือเพิ่มประวัติใหม่ด้วยตนเองครับ');
+        // =========================================================================
+        // 🔍 กรณีไม่พบในสิทธิ์ที่ดูแล: รวบรวม "เลขบัตร ปชช. + ชื่อ-สกุล" เพื่อยืนยันว่าสแกนถูกต้องหรือไม่
+        // =========================================================================
+        $resolvedCid    = strlen($cleanDigits) === 13 ? $cleanDigits : null;
+        $resolvedName   = $scannedName !== '' ? $scannedName : null;
+        $nameSource     = $resolvedName ? 'ocr' : null;
+        $extraNote      = null;
+        $hosxpHn        = null;
+        $existsInKsvr   = false;
+
+        if ($resolvedCid) {
+            // 1. ตรวจสอบว่ามีเลขบัตรนี้ในระบบ KSVR แต่อยู่ต่างหน่วย/ต่างผลัดหรือไม่ (Query ผ่าน Index cid)
+            $otherScopePatient = Patient::with('militaryUnit')
+                ->where('cid', $resolvedCid)
+                ->first(['id', 'cid', 'hn', 'rank', 'first_name', 'last_name', 'military_unit_id', 'intake_batch']);
+
+            if ($otherScopePatient) {
+                $existsInKsvr = true;
+                $resolvedName = trim(($otherScopePatient->rank ?? '') . ($otherScopePatient->first_name ?? '') . ' ' . ($otherScopePatient->last_name ?? ''));
+                $nameSource   = 'ksvr_other_scope';
+                $unitLabel    = $otherScopePatient->militaryUnit->short_name ?? $otherScopePatient->militaryUnit->name ?? 'ไม่ระบุหน่วย';
+                $batchLabel   = $otherScopePatient->intake_batch ?: 'ไม่ระบุผลัด';
+                $extraNote    = "พบประวัติในระบบ KSVR แล้ว แต่อยู่ต่างสังกัด/ผลัด ({$unitLabel} | ผลัด {$batchLabel})";
+            } else {
+                // 2. ตรวจสอบแบบ Read-Only ความเร็วสูงจาก HosXP ด้วยเลขบัตร 13 หลัก (Exact Match ผ่าน Index cid)
+                try {
+                    $hosxpPatient = \App\Models\HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname')
+                        ->where('cid', $resolvedCid)
+                        ->first();
+
+                    if ($hosxpPatient) {
+                        $cleanUTF8 = function ($str) {
+                            if (empty($str)) return '';
+                            $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string)$str);
+                            return trim(mb_convert_encoding($utf8 ?: (string)$str, 'UTF-8', 'UTF-8'));
+                        };
+
+                        $pname = $cleanUTF8($hosxpPatient->pname ?? '');
+                        $fname = $cleanUTF8($hosxpPatient->fname ?? '');
+                        $lname = $cleanUTF8($hosxpPatient->lname ?? '');
+                        $fullHosxpName = trim($pname . $fname . ' ' . $lname);
+
+                        if ($fullHosxpName !== '') {
+                            $resolvedName = $fullHosxpName;
+                            $nameSource   = 'hosxp';
+                            $hosxpHn      = $cleanUTF8($hosxpPatient->hn ?? '');
+                            $extraNote    = 'ยังไม่ได้ลงทะเบียนในระบบ KSVR แต่พบชื่อ-สกุลตรงกันในฐานข้อมูล HosXP ของโรงพยาบาล';
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // หากเชื่อมต่อ HosXP ไม่ได้ชั่วคราว ให้ใช้ชื่อที่อ่านจากหน้าบัตร (OCR) แทนโดยไม่ให้หน้าเว็บค้าง
+                }
+            }
+        }
+
+        // ตรวจสอบสูตร Mod-11 ของเลขบัตร 13 หลัก
+        $isCidValid = false;
+        if ($resolvedCid && preg_match('/^[1-8]\d{12}$/', $resolvedCid)) {
+            $sum = 0;
+            for ($i = 0; $i < 12; $i++) {
+                $sum += ((int) $resolvedCid[$i]) * (13 - $i);
+            }
+            $isCidValid = ((11 - ($sum % 11)) % 10) === (int) $resolvedCid[12];
+        }
+
+        return back()->withInput()->with('not_found_detail', [
+            'searched_term'  => $term,
+            'cid'            => $resolvedCid,
+            'formatted_cid'  => $resolvedCid
+                ? preg_replace('/^(\d)(\d{4})(\d{5})(\d{2})(\d)$/', '$1-$2-$3-$4-$5', $resolvedCid)
+                : null,
+            'is_cid_valid'   => $isCidValid,
+            'full_name'      => $resolvedName,
+            'name_source'    => $nameSource, // 'ksvr_other_scope' | 'hosxp' | 'ocr' | null
+            'hosxp_hn'       => $hosxpHn,
+            'exists_in_ksvr' => $existsInKsvr,
+            'is_scanned'     => $isScanned,
+            'extra_note'     => $extraNote,
+        ]);
     }
 
     public function autocomplete(Request $request)

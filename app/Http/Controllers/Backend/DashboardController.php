@@ -23,25 +23,23 @@ class DashboardController extends Controller
         $isMedic        = $isAdmin || in_array('medic', $userRoles);
         $isRegistration = $isAdmin || in_array('registration', $userRoles); 
         $isOPD          = $isAdmin || in_array('opd_nurse', $userRoles);
+        $isScreening    = $isAdmin || in_array('screening', $userRoles);
 
         $requestedView = $request->query('view');
 
-        // หากมีการส่ง ?view= เข้ามา และผู้ใช้มีสิทธิ์ ให้ดึงหน้านั้นมาแสดงผล
         if ($requestedView === 'executive' && $isExecutive) return $this->executiveDashboard($request);
         if ($requestedView === 'er' && $isER) return $this->erDashboard();
+        if ($requestedView === 'screening' && $isScreening) return $this->screeningDashboard();
         if ($requestedView === 'medic' && $isMedic) return $this->medicDashboard();
         if ($requestedView === 'registration' && $isRegistration) return $this->registrationDashboard();
         if ($requestedView === 'opd' && $isOPD) return $this->opdDashboard();
 
-        // =========================================================
-        // 🌟 แก้ไข: Default Routing (กรณีเข้า URL ตรงๆ ไม่มี ?view=)
-        // ใช้การ Redirect พร้อมส่ง Query String ปัจจุบันไปด้วย (เช่น ?month=10)
-        // เพื่อบังคับให้ URL มี ?view เสมอ หน้า Blade จะได้ไฮไลท์แท็บได้ตรงกันเป๊ะ!
-        // =========================================================
         if ($isExecutive) {
             return redirect()->to($request->fullUrlWithQuery(['view' => 'executive']));
         } elseif ($isER) {
             return redirect()->to($request->fullUrlWithQuery(['view' => 'er']));
+        } elseif ($isScreening) {
+            return redirect()->to($request->fullUrlWithQuery(['view' => 'screening']));
         } elseif ($isRegistration && !$isMedic) {
             return redirect()->to($request->fullUrlWithQuery(['view' => 'registration']));
         } elseif ($isOPD) {
@@ -639,80 +637,72 @@ class DashboardController extends Controller
         return view('backend.dashboards.opd', compact('opdQueue', 'completedOpdToday'));
     }
 
-    // // =================================================================
-    // // 👨‍⚕️ 2. แดชบอร์ดห้องฉุกเฉิน (ER Dashboard)
-    // // =================================================================
-    // private function erDashboard()
-    // {
-    //     $today = \Carbon\Carbon::today(); // 🌟 เพิ่มบรรทัดนี้
-    //     $latestIds = \App\Models\MewsAssessment::select(\Illuminate\Support\Facades\DB::raw('MAX(id) as id'))->groupBy('case_id')->pluck('id');
+    // =================================================================
+    // 📋 6. แดชบอร์ดจุดคัดกรอง (Screening / Triage Dashboard)
+    // เรียงลำดับตามคะแนน MEWS สูงสุดขึ้นลำดับแรกเสมอ!
+    // =================================================================
+    private function screeningDashboard()
+    {
+        $today = \Carbon\Carbon::today();
+        $latestIds = \App\Models\MewsAssessment::select(\Illuminate\Support\Facades\DB::raw('MAX(id) as id'))
+            ->groupBy('case_id')
+            ->pluck('id');
 
-    //     // เคสที่กำลัง Active (เหมือนเดิม)
-    //     $activeLatestIds = \App\Models\MewsAssessment::whereIn('id', $latestIds)->where('status', 'pending')->pluck('id');
+        // 1. ดึงเคสที่กำลังรอคัดกรอง/ดำเนินการ (Pending) ทั้งหมด แล้วเรียง MEWS สูงสุดขึ้นอันดับ 1
+        $screeningQueue = \App\Models\MewsAssessment::with(['patient.militaryUnit', 'evaluator'])
+            ->whereIn('id', $latestIds)
+            ->where('status', 'pending')
+            ->get()
+            ->map(function ($item) {
+                $rawSyms = is_string($item->symptoms) ? json_decode($item->symptoms, true) : ($item->symptoms ?? []);
+                $cleanSyms = is_array($rawSyms) ? array_values(array_filter($rawSyms, fn($v) => !empty(trim((string)$v)))) : [];
+                $item->parsed_symptoms = $cleanSyms;
+                $item->has_emergency_symptom = count($cleanSyms) > 0;
+                $item->assessment_round = \App\Models\MewsAssessment::where('case_id', $item->case_id)->count();
+                return $item;
+            })
+            ->sort(function ($a, $b) {
+                // ลำดับที่ 1: คะแนน MEWS สูงสุดขึ้นก่อนเสมอ
+                if ((int)$a->total_score !== (int)$b->total_score) {
+                    return (int)$b->total_score <=> (int)$a->total_score;
+                }
+                // ลำดับที่ 2: หาก MEWS เท่ากัน เอาคนที่มีอาการฉุกเฉินเฉพาะโรคขึ้นก่อน
+                if ($a->has_emergency_symptom !== $b->has_emergency_symptom) {
+                    return $b->has_emergency_symptom <=> $a->has_emergency_symptom;
+                }
+                // ลำดับที่ 3: เอาคนที่ส่งมาก่อน (รอคิวนานกว่า) ขึ้นก่อน
+                return $a->created_at <=> $b->created_at;
+            })
+            ->values();
 
-    //     // 🚨 อัปเกรด: กรองเฉพาะเคส ER (MEWS ระดับ 2 ขึ้นไป หรือ มีอาการฉุกเฉินเฉพาะโรค)
-    //     $incomingCases = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
-    //         ->whereIn('id', $activeLatestIds)
-    //         ->where('assessment_type', 'field')
-    //         ->where(function ($query) {
-    //             // เงื่อนไขที่ 1: สีเหลือง (observe) หรือ สีแดง (emergency)
-    //             $query->whereIn('risk_level', ['observe', 'emergency'])
-    //                   // เงื่อนไขที่ 2: หรือ มีการติ๊กอาการฉุกเฉิน (ถึงแม้จะเป็นสีเขียวก็ตาม)
-    //                   ->orWhere(function ($subQuery) {
-    //                       $subQuery->whereNotNull('symptoms')
-    //                                ->where('symptoms', '!=', '[]')
-    //                                ->where('symptoms', '!=', '')
-    //                                ->where('symptoms', '!=', 'null');
-    //                   });
-    //         })
-    //         ->orderBy('total_score', 'desc')
-    //         ->orderBy('created_at', 'asc')
-    //         ->get();
-    //     $activeCases = \App\Models\MewsAssessment::with(['patient.militaryUnit'])->whereIn('id', $activeLatestIds)->where('assessment_type', 'er')->orderBy('updated_at', 'desc')->get();
+        // 2. สรุปยอด KPI จุดคัดกรอง
+        $stats = [
+            'total_pending' => $screeningQueue->count(),
+            'emergency'     => $screeningQueue->filter(fn($c) => $c->risk_level === 'emergency' || $c->has_emergency_symptom)->count(),
+            'observe'       => $screeningQueue->filter(fn($c) => $c->risk_level === 'observe' && !$c->has_emergency_symptom)->count(),
+            'normal'        => $screeningQueue->filter(fn($c) => $c->risk_level === 'normal' && !$c->has_emergency_symptom)->count(),
+        ];
 
-    //     // 🌟🌟 สเต็ปสำคัญ: เพิ่มการดึงประวัติย้อนหลัง (เฉพาะเคสของวันนี้ ที่จบไปแล้ว หรือยกเลิกไปแล้ว)
-    //     $completedCasesToday = \App\Models\MewsAssessment::with('patient')
-    //         ->whereIn('id', $latestIds)
-    //         ->whereIn('status', ['completed', 'cancelled'])
-    //         ->whereDate('updated_at', $today)
-    //         ->orderBy('updated_at', 'desc')
-    //         ->get();
+        // 3. ประวัติที่ปิดเคส/จำหน่ายแล้ววันนี้
+        $completedToday = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
+            ->whereIn('id', $latestIds)
+            ->whereIn('status', ['completed', 'cancelled'])
+            ->whereDate('updated_at', $today)
+            ->orderByDesc('total_score')
+            ->orderByDesc('updated_at')
+            ->get();
 
-    //     $symptomDict = [
-    //         'mi_chest_pain' => 'MI (เจ็บหน้าอก)', 'mi_dyspnea' => 'MI (เหนื่อยหอบ)', 'mi_referred_pain' => 'MI (เจ็บร้าว)',
-    //         'stroke_dizzy' => 'Stroke (เวียนศีรษะ)', 'stroke_vision' => 'Stroke (ตามัว)', 'stroke_facial_weakness' => 'Stroke (หน้าเบี้ยว)', 'stroke_arm_leg_weakness' => 'Stroke (แขนขาอ่อนแรง)', 'stroke_speech' => 'Stroke (พูดไม่ชัด)',
-    //         'heat_confusion' => 'Heat (ซึมสับสน)', 'heat_fatigue' => 'Heat (อ่อนเพลีย)', 'heat_pale' => 'Heat (หน้าซีด)', 'heat_cramp' => 'Heat (ตะคริว)', 'heat_numbness' => 'Heat (ชาปลายมือเท้า)', 'heat_urine' => 'Heat (ปัสสาวะสีเข้ม)',
-    //         'ana_rash' => 'Anaphylaxis (ผื่นลมพิษ)', 'ana_resp' => 'Anaphylaxis (หอบเหนื่อย)', 'ana_sys' => 'Anaphylaxis (ระบบล้มเหลว)', 'ana_gi' => 'Anaphylaxis (ปวดท้องอาเจียน)', 'ana_chest' => 'Anaphylaxis (แน่นหน้าอก)',
-    //         'appendicitis' => 'Appendicitis', 'sepsis_drowsy' => 'Sepsis (ซึม)', 'sepsis_tachypnea' => 'Sepsis (หายใจหอบ)', 'trauma' => 'Trauma (อุบัติเหตุ)'
-    //     ];
+        $symptomDict = [
+            'mi_chest_pain' => 'MI (เจ็บหน้าอก)', 'mi_dyspnea' => 'MI (เหนื่อยหอบ)', 'mi_referred_pain' => 'MI (เจ็บร้าว)',
+            'stroke_dizzy' => 'Stroke (เวียนศีรษะ)', 'stroke_vision' => 'Stroke (ตามัว)', 'stroke_facial_weakness' => 'Stroke (หน้าเบี้ยว)',
+            'stroke_arm_leg_weakness' => 'Stroke (แขนขาอ่อนแรง)', 'stroke_speech' => 'Stroke (พูดไม่ชัด)',
+            'heat_confusion' => 'Heat (ซึมสับสน)', 'heat_fatigue' => 'Heat (อ่อนเพลีย)', 'heat_pale' => 'Heat (หน้าซีด)',
+            'heat_cramp' => 'Heat (ตะคริว)', 'heat_numbness' => 'Heat (ชาปลายมือเท้า)', 'heat_urine' => 'Heat (ปัสสาวะสีเข้ม)',
+            'ana_rash' => 'Anaphylaxis (ผื่นลมพิษ)', 'ana_resp' => 'Anaphylaxis (หอบเหนื่อย)', 'ana_sys' => 'Anaphylaxis (ระบบล้มเหลว)',
+            'ana_gi' => 'Anaphylaxis (ปวดท้องอาเจียน)', 'ana_chest' => 'Anaphylaxis (แน่นหน้าอก)',
+            'appendicitis' => 'Appendicitis', 'sepsis_drowsy' => 'Sepsis (ซึม)', 'sepsis_tachypnea' => 'Sepsis (หายใจหอบ)', 'trauma' => 'Trauma (อุบัติเหตุ)'
+        ];
 
-    //     return view('backend.dashboards.er', compact('incomingCases', 'activeCases', 'completedCasesToday', 'symptomDict'));
-    // }
-
-    // // =================================================================
-    // // 🩺 5. แดชบอร์ดผู้ป่วยนอก (OPD Dashboard)
-    // // =================================================================
-    // private function opdDashboard()
-    // {
-    //     $latestIds = \App\Models\MewsAssessment::select(\Illuminate\Support\Facades\DB::raw('MAX(id) as id'))
-    //         ->groupBy('case_id')
-    //         ->pluck('id');
-
-    //     // 🌟 ดึงข้อมูลคิว OPD (เฉพาะใบล่าสุดที่ Pending, ส่งจากหน่วยฝึก, สีเขียว และไม่มีอาการฉุกเฉิน)
-    //     $opdQueue = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
-    //         ->whereIn('id', $latestIds)
-    //         ->where('status', 'pending')
-    //         ->where('assessment_type', 'field')
-    //         ->where('risk_level', 'normal')
-    //         ->where(function ($query) {
-    //             $query->whereNull('symptoms')
-    //                   ->orWhere('symptoms', '[]')
-    //                   ->orWhere('symptoms', '')
-    //                   ->orWhere('symptoms', 'null');
-    //         })
-    //         ->orderBy('created_at', 'asc')
-    //         ->get();
-
-    //     return view('backend.dashboards.opd', compact('opdQueue'));
-    // }
+        return view('backend.dashboards.screening', compact('screeningQueue', 'stats', 'completedToday', 'symptomDict'));
+    }
 }

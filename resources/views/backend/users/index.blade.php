@@ -90,6 +90,12 @@
                class="px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex items-center gap-2 {{ $activeTab === 'medical_staff' ? 'bg-cyan-100 text-cyan-800 ring-2 ring-cyan-500 shadow-sm transform -translate-y-0.5' : 'bg-white border border-slate-200 text-slate-600 hover:bg-cyan-50 hover:text-cyan-700 shadow-sm' }}">
                 <i class="fa-solid fa-kit-medical"></i> เจ้าหน้าที่เวชกรรม
             </a>
+
+            <!-- Tab: จุดคัดกรอง -->
+            <a href="{{ route('backend.users.index', ['role' => 'screening']) }}" 
+                class="px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex items-center gap-2 {{ $activeTab === 'screening' ? 'bg-amber-100 text-amber-800 ring-2 ring-amber-500 shadow-sm transform -translate-y-0.5' : 'bg-white border border-slate-200 text-slate-600 hover:bg-amber-50 hover:text-amber-700 shadow-sm' }}">
+                <i class="fa-solid fa-clipboard-check"></i> จุดคัดกรอง
+            </a>
         </div>
 
         <!-- ส่วนของตาราง <div class="bg-white rounded-3xl ..."> ที่คุณมีอยู่แล้ว จะอยู่ต่อจากตรงนี้ครับ -->
@@ -143,6 +149,7 @@
                                                 'medic'     => ['name' => 'เสนารักษ์', 'color' => 'bg-blue-50 text-blue-700 border-blue-200', 'icon' => 'fa-walkie-talkie'],
                                                 'registration' => ['name' => 'เจ้าหน้าที่ทะเบียน', 'color' => 'bg-yellow-50 text-yellow-700 border-yellow-200', 'icon' => 'fa-id-card-clip'],
                                                 'medical_staff' => ['name' => 'เจ้าหน้าที่เวชกรรม', 'color' => 'bg-cyan-50 text-cyan-700 border-cyan-200', 'icon' => 'fa-kit-medical'],
+                                                'screening' => ['name' => 'จุดคัดกรอง', 'color' => 'bg-amber-50 text-amber-700 border-amber-200', 'icon' => 'fa-clipboard-check'],
                                             ];
                                         @endphp
 

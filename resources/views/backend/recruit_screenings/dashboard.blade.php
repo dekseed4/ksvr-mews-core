@@ -42,7 +42,7 @@
                     <i class="fa-solid fa-file-export"></i> ส่งออกรายงาน (Excel/CSV)
                 </button>
                 <button type="button" onclick="openScanModal()" class="flex-1 md:flex-none px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-sm transition-colors text-center text-sm flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-qrcode"></i> เข้าสู่หน้าสแกนคัดกรอง
+                    <i class="fa-solid fa-id-card"></i> เข้าสู่หน้าสแกนคัดกรอง
                 </button>
             </div>
         </form>
@@ -458,12 +458,103 @@
         </div>
     </div>
 </div>
+
+<!-- ========================================================================= -->
+<!-- 📸 Modal กล้องสแกนหน้าบัตรประชาชนแบบ Real-time สำหรับคัดกรองทหารใหม่ -->
+<!-- ========================================================================= -->
+<div id="screeningIdScannerModal" class="hidden fixed inset-0 z-[95] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-slate-900 text-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-700 flex flex-col">
+        
+        <!-- ส่วนหัว Modal -->
+        <div class="px-5 py-3.5 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <i class="fa-solid fa-expand"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm sm:text-base font-black text-white leading-tight">สแกนหน้าบัตร ปชช. คัดกรอง (Real-time)</h3>
+                    <p class="text-[11px] text-slate-400">วางเลข 13 หลักและแถวชื่อ-สกุลให้อยู่ในกรอบสีเขียว</p>
+                </div>
+            </div>
+            <button type="button" onclick="window.closeScreeningCameraScanner(true)" class="w-9 h-9 rounded-full bg-slate-700 hover:bg-rose-600 text-slate-300 hover:text-white flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <!-- พื้นที่กล้องสด (Live Video Viewfinder) -->
+        <div class="relative w-full aspect-[4/3] bg-black overflow-hidden">
+            <video id="scr_scanner_video" autoplay playsinline muted class="w-full h-full object-cover"></video>
+
+            <!-- กรอบนำสายตาแบบ 2 โซน -->
+            <div class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center px-5">
+                <div class="w-full flex-1 bg-black/50"></div>
+
+                <div class="w-full flex items-center">
+                    <div class="w-1 sm:w-3 h-32 bg-black/50"></div>
+                    <div class="relative flex-1 h-32 border-2 border-emerald-400 rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.4)] overflow-hidden flex flex-col">
+                        <span class="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-400 rounded-tl-xl"></span>
+                        <span class="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-400 rounded-tr-xl"></span>
+                        <span class="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-400 rounded-bl-xl"></span>
+                        <span class="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-400 rounded-br-xl"></span>
+
+                        <!-- โซนบน: เลข 13 หลัก -->
+                        <div class="flex-1 border-b border-dashed border-emerald-400/60 flex items-center justify-center relative">
+                            <div class="absolute left-3 right-3 h-0.5 bg-emerald-400/80 shadow-[0_0_8px_#34d399] animate-pulse"></div>
+                            <span class="text-[10px] font-bold text-emerald-200 bg-black/40 px-2 py-0.5 rounded-full">
+                                1. วางแถวเลข 13 หลักตรงนี้
+                            </span>
+                        </div>
+
+                        <!-- โซนล่าง: ชื่อ-สกุล ภาษาไทย -->
+                        <div class="flex-1 flex items-center justify-center">
+                            <span class="text-[10px] font-bold text-sky-200 bg-black/40 px-2 py-0.5 rounded-full">
+                                2. แถวชื่อ-สกุล ภาษาไทย
+                            </span>
+                        </div>
+                    </div>
+                    <div class="w-1 sm:w-3 h-32 bg-black/50"></div>
+                </div>
+
+                <div class="w-full flex-1 bg-black/50 flex items-start justify-center pt-3">
+                    <span id="scr_scanner_status_badge" class="px-3.5 py-1 rounded-full bg-slate-900/85 border border-slate-600 text-xs font-bold text-emerald-300 flex items-center gap-2">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <span>กำลังเตรียมระบบสแกน OCR...</span>
+                    </span>
+                </div>
+            </div>
+
+            <canvas id="scr_scanner_canvas" class="hidden"></canvas>
+            <canvas id="scr_name_canvas" class="hidden"></canvas>
+        </div>
+
+        <!-- แถบเครื่องมือด้านล่างกล้อง -->
+        <div class="p-4 bg-slate-800/80 border-t border-slate-700 flex flex-wrap items-center justify-between gap-2.5">
+            <div class="flex items-center gap-2">
+                <button type="button" id="scr_btn_toggle_torch" onclick="window.toggleScreeningTorch()"
+                        class="hidden px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-amber-500 text-slate-200 hover:text-slate-950 text-xs font-bold flex items-center gap-1.5 transition-colors">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span id="scr_torch_btn_label">เปิดไฟฉาย</span>
+                </button>
+
+                <label class="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-indigo-600 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors">
+                    <i class="fa-solid fa-image"></i>
+                    <span>สแกนจากรูปภาพ</span>
+                    <input type="file" id="scr_id_card_file_input" accept="image/*" capture="environment" class="hidden" onchange="window.handleScreeningStaticImage(this)">
+                </label>
+            </div>
+
+            <button type="button" onclick="window.closeScreeningCameraScanner(true)" class="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold transition-colors">
+                กลับไปพิมพ์เลข
+            </button>
+        </div>
+    </div>
+</div>
 @endsection
 
 @section('scripts')
 
 <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <script type="module">
     document.addEventListener('DOMContentLoaded', function () {
@@ -492,23 +583,23 @@
                                 const doc = parser.parseFromString(html, 'text/html');
                                 
                                 const tableZone = document.getElementById('dashboard-table-zone');
-                                if(tableZone && doc.getElementById('dashboard-table-zone')) {
+                                if (tableZone && doc.getElementById('dashboard-table-zone')) {
                                     tableZone.innerHTML = doc.getElementById('dashboard-table-zone').innerHTML;
                                 }
 
                                 const kpiZone = document.getElementById('dashboard-kpi-zone');
-                                if(kpiZone && doc.getElementById('dashboard-kpi-zone')) {
+                                if (kpiZone && doc.getElementById('dashboard-kpi-zone')) {
                                     kpiZone.innerHTML = doc.getElementById('dashboard-kpi-zone').innerHTML;
                                 }
 
                                 const chronicZone = document.getElementById('chronic-disease-zone');
-                                if(chronicZone && doc.getElementById('chronic-disease-zone')) {
+                                if (chronicZone && doc.getElementById('chronic-disease-zone')) {
                                     chronicZone.innerHTML = doc.getElementById('chronic-disease-zone').innerHTML;
                                 }
 
                                 const geoZone = document.getElementById('geographic-stats-zone');
                                 const newGeoZone = doc.getElementById('geographic-stats-zone');
-                                if(geoZone && newGeoZone) {
+                                if (geoZone && newGeoZone) {
                                     geoZone.innerHTML = newGeoZone.innerHTML;
                                 }
 
@@ -530,9 +621,6 @@
 </script>
 
 <script>
-    let html5QrCodeScanner = null;
-    let isCameraScanning = false;
-
     @php
         // เตรียมตัวแปรใน PHP ก่อนส่งเข้า @json เพื่อป้องกันปัญหาวงเล็บซ้อนกันใน Blade Directive
         $emptyChronicMap = ['none' => [], 'yes' => [], 'other' => []];
@@ -552,6 +640,7 @@
     const allBatchPatientIds = @json($safeAllBatchPatientIds);
     const currentBatchLabel = '{{ str_replace("/", "-", $selectedBatch) }}';
     const patientProfileUrlTemplate = '{{ route("backend.patients.show", ["patient" => "__ID__"]) }}';
+    const createPatientUrlBase = '{{ route("backend.patients.create") }}';
 
     // =========================================================================
     // 🩺 ฟังก์ชันเปิด Modal ดูรายชื่อพลทหารแยกตามสถานะโรคประจำตัว / ประวัติสุขภาพ (เฉพาะ Admin)
@@ -561,9 +650,9 @@
 
         const list = chronicPatientsData[type] || [];
         const titles = {
-            'none': { text: 'กลุ่มไม่มีโรคประจำตัว (ตรวจแล้ว)', color: '#10b981', icon: 'fa-heart-circle-check' },
-            'yes':  { text: 'รายชื่อผู้มีโรคประจำตัว', color: '#f59e0b', icon: 'fa-heart-pulse' },
-            'other':{ text: 'รายชื่อผู้มีประวัติสุขภาพอื่นๆ (แพ้ยา/ผ่าตัด)', color: '#f43f5e', icon: 'fa-file-medical' }
+            'none':  { text: 'กลุ่มไม่มีโรคประจำตัว (ตรวจแล้ว)', color: '#10b981', icon: 'fa-heart-circle-check' },
+            'yes':   { text: 'รายชื่อผู้มีโรคประจำตัว', color: '#f59e0b', icon: 'fa-heart-pulse' },
+            'other': { text: 'รายชื่อผู้มีประวัติสุขภาพอื่นๆ (แพ้ยา/ผ่าตัด)', color: '#f43f5e', icon: 'fa-file-medical' }
         };
         const cfg = titles[type] || titles['yes'];
 
@@ -937,23 +1026,46 @@
         });
     };
 
+    // =========================================================================
+    // 📸 ระบบสแกนหน้าบัตรประชาชน Real-time (Tesseract.js v5 + Mod-11 + ชื่อไทย)
+    // =========================================================================
+    let scrStream = null;
+    let scrTimer = null;
+    let scrOcrWorker = null;
+    let scrThaiWorker = null;
+    let isScrScanningFrame = false;
+    let scrTorchEnabled = false;
+
+    function escapeHtmlText(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     function playScannerBeep() {
+        if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
         try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            const ctx = new AudioCtx();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(1200, ctx.currentTime);
+            osc.frequency.setValueAtTime(1046.5, ctx.currentTime);
             gain.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.18);
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start();
-            osc.stop(ctx.currentTime + 0.12);
+            osc.stop(ctx.currentTime + 0.18);
         } catch (e) {}
     }
 
     function isValidThaiCID(cid) {
-        if (!/^[0-9]{13}$/.test(cid)) return false;
+        if (!/^[1-8]\d{12}$/.test(cid)) return false;
         let sum = 0;
         for (let i = 0; i < 12; i++) {
             sum += parseInt(cid.charAt(i), 10) * (13 - i);
@@ -962,169 +1074,348 @@
         return checkDigit === parseInt(cid.charAt(12), 10);
     }
 
-    window.stopCameraScanner = async function() {
-        if (html5QrCodeScanner && isCameraScanning) {
-            try {
-                await html5QrCodeScanner.stop();
-                html5QrCodeScanner.clear();
-            } catch (err) {
-                console.warn('Stop camera warning:', err);
+    function extractValidThaiCidFromText(rawText) {
+        if (!rawText) return null;
+        const lines = rawText.split(/\r?\n/);
+        for (const line of lines) {
+            const digits = line.replace(/\D/g, '');
+            if (digits.length >= 13) {
+                for (let i = 0; i <= digits.length - 13; i++) {
+                    const candidate = digits.substring(i, i + 13);
+                    if (isValidThaiCID(candidate)) return candidate;
+                }
             }
         }
-        isCameraScanning = false;
-        const camWrapper = document.getElementById('camera-scanner-wrapper');
-        const btnToggleCam = document.getElementById('btn-toggle-camera');
-        if (camWrapper) camWrapper.classList.add('hidden');
-        if (btnToggleCam) {
-            btnToggleCam.innerHTML = '<i class="fa-solid fa-camera text-base"></i> ใช้กล้องมือถือสแกนบาร์โค้ด';
-            btnToggleCam.classList.remove('bg-rose-50', 'text-rose-600', 'border-rose-200');
-            btnToggleCam.classList.add('bg-indigo-50', 'text-indigo-600', 'border-indigo-200');
-        }
-    };
-
-    window.toggleCameraScanner = async function() {
-        const camWrapper = document.getElementById('camera-scanner-wrapper');
-        const btnToggleCam = document.getElementById('btn-toggle-camera');
-        const statusText = document.getElementById('camera-status-text');
-
-        if (isCameraScanning) {
-            await window.stopCameraScanner();
-            return;
-        }
-
-        if (typeof Html5Qrcode === 'undefined') {
-            Swal.showValidationMessage('ไม่สามารถโหลดไลบรารีกล้องได้ กรุณาตรวจสอบอินเทอร์เน็ต');
-            return;
-        }
-
-        camWrapper.classList.remove('hidden');
-        btnToggleCam.innerHTML = '<i class="fa-solid fa-video-slash text-base"></i> ปิดกล้องสแกน';
-        btnToggleCam.classList.remove('bg-indigo-50', 'text-indigo-600', 'border-indigo-200');
-        btnToggleCam.classList.add('bg-rose-50', 'text-rose-600', 'border-rose-200');
-        if (statusText) statusText.innerText = 'กำลังเปิดกล้องหลัง... กรุณาหันบาร์โค้ดบัตร ปชช. แนวนอนให้อยู่ในกรอบ';
-
-        const formatsToSupport = [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.QR_CODE
-        ];
-
-        html5QrCodeScanner = new Html5Qrcode("barcode-reader-box", { formatsToSupport: formatsToSupport, verbose: false });
-
-        const config = {
-            fps: 15,
-            qrbox: { width: 260, height: 100 },
-            aspectRatio: 1.777778,
-            videoConstraints: {
-                facingMode: "environment",
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
+        const allDigits = rawText.replace(/\D/g, '');
+        if (allDigits.length >= 13) {
+            for (let i = 0; i <= allDigits.length - 13; i++) {
+                const candidate = allDigits.substring(i, i + 13);
+                if (isValidThaiCID(candidate)) return candidate;
             }
-        };
+        }
+        return null;
+    }
+
+    function extractThaiNameFromText(rawText) {
+        if (!rawText) return '';
+        const cleaned = rawText
+            .replace(/ชื่อตัวและชื่อสกุ[ลน]/g, ' ')
+            .replace(/ชื่อตัวและชื่อสกล/g, ' ')
+            .replace(/[^\u0E00-\u0E7F\s\.]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        const prefixMatch = cleaned.match(/(นาย|นางสาว|นาง|น\.ส\.|พลฯ|พลทหาร|จ\.ส\.อ\.|ส\.อ\.|ส\.ท\.|ส\.ต\.)\s*[\u0E00-\u0E7F]{2,}\s+[\u0E00-\u0E7F]{2,}/);
+        if (prefixMatch) {
+            return prefixMatch[0].replace(/\s+/g, ' ').trim();
+        }
+
+        const words = cleaned.split(' ').filter(w => w.length >= 2 && !/^(ชื่อ|ตัว|และ|สกุล|บัตร|ประจำตัว|ประชาชน)$/.test(w));
+        if (words.length >= 2) {
+            return words.slice(0, 3).join(' ');
+        }
+        return '';
+    }
+
+    function setScrScannerStatus(htmlText) {
+        const el = document.getElementById('scr_scanner_status_badge');
+        if (el) el.innerHTML = htmlText;
+    }
+
+    async function getScrOcrWorker() {
+        if (scrOcrWorker) return scrOcrWorker;
+        scrOcrWorker = await Tesseract.createWorker('eng');
+        await scrOcrWorker.setParameters({
+            tessedit_char_whitelist: '0123456789 -',
+            tessedit_pageseg_mode: '6',
+        });
+        return scrOcrWorker;
+    }
+
+    async function getScrThaiWorker() {
+        if (scrThaiWorker) return scrThaiWorker;
+        scrThaiWorker = await Tesseract.createWorker('tha');
+        await scrThaiWorker.setParameters({
+            tessedit_pageseg_mode: '6',
+        });
+        return scrThaiWorker;
+    }
+
+    async function readScrThaiNameWithTimeout(imageSource, timeoutMs = 5000) {
+        try {
+            const ocrPromise = (async () => {
+                const worker = await getScrThaiWorker();
+                const { data: { text } } = await worker.recognize(imageSource);
+                return extractThaiNameFromText(text);
+            })();
+            const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(''), timeoutMs));
+            return await Promise.race([ocrPromise, timeoutPromise]);
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function preprocessScrCanvas(ctx, width, height) {
+        const imgData = ctx.getImageData(0, 0, width, height);
+        const data = imgData.data;
+        const contrast = 1.65;
+        const intercept = 128 * (1 - contrast);
+
+        for (let i = 0; i < data.length; i += 4) {
+            let gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            gray = gray * contrast + intercept;
+            gray = Math.max(0, Math.min(255, gray));
+            data[i] = data[i + 1] = data[i + 2] = gray;
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    window.openScreeningCameraScanner = async function() {
+        if (typeof Swal !== 'undefined' && Swal.isVisible()) {
+            Swal.close();
+        }
+
+        const modal = document.getElementById('screeningIdScannerModal');
+        const video = document.getElementById('scr_scanner_video');
+        const torchBtn = document.getElementById('scr_btn_toggle_torch');
+        if (!modal || !video) return;
+
+        modal.classList.remove('hidden');
+        setScrScannerStatus('<i class="fa-solid fa-spinner fa-spin"></i> <span>กำลังเปิดกล้องและเตรียมตัวอ่านเลขบัตร...</span>');
 
         try {
-            isCameraScanning = true;
-            await html5QrCodeScanner.start(
-                { facingMode: "environment" },
-                config,
-                async (decodedText) => {
-                    const cleanDigits = decodedText.replace(/[^0-9]/g, '');
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('เบราว์เซอร์ไม่รองรับการเปิดกล้องสด กรุณาใช้ปุ่ม "สแกนจากรูปภาพ" ด้านล่างแทนครับ');
+            }
 
-                    if (cleanDigits.length === 13 && isValidThaiCID(cleanDigits)) {
-                        playScannerBeep();
-                        const input = document.getElementById('swal-cid-input');
-                        if (input) input.value = cleanDigits;
-
-                        await window.stopCameraScanner();
-                        Swal.clickConfirm();
-                    } else if (cleanDigits.length === 13) {
-                        playScannerBeep();
-                        const input = document.getElementById('swal-cid-input');
-                        if (input) input.value = cleanDigits;
-                        await window.stopCameraScanner();
-                        Swal.clickConfirm();
-                    }
+            scrStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
                 },
-                (errorMessage) => {}
-            );
-            if (statusText) statusText.innerText = 'วางบาร์โค้ดบนบัตรประชาชน (แนวนอน) ให้ขนานกับกรอบสี่เหลี่ยม';
-        } catch (err) {
-            isCameraScanning = false;
-            camWrapper.classList.add('hidden');
-            btnToggleCam.innerHTML = '<i class="fa-solid fa-camera text-base"></i> ใช้กล้องมือถือสแกนบาร์โค้ด';
-            Swal.showValidationMessage('ไม่สามารถเข้าถึงกล้องได้ กรุณากดอนุญาตสิทธิ์การใช้กล้อง (Allow Camera) บนเบราว์เซอร์ครับ');
-        }
-    };
+                audio: false
+            });
 
-    window.scanBarcodeFromImage = async function(inputElement) {
-        if (!inputElement.files || inputElement.files.length === 0) return;
-        const imageFile = inputElement.files[0];
+            video.srcObject = scrStream;
+            await video.play();
 
-        if (isCameraScanning) {
-            await window.stopCameraScanner();
-        }
-
-        const tempScanner = new Html5Qrcode("barcode-reader-box");
-        try {
-            const decodedText = await tempScanner.scanFile(imageFile, true);
-            const cleanDigits = decodedText.replace(/[^0-9]/g, '');
-            if (cleanDigits.length === 13) {
-                playScannerBeep();
-                document.getElementById('swal-cid-input').value = cleanDigits;
-                tempScanner.clear();
-                Swal.clickConfirm();
-            } else {
-                Swal.showValidationMessage('อ่านค่าได้: ' + decodedText + ' (ไม่ใช่เลข 13 หลัก)');
+            const track = scrStream.getVideoTracks()[0];
+            const caps = track && typeof track.getCapabilities === 'function' ? track.getCapabilities() : {};
+            if (caps.torch && torchBtn) {
+                torchBtn.classList.remove('hidden');
+                scrTorchEnabled = false;
+                document.getElementById('scr_torch_btn_label').innerText = 'เปิดไฟฉาย';
+            } else if (torchBtn) {
+                torchBtn.classList.add('hidden');
             }
+
+            await getScrOcrWorker();
+            setScrScannerStatus('<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> <span>กำลังสแกนอัตโนมัติ... ถือบัตรให้นิ่ง</span>');
+
+            scrTimer = setInterval(window.scanScreeningVideoFrame, 900);
         } catch (err) {
-            Swal.showValidationMessage('ไม่พบบาร์โค้ดที่ชัดเจนในรูปภาพ กรุณาถ่ายให้เห็นบาร์โค้ดชัดๆ หรือพิมพ์ตัวเลขครับ');
+            console.error('Screening Camera Error:', err);
+            setScrScannerStatus('<i class="fa-solid fa-triangle-exclamation text-amber-400"></i> <span>เปิดกล้องสดไม่ได้ กรุณาแตะ "สแกนจากรูปภาพ"</span>');
+            Swal.fire({
+                icon: 'warning',
+                title: 'ไม่สามารถเปิดกล้องสดได้',
+                text: err.message || 'กรุณาอนุญาตสิทธิ์การใช้กล้องบนเบราว์เซอร์ หรือใช้ปุ่ม "สแกนจากรูปภาพ" แทนครับ',
+                confirmButtonColor: '#059669',
+                customClass: { popup: 'rounded-3xl' }
+            });
         }
     };
 
+    window.scanScreeningVideoFrame = async function() {
+        if (isScrScanningFrame || !scrStream) return;
+        const video = document.getElementById('scr_scanner_video');
+        const cidCanvas = document.getElementById('scr_scanner_canvas');
+        const nameCanvas = document.getElementById('scr_name_canvas');
+        if (!video || video.readyState !== 4 || video.videoWidth === 0) return;
+
+        isScrScanningFrame = true;
+        try {
+            const cropW = Math.floor(video.videoWidth * 0.88);
+            const cidH  = Math.floor(video.videoHeight * 0.24);
+            const cropX = Math.floor((video.videoWidth - cropW) / 2);
+            const cidY  = Math.floor(video.videoHeight * 0.28);
+
+            cidCanvas.width = cropW;
+            cidCanvas.height = cidH;
+            const ctx = cidCanvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(video, cropX, cidY, cropW, cidH, 0, 0, cropW, cidH);
+            preprocessScrCanvas(ctx, cropW, cidH);
+
+            const worker = await getScrOcrWorker();
+            const { data: { text } } = await worker.recognize(cidCanvas);
+            const validCid = extractValidThaiCidFromText(text);
+
+            if (validCid) {
+                if (scrTimer) {
+                    clearInterval(scrTimer);
+                    scrTimer = null;
+                }
+                playScannerBeep();
+
+                const nameH = Math.floor(video.videoHeight * 0.24);
+                const nameY = Math.floor(video.videoHeight * 0.48);
+                nameCanvas.width = cropW;
+                nameCanvas.height = nameH;
+                const nCtx = nameCanvas.getContext('2d', { willReadFrequently: true });
+                nCtx.drawImage(video, cropX, nameY, cropW, nameH, 0, 0, cropW, nameH);
+                preprocessScrCanvas(nCtx, cropW, nameH);
+
+                const formatted = validCid.replace(/^(\d)(\d{4})(\d{5})(\d{2})(\d)$/, '$1-$2-$3-$4-$5');
+                setScrScannerStatus(`<i class="fa-solid fa-spinner fa-spin"></i> <span>พบเลข ${formatted} กำลังอ่านชื่อ-สกุล...</span>`);
+
+                const scannedThaiName = await readScrThaiNameWithTimeout(nameCanvas, 5000);
+                window.closeScreeningCameraScanner(false);
+                window.fetchPatientData(validCid, scannedThaiName, true);
+            }
+        } catch (e) {
+            console.warn('Screening Frame OCR skip:', e);
+        } finally {
+            isScrScanningFrame = false;
+        }
+    };
+
+    window.handleScreeningStaticImage = async function(inputEl) {
+        const file = inputEl.files && inputEl.files[0];
+        if (!file) return;
+
+        if (scrTimer) {
+            clearInterval(scrTimer);
+            scrTimer = null;
+        }
+
+        const isCamModalVisible = !document.getElementById('screeningIdScannerModal')?.classList.contains('hidden');
+        if (isCamModalVisible) {
+            setScrScannerStatus('<i class="fa-solid fa-spinner fa-spin"></i> <span>กำลังอ่านเลขบัตรและชื่อ-สกุลจากภาพ...</span>');
+        } else {
+            Swal.fire({ title: 'กำลังอ่านข้อมูลจากหน้าบัตร...', allowOutsideClick: false, didOpen: () => Swal.showLoading(), customClass: { popup: 'rounded-3xl' } });
+        }
+
+        try {
+            const worker = await getScrOcrWorker();
+            await worker.setParameters({ tessedit_pageseg_mode: '11' });
+            const { data: { text } } = await worker.recognize(file);
+            await worker.setParameters({ tessedit_pageseg_mode: '6' });
+
+            const validCid = extractValidThaiCidFromText(text);
+            if (validCid) {
+                playScannerBeep();
+                const scannedThaiName = await readScrThaiNameWithTimeout(file, 6000);
+                window.closeScreeningCameraScanner(false);
+                window.fetchPatientData(validCid, scannedThaiName, true);
+            } else {
+                if (isCamModalVisible) {
+                    setScrScannerStatus('<i class="fa-solid fa-circle-xmark text-rose-400"></i> <span>ไม่พบเลข 13 หลักที่ชัดเจน ลองถ่ายใหม่ให้ชัดขึ้นครับ</span>');
+                    if (scrStream) {
+                        scrTimer = setInterval(window.scanScreeningVideoFrame, 900);
+                    }
+                } else {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'ไม่พบเลข 13 หลักที่ชัดเจน',
+                        text: 'กรุณาถ่ายให้เห็นเลข 13 หลักหน้าบัตรชัดๆ หรือเปิดกล้องสแกนสดครับ',
+                        confirmButtonColor: '#059669',
+                        confirmButtonText: 'ลองใหม่',
+                        customClass: { popup: 'rounded-3xl' }
+                    }).then(() => window.openScanModal());
+                }
+            }
+        } catch (e) {
+            if (isCamModalVisible) {
+                setScrScannerStatus('<i class="fa-solid fa-triangle-exclamation text-rose-400"></i> <span>อ่านภาพไม่สำเร็จ กรุณาลองใหม่</span>');
+            } else {
+                Swal.fire({ icon: 'error', title: 'อ่านภาพไม่สำเร็จ', text: 'กรุณาลองใหม่อีกครั้งครับ' });
+            }
+        } finally {
+            inputEl.value = '';
+        }
+    };
+
+    window.toggleScreeningTorch = async function() {
+        if (!scrStream) return;
+        const track = scrStream.getVideoTracks()[0];
+        if (!track) return;
+
+        try {
+            scrTorchEnabled = !scrTorchEnabled;
+            await track.applyConstraints({ advanced: [{ torch: scrTorchEnabled }] });
+            const lbl = document.getElementById('scr_torch_btn_label');
+            const btn = document.getElementById('scr_btn_toggle_torch');
+            if (lbl) lbl.innerText = scrTorchEnabled ? 'ปิดไฟฉาย' : 'เปิดไฟฉาย';
+            if (btn) {
+                btn.classList.toggle('bg-amber-400', scrTorchEnabled);
+                btn.classList.toggle('text-slate-950', scrTorchEnabled);
+                btn.classList.toggle('bg-slate-700', !scrTorchEnabled);
+                btn.classList.toggle('text-slate-200', !scrTorchEnabled);
+            }
+        } catch (e) {
+            console.warn('Torch not supported:', e);
+        }
+    };
+
+    window.closeScreeningCameraScanner = function(reopenInputModal = false) {
+        if (scrTimer) {
+            clearInterval(scrTimer);
+            scrTimer = null;
+        }
+        if (scrStream) {
+            scrStream.getTracks().forEach(track => track.stop());
+            scrStream = null;
+        }
+        isScrScanningFrame = false;
+        scrTorchEnabled = false;
+        document.getElementById('screeningIdScannerModal')?.classList.add('hidden');
+        if (reopenInputModal) {
+            window.openScanModal();
+        }
+    };
+
+    window.addEventListener('pagehide', () => window.closeScreeningCameraScanner(false));
+
+    // หน้าต่างเริ่มต้นการสแกนคัดกรอง (รองรับทั้ง กล้องมือถือสด + รูปภาพ + เครื่องยิงบาร์โค้ด USB + พิมพ์ 13 หลัก)
     window.openScanModal = function() {
         Swal.fire({
-            title: '<div class="text-xl md:text-2xl font-black text-slate-800 dark:text-white"><i class="fa-solid fa-barcode text-indigo-500 mr-2"></i> สแกนบัตรประชาชน</div>',
+            title: '<div class="text-lg sm:text-xl font-black text-slate-800 dark:text-white flex items-center justify-center gap-2"><i class="fa-solid fa-id-card text-emerald-500"></i> สแกนบัตรประชาชนคัดกรอง</div>',
             html: `
-                <p class="text-xs sm:text-sm text-slate-500 mb-3">ใช้เครื่องยิงบาร์โค้ด, กล้องมือถือ หรือพิมพ์เลข 13 หลัก</p>
+                <p class="text-xs text-slate-500 mb-3.5">เปิดกล้องมือถือสแกนหน้าบัตรสด หรือใช้เครื่องยิงบาร์โค้ด / พิมพ์เลข 13 หลัก</p>
                 
-                <div class="flex flex-wrap gap-2 justify-center mb-3">
-                    <button type="button" id="btn-toggle-camera" onclick="window.toggleCameraScanner()" 
-                            class="flex-1 py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-sm">
-                        <i class="fa-solid fa-camera text-base"></i> ใช้กล้องมือถือสแกนบาร์โค้ด
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 mb-4">
+                    <button type="button" onclick="window.openScreeningCameraScanner()" 
+                            class="sm:col-span-8 py-3 px-4 bg-slate-800 hover:bg-slate-900 text-white rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-camera text-emerald-400 text-base"></i> สแกนหน้าบัตร ปชช. (กล้องสด)
                     </button>
 
-                    <label class="cursor-pointer py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 shadow-sm" title="ถ่ายรูปบาร์โค้ดกรณีกล้องไม่โฟกัส">
-                        <i class="fa-solid fa-image"></i>
-                        <span class="hidden sm:inline">สแกนจากภาพถ่าย</span>
-                        <input type="file" accept="image/*" capture="environment" class="hidden" onchange="window.scanBarcodeFromImage(this)">
+                    <label class="sm:col-span-4 cursor-pointer py-3 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 shadow-sm" title="ถ่ายหรือเลือกภาพหน้าบัตร">
+                        <i class="fa-solid fa-image text-indigo-500"></i>
+                        <span>จากรูปภาพ</span>
+                        <input type="file" accept="image/*" capture="environment" class="hidden" onchange="window.handleScreeningStaticImage(this)">
                     </label>
-                </div>
-
-                <div id="camera-scanner-wrapper" class="hidden mb-4">
-                    <div id="barcode-reader-box" class="w-full rounded-2xl overflow-hidden border-2 border-indigo-500 bg-slate-900 shadow-inner"></div>
-                    <p id="camera-status-text" class="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mt-1.5"></p>
                 </div>
 
                 <div class="relative">
                     <input type="text" id="swal-cid-input" inputmode="numeric" pattern="[0-9]*" 
-                           class="w-full text-center text-xl md:text-2xl font-bold tracking-[0.2em] p-4 bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-slate-800 dark:text-white" 
-                           placeholder="เลข 13 หลัก" maxlength="13">
+                           class="w-full text-center text-lg sm:text-xl font-black tracking-[0.18em] py-3.5 px-4 bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500 outline-none text-slate-800 dark:text-white" 
+                           placeholder="หรือพิมพ์/ยิงเลข 13 หลัก" maxlength="13">
                 </div>
             `,
             showCancelButton: true,
-            confirmButtonText: 'ค้นหา',
+            confirmButtonText: '<i class="fa-solid fa-search mr-1"></i> ค้นหา',
             cancelButtonText: 'ปิด',
             buttonsStyling: false,
             customClass: {
-                popup: 'bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 border border-slate-100 dark:border-slate-700 w-full max-w-md',
-                confirmButton: 'w-full md:w-auto mt-4 md:mt-0 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl px-6 py-3 mx-2 outline-none',
-                cancelButton: 'w-full md:w-auto mt-2 md:mt-0 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl px-6 py-3 mx-2 outline-none'
+                popup: 'bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-5 sm:p-6 border border-slate-100 dark:border-slate-700 w-full max-w-md',
+                confirmButton: 'w-full sm:w-auto mt-3 sm:mt-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl px-6 py-2.5 mx-1.5 outline-none text-sm',
+                cancelButton: 'w-full sm:w-auto mt-2 sm:mt-0 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-2xl px-6 py-2.5 mx-1.5 outline-none text-sm'
             },
             didOpen: () => {
                 const input = document.getElementById('swal-cid-input');
                 if (window.innerWidth >= 768) {
-                    setTimeout(() => input.focus(), 300);
+                    setTimeout(() => input.focus(), 250);
                 }
                 input.addEventListener('keyup', (e) => {
                     if (e.key === 'Enter' && input.value.replace(/[^0-9]/g, '').length === 13) {
@@ -1132,26 +1423,109 @@
                     }
                 });
             },
-            willClose: () => {
-                window.stopCameraScanner();
-            },
             preConfirm: async () => {
-                await window.stopCameraScanner();
                 const cid = document.getElementById('swal-cid-input').value.replace(/[^0-9]/g, '');
                 if (cid.length !== 13) {
                     Swal.showValidationMessage('กรุณาระบุเลข ปชช. ให้ครบ 13 หลักครับ');
                     return false;
                 }
-                return window.fetchPatientData(cid);
+                return window.fetchPatientData(cid, '', false);
             }
         });
-    }
+    };
 
-    window.fetchPatientData = async function(cid) {
-        Swal.showLoading();
+    // การ์ดแจ้งเตือน "ไม่พบข้อมูล" แบบกะทัดรัด (แสดง ชื่อ-สกุล + เลขบัตร + สถานะ HosXP ในหน้าจอเดียว)
+    window.showScreeningNotFoundModal = function(nf) {
+        const safeName = nf.full_name ? escapeHtmlText(nf.full_name) : '';
+        const safeCid  = escapeHtmlText(nf.formatted_cid || nf.cid || '-');
+        const rawCid   = encodeURIComponent(nf.cid || '');
+
+        let statusCls  = 'bg-slate-100 text-slate-600 border-slate-200';
+        let statusIcon = 'fa-circle-info text-slate-500';
+        let statusText = 'ยังไม่มีประวัติในระบบ กรุณาตรวจเลขบัตรหรือกดสแกนใหม่';
+
+        if (nf.name_source === 'hosxp') {
+            statusCls  = 'bg-indigo-50 text-indigo-800 border-indigo-100';
+            statusIcon = 'fa-hospital text-indigo-600';
+            statusText = `พบใน HosXP${nf.hosxp_hn ? ' (HN: ' + escapeHtmlText(nf.hosxp_hn) + ')' : ''} • ยังไม่ได้ลงทะเบียน KSVR`;
+        } else if (nf.name_source === 'ocr') {
+            statusCls  = 'bg-sky-50 text-sky-800 border-sky-100';
+            statusIcon = 'fa-camera text-sky-600';
+            statusText = 'อ่านชื่อจากหน้าบัตร (OCR) • ยังไม่มีข้อมูลใน KSVR / HosXP';
+        }
+
+        const cidBadge = nf.is_cid_valid
+            ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200"><i class="fa-solid fa-check mr-0.5"></i>13 หลักถูกต้อง</span>'
+            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-200"><i class="fa-solid fa-triangle-exclamation mr-0.5"></i>เลขไม่ถูกหลัก</span>';
+
+        Swal.fire({
+            html: `
+                <div class="text-left">
+                    <div class="flex items-center gap-2.5 pb-3 mb-3 border-b border-rose-100">
+                        <div class="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                            <i class="fa-solid fa-user-xmark"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="text-sm sm:text-base font-black text-rose-800 leading-tight">ไม่พบประวัติในระบบ KSVR</h3>
+                            <p class="text-[11px] font-medium text-rose-600">ตรวจชื่อ-สกุล และเลขบัตรด้านล่างก่อนดำเนินการต่อ</p>
+                        </div>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50/80 overflow-hidden mb-4">
+                        <div class="px-4 py-3 space-y-1.5">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-user text-indigo-500 text-sm shrink-0"></i>
+                                <div class="font-black text-base leading-snug ${safeName ? 'text-slate-900' : 'text-slate-400 italic text-xs font-semibold'}">
+                                    ${safeName || 'ไม่พบชื่อ-สกุล (อ่านจากหน้าบัตรไม่ชัด)'}
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-regular fa-id-card text-emerald-600 text-sm shrink-0"></i>
+                                    <span class="font-mono font-black text-base text-slate-800 tracking-wide">${safeCid}</span>
+                                </div>
+                                ${cidBadge}
+                            </div>
+                        </div>
+                        <div class="px-4 py-2 border-t text-xs font-bold flex items-center gap-2 ${statusCls}">
+                            <i class="fa-solid ${statusIcon} shrink-0"></i>
+                            <span class="leading-snug">${statusText}</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <button type="button" onclick="window.openScreeningCameraScanner()"
+                                class="w-full py-3 px-3 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all">
+                            <i class="fa-solid fa-camera text-emerald-400"></i> สแกนใหม่
+                        </button>
+                        <a href="${createPatientUrlBase}?cid=${rawCid}"
+                           class="w-full py-3 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all">
+                            <i class="fa-solid fa-user-plus"></i> เพิ่มประวัติใหม่
+                        </a>
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            customClass: {
+                popup: 'bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-5 border-2 border-rose-200 w-full max-w-md'
+            }
+        });
+    };
+
+    window.fetchPatientData = async function(cid, scannedName = '', isScanned = false) {
+        Swal.fire({
+            title: 'กำลังค้นหาประวัติทหารใหม่...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading(),
+            customClass: { popup: 'rounded-3xl' }
+        });
+
         try {
             const formData = new FormData();
             formData.append('cid', cid);
+            formData.append('scanned_name', scannedName || '');
+            formData.append('is_scanned', isScanned ? '1' : '0');
             formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
 
             const response = await fetch('{{ route("backend.recruit_screenings.search") }}', {
@@ -1160,20 +1534,54 @@
             });
             const result = await response.json();
 
-            if (result.status === 'error') {
+            if (result.status === 'not_found' && result.not_found_detail) {
+                window.showScreeningNotFoundModal(result.not_found_detail);
+                return;
+            }
+
+            if (result.status === 'already_screened') {
                 Swal.fire({
-                    icon: 'error', title: 'ผิดพลาด', text: result.message,
-                    confirmButtonColor: '#0f172a', confirmButtonText: 'ลองใหม่'
-                }).then(() => setTimeout(window.openScanModal, 300));
+                    icon: 'info',
+                    title: 'คัดกรองไปแล้วครับ',
+                    html: `
+                        <div class="text-sm text-slate-600 space-y-1.5 mt-2">
+                            <div class="font-black text-base text-slate-900">${escapeHtmlText(result.fullname)}</div>
+                            <div class="font-mono text-xs text-slate-500">${escapeHtmlText(result.cid)}</div>
+                            <div class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 mt-1">
+                                ผลคัดกรองเดิม: ${escapeHtmlText(result.color_label)} • ${escapeHtmlText(result.screened_at)}
+                            </div>
+                        </div>
+                    `,
+                    confirmButtonColor: '#0f172a',
+                    confirmButtonText: 'สแกนคนถัดไป',
+                    customClass: { popup: 'rounded-3xl p-5' }
+                }).then(() => setTimeout(window.openScanModal, 250));
+                return;
+            }
+
+            if (result.status !== 'success') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'ผิดพลาด',
+                    text: result.message || 'ไม่สามารถตรวจสอบข้อมูลได้',
+                    confirmButtonColor: '#0f172a',
+                    confirmButtonText: 'ลองใหม่',
+                    customClass: { popup: 'rounded-3xl' }
+                }).then(() => setTimeout(window.openScanModal, 250));
                 return;
             }
 
             window.showColorSelectionModal(result.data);
 
         } catch (error) {
-            Swal.showValidationMessage('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+            Swal.fire({
+                icon: 'error',
+                title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้',
+                text: 'กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่อีกครั้งครับ',
+                confirmButtonColor: '#0f172a'
+            });
         }
-    }
+    };
 
     window.tempChronicStatus = 'none';
     window.tempChronicDetail = '';
@@ -1240,7 +1648,7 @@
 
     window.showColorSelectionModal = function(patient) {
         const initStatus = patient.chronic_disease_status || 'none';
-        const initDetail = patient.chronic_disease_detail || '';
+        const initDetail = escapeHtmlText(patient.chronic_disease_detail || '');
         const showDetailBox = (initStatus === 'yes' || initStatus === 'other');
 
         Swal.fire({
@@ -1248,12 +1656,12 @@
             html: `
                 <div class="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl text-left mb-5 border border-slate-100 dark:border-slate-700">
                     <div class="flex flex-wrap items-center gap-2">
-                        <span class="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-1 rounded-full font-bold">ผลัด ${patient.batch}</span>
-                        <span class="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-1 rounded-full font-bold"><i class="fa-solid fa-shield-heart mr-1"></i>${patient.pttype_name || 'รอซิงค์สิทธิ'}</span>
+                        <span class="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-1 rounded-full font-bold">ผลัด ${escapeHtmlText(patient.batch)}</span>
+                        <span class="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-1 rounded-full font-bold"><i class="fa-solid fa-shield-heart mr-1"></i>${escapeHtmlText(patient.pttype_name || 'รอซิงค์สิทธิ')}</span>
                     </div>
-                    <h3 class="text-xl font-black text-slate-800 dark:text-white mt-2">${patient.fullname}</h3>
-                    <p class="text-sm text-slate-500 mt-1"><b>ปชช:</b> ${patient.cid}</p>
-                    <p class="text-sm text-slate-500"><b>หน่วย:</b> ${patient.unit}</p>
+                    <h3 class="text-xl font-black text-slate-800 dark:text-white mt-2">${escapeHtmlText(patient.fullname)}</h3>
+                    <p class="text-sm text-slate-500 mt-1"><b>ปชช:</b> ${escapeHtmlText(patient.cid)}</p>
+                    <p class="text-sm text-slate-500"><b>หน่วย:</b> ${escapeHtmlText(patient.unit)}</p>
                 </div>
 
                 <!-- 🩺 ข้อ 1: ข้อมูลโรคประจำตัว / ประวัติสุขภาพ -->
@@ -1347,7 +1755,7 @@
         } else {
             window.showSymptomsForm(patientId, colorGroup);
         }
-    }
+    };
 
     window.showSymptomsForm = function(patientId, colorGroup) {
         let title = colorGroup === 'yellow' ? 'ระบุอาการ (กลุ่มสีเหลือง)' : 'ระบุผลตรวจและอาการ (กลุ่มสีแดง)';
@@ -1401,9 +1809,9 @@
             },
             preConfirm: () => {
                 let findings = [];
-                if(colorGroup === 'red') {
+                if (colorGroup === 'red') {
                     document.querySelectorAll('input[name="finding[]"]:checked').forEach(el => findings.push(el.value));
-                    if(findings.length === 0) {
+                    if (findings.length === 0) {
                         Swal.showValidationMessage('<i class="fa-solid fa-triangle-exclamation"></i> กรุณาเลือกผลการตรวจพบอย่างน้อย 1 รายการครับ');
                         return false;
                     }
@@ -1417,27 +1825,27 @@
                     symptoms.push(`อื่นๆ: ${other}`);
                 }
 
-                if(symptoms.length === 0 && colorGroup === 'yellow') {
+                if (symptoms.length === 0 && colorGroup === 'yellow') {
                     Swal.showValidationMessage('<i class="fa-solid fa-triangle-exclamation"></i> กรุณาเลือกอาการอย่างน้อย 1 รายการครับ');
                     return false;
                 }
 
                 let finalNote = '';
-                if(findings.length > 0) {
+                if (findings.length > 0) {
                     finalNote += `[ตรวจพบ: ${findings.join(', ')}] `;
                 }
-                if(symptoms.length > 0) {
+                if (symptoms.length > 0) {
                     finalNote += `[อาการ: ${symptoms.join(', ')}]`;
                 }
                 
                 return finalNote.trim();
             }
         }).then((result) => {
-            if(result.isConfirmed) {
+            if (result.isConfirmed) {
                 window.submitScreening(patientId, colorGroup, result.value);
             }
         });
-    }
+    };
 
     window.submitScreening = async function(patientId, colorGroup, symptomsNote = '') {
         Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
@@ -1489,7 +1897,7 @@
             console.error(error);
             Swal.fire('ผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
         }
-    }
+    };
 </script>
 
 <script>
@@ -1693,7 +2101,7 @@
                     confirmButtonColor: '#0f172a'
                 });
             }
-        }
+        };
     });
 
     window.deleteScreening = function(screeningId, currentColor) {
@@ -1729,7 +2137,7 @@
                 }
             }
         });
-    }
+    };
 
     window.editScreening = function(screeningId, cid, currentColor) {
         Swal.fire({
@@ -1758,7 +2166,7 @@
                 }
             }
         });
-    }
+    };
 
     window.exportTableToCSV = function(filename) {
         let csv = [];
@@ -1787,6 +2195,6 @@
             toast: true, position: 'top-end', icon: 'success', 
             title: 'ดาวน์โหลดไฟล์สำเร็จ!', showConfirmButton: false, timer: 2500 
         });
-    }
+    };
 </script>
 @endsection

@@ -151,6 +151,7 @@
                                 'medic'         => ['name' => 'เสนารักษ์', 'desc' => 'Medic', 'icon' => 'fa-walkie-talkie'],
                                 'registration'  => ['name' => 'เจ้าหน้าที่ทะเบียน', 'desc' => 'Registration', 'icon' => 'fa-id-card-clip'],
                                 'medical_staff' => ['name' => 'เจ้าหน้าที่เวชกรรม', 'desc' => 'Medical Staff', 'icon' => 'fa-kit-medical'],
+                                'screening'     => ['name' => 'จุดคัดกรอง', 'desc' => 'Screening / Triage', 'icon' => 'fa-clipboard-check'],
                             ];
                         @endphp
 

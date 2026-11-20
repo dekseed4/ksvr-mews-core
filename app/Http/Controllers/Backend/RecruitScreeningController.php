@@ -225,13 +225,79 @@ class RecruitScreeningController extends Controller
 
     public function searchPatient(Request $request)
     {
-        $request->validate(['cid' => 'required|string|min:13']);
-        $cleanCid = preg_replace('/[^0-9]/', '', $request->cid);
+        $request->validate([
+            'cid'          => 'required|string|min:13',
+            'scanned_name' => 'nullable|string|max:255',
+            'is_scanned'   => 'nullable|boolean',
+        ]);
+
+        $cleanCid    = preg_replace('/[^0-9]/', '', $request->cid);
+        $scannedName = trim((string) $request->input('scanned_name', ''));
+        $isScanned   = $request->boolean('is_scanned');
 
         $patient = Patient::with('militaryUnit')->where('cid', $cleanCid)->first();
 
+        // 🔍 กรณีไม่พบใน KSVR: ตรวจสูตร Mod-11 + ยืนยันชื่อจาก HosXP (Read-Only) หรือใช้ชื่อจาก OCR
         if (!$patient) {
-            return response()->json(['status' => 'error', 'message' => 'ไม่พบข้อมูลทหารใหม่จากเลขบัตรประชาชนนี้ครับ']);
+            $isCidValid = false;
+            if (preg_match('/^[1-8]\d{12}$/', $cleanCid)) {
+                $sum = 0;
+                for ($i = 0; $i < 12; $i++) {
+                    $sum += ((int) $cleanCid[$i]) * (13 - $i);
+                }
+                $isCidValid = ((11 - ($sum % 11)) % 10) === (int) $cleanCid[12];
+            }
+
+            $resolvedName = $scannedName !== '' ? $scannedName : null;
+            $nameSource   = $resolvedName ? 'ocr' : null;
+            $hosxpHn      = null;
+
+            if (strlen($cleanCid) === 13) {
+                try {
+                    // ดึงแบบ Read-Only ด้วย Exact Match บนคอลัมน์ cid (ใช้ Index ไม่กระทบเซิร์ฟเวอร์ HosXP)
+                    $hosxpPatient = \App\Models\HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname')
+                        ->where('cid', $cleanCid)
+                        ->first();
+
+                    if ($hosxpPatient) {
+                        $cleanUTF8 = function ($str) {
+                            if (empty($str)) return '';
+                            $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string) $str);
+                            return trim(mb_convert_encoding($utf8 ?: (string) $str, 'UTF-8', 'UTF-8'));
+                        };
+
+                        $fullHosxpName = trim(
+                            $cleanUTF8($hosxpPatient->pname ?? '') .
+                            $cleanUTF8($hosxpPatient->fname ?? '') . ' ' .
+                            $cleanUTF8($hosxpPatient->lname ?? '')
+                        );
+
+                        if ($fullHosxpName !== '') {
+                            $resolvedName = $fullHosxpName;
+                            $nameSource   = 'hosxp';
+                            $hosxpHn      = $cleanUTF8($hosxpPatient->hn ?? '');
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // หากเชื่อมต่อ HosXP ไม่ได้ชั่วคราว ให้ใช้ชื่อที่กล้องอ่าน (OCR) แทนโดยไม่ให้ค้าง
+                }
+            }
+
+            return response()->json([
+                'status'  => 'not_found',
+                'message' => 'ไม่พบข้อมูลทหารใหม่จากเลขบัตรประชาชนนี้ครับ',
+                'not_found_detail' => [
+                    'cid'           => $cleanCid,
+                    'formatted_cid' => strlen($cleanCid) === 13
+                        ? preg_replace('/^(\d)(\d{4})(\d{5})(\d{2})(\d)$/', '$1-$2-$3-$4-$5', $cleanCid)
+                        : $cleanCid,
+                    'is_cid_valid'  => $isCidValid,
+                    'full_name'     => $resolvedName,
+                    'name_source'   => $nameSource, // 'hosxp' | 'ocr' | null
+                    'hosxp_hn'      => $hosxpHn,
+                    'is_scanned'    => $isScanned,
+                ],
+            ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         }
 
         $existingScreening = \App\Models\RecruitScreening::where('patient_id', $patient->id)
@@ -239,14 +305,27 @@ class RecruitScreeningController extends Controller
             ->first();
 
         if ($existingScreening) {
-            return response()->json(['status' => 'error', 'message' => "พลฯ {$patient->first_name} ถูกคัดกรองไปแล้วเมื่อ " . $existingScreening->created_at->format('d/m/Y H:i')]);
+            $colorLabels = [
+                'green'  => 'กลุ่มปกติ (สีเขียว)',
+                'yellow' => 'กลุ่มเสี่ยง (สีเหลือง)',
+                'red'    => 'กลุ่มพบเชื้อ (สีแดง)',
+            ];
+            return response()->json([
+                'status'      => 'already_screened',
+                'message'     => "พลฯ {$patient->first_name} {$patient->last_name} ถูกคัดกรองไปแล้วเมื่อ " . $existingScreening->created_at->copy()->addYears(543)->format('d/m/Y H:i น.'),
+                'fullname'    => $patient->rank . $patient->first_name . ' ' . $patient->last_name,
+                'cid'         => preg_replace('/^(\d)(\d{4})(\d{5})(\d{2})(\d)$/', '$1-$2-$3-$4-$5', $patient->cid),
+                'color_group' => $existingScreening->color_group,
+                'color_label' => $colorLabels[$existingScreening->color_group] ?? $existingScreening->color_group,
+                'screened_at' => $existingScreening->created_at->copy()->addYears(543)->format('d/m/Y H:i น.'),
+            ], 200, [], JSON_UNESCAPED_UNICODE);
         }
 
         $displayUnit = ($patient->battalion ?? 'ไม่ระบุหน่วย') . ($patient->company ? ' (' . $patient->company . ')' : '');
 
         return response()->json([
-            'status' => 'success', 
-            'data' => [
+            'status' => 'success',
+            'data'   => [
                 'id'                     => $patient->id,
                 'fullname'               => $patient->rank . $patient->first_name . ' ' . $patient->last_name,
                 'cid'                    => $patient->cid,
@@ -256,8 +335,8 @@ class RecruitScreeningController extends Controller
                 'batch'                  => $patient->intake_batch,
                 'chronic_disease_status' => $patient->chronic_disease_status ?? 'none',
                 'chronic_disease_detail' => $patient->chronic_disease_detail ?? '',
-            ]
-        ]);
+            ],
+        ], 200, [], JSON_UNESCAPED_UNICODE);
     }
 
     public function storeScreening(Request $request)

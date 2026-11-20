@@ -1,20 +1,25 @@
 {
-    "name": "KSVR MEWS - ระบบประเมินสัญญาณชีพ",
+    "id": "/ksvr-mews/",
+    "name": "KSVR Hospital System (M-CARE & MEWS)",
     "short_name": "KSVR MEWS",
-    "start_url": "/ksvr-mews/backend/dashboard",
+    "start_url": "/ksvr-mews/",
+    "scope": "/ksvr-mews/",
     "display": "standalone",
-    "background_color": "#0f172a",
-    "theme_color": "#10b981",
+    "orientation": "portrait",
+    "background_color": "#ffffff",
+    "theme_color": "#1e293b",
     "icons": [
         {
-            "src": "images/logo5.png",
+            "src": "/ksvr-mews/images/icon-192.png",
             "sizes": "192x192",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any"
         },
         {
-            "src": "images/logo5.png",
+            "src": "/ksvr-mews/images/icon-512.png",
             "sizes": "512x512",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any"
         }
     ]
 }

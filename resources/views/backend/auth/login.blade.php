@@ -110,6 +110,13 @@
                         เข้าสู่ระบบ (Login)
                     </button>
                 </div>
+                <div class="pwa-hide-when-installed mt-4 pt-4 border-t border-slate-100 text-center">
+                    <button type="button" onclick="window.openPwaInstallModal()"
+                            class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-xs font-bold transition-colors">
+                        <i class="fa-solid fa-mobile-screen-button text-emerald-600"></i>
+                        <span>วิธีติดตั้งแอปลงหน้าจอมือถือ (iOS / Android)</span>
+                    </button>
+                </div>
             </form>
             
             <div class="mt-6 text-center text-xs text-slate-500">
@@ -366,5 +373,6 @@
             });
         }
     </script>
+    @include('partials.pwa_install_modal')
 </body>
 </html>

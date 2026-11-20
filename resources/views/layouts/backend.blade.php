@@ -143,6 +143,7 @@
                 $isMedic        = $isAdmin || in_array('medic', $userRoles);
                 $isRegistration = $isAdmin || in_array('registration', $userRoles);
                 $isMedicalStaff = $isAdmin || in_array('medical_staff', $userRoles);
+                $isScreening    = $isAdmin || in_array('screening', $userRoles);
 
                 // เช็คว่ากำลังเปิดหน้าใดหน้าหนึ่งในหมวด "ข้อมูลทหารใหม่" อยู่หรือไม่
                 $isRecruitGroupActive = request()->routeIs(
@@ -173,7 +174,7 @@
                             \Carbon\Carbon::tomorrow()->format('Y-m-d')
                         ]);
 
-                    if (!$isAdmin && !$isER && !$isOPD && !$isExecutive && !$isRegistration && !$isMedicalStaff) {
+                    if (!$isAdmin && !$isER && !$isOPD && !$isExecutive && !$isRegistration && !$isMedicalStaff && !$isScreening) {
                         $appAlertQuery->where('military_unit_id', $user->military_unit_id);
                         if (!empty($user->intake_batch)) {
                             $appAlertQuery->where('intake_batch', $user->intake_batch);
@@ -192,7 +193,7 @@
                     $infCountQuery = \App\Models\RecruitInfirmaryStay::where('status', 'staying')
                         ->whereHas('patient');
 
-                    if (!$isAdmin && !$isER && !$isOPD && !$isExecutive && !$isRegistration && !$isMedicalStaff) {
+                    if (!$isAdmin && !$isER && !$isOPD && !$isExecutive && !$isRegistration && !$isMedicalStaff && !$isScreening) {
                         $infCountQuery->where('military_unit_id', $user->military_unit_id);
                         if (!empty($user->intake_batch)) {
                             $infCountQuery->where('intake_batch', $user->intake_batch);
@@ -452,36 +453,38 @@
                 <!-- 🌟 2. ดึงข้อมูลแจ้งเตือน (กรองเคสสีเขียวล้วนออก เอาเฉพาะเหลือง/แดง หรือเขียวที่มีอาการฉุกเฉิน) -->
                 @php
                     $userRoles = is_string(auth()->user()->roles) ? json_decode(auth()->user()->roles, true) : (array)(auth()->user()->roles ?? auth()->user()->role);
-                    $isERorAdmin = in_array('er_nurse', $userRoles) || in_array('admin', $userRoles) || in_array('opd_nurse', $userRoles);
+                    $isERorAdmin = in_array('er_nurse', $userRoles) || in_array('admin', $userRoles) || in_array('opd_nurse', $userRoles) || in_array('screening', $userRoles);
                     
                     $bellNotifications = collect();
                     $latestAlertId = 0;
                     $latestAlertPayload = null;
 
                     if ($isERorAdmin) {
+                        // 🌟 ดึงเฉพาะเคสที่เพิ่งประเมิน "รอบแรก" (COUNT(*) = 1 ต่อ case_id) เพื่อไม่ให้รอบถัดไปเด้งซ้ำ!
+                        $firstRoundOnlyIds = \App\Models\MewsAssessment::selectRaw('MAX(id) as id')
+                            ->groupBy('case_id')
+                            ->havingRaw('COUNT(*) = 1')
+                            ->pluck('id');
+
                         $bellNotifications = \App\Models\MewsAssessment::with('patient.militaryUnit')
-                            ->whereIn('id', function($query) {
-                                $query->selectRaw('MAX(id)')->from('mews_assessments')->groupBy('patient_id');
-                            })
-                            ->where('assessment_type', 'field')
+                            ->whereIn('id', $firstRoundOnlyIds)
                             ->where('status', 'pending')
-                            ->where(function($q) {
-                                // 🌟 กรองเฉพาะเคสฉุกเฉิน(แดง), เฝ้าระวัง(เหลือง) หรือเคสที่มีอาการเฉพาะโรคเท่านั้น (ตัดสีเขียวล้วนออก)
-                                $q->whereIn('risk_level', ['emergency', 'observe'])
-                                  ->orWhereNotNull('symptoms');
-                            })
                             ->orderBy('created_at', 'desc')
                             ->take(5)->get();
                         
                         $firstAlert = $bellNotifications->first();
                         if ($firstAlert && $firstAlert->patient) {
+                            $rawFirstSyms = is_string($firstAlert->symptoms) ? json_decode($firstAlert->symptoms, true) : ($firstAlert->symptoms ?? []);
+                            $hasFirstSym = is_array($rawFirstSyms) && count(array_filter($rawFirstSyms)) > 0;
+                            $resolvedRisk = ($firstAlert->risk_level === 'normal' && $hasFirstSym) ? 'emergency_condition' : $firstAlert->risk_level;
+
                             $latestAlertId = $firstAlert->id;
                             $latestAlertPayload = [
                                 'id'         => $firstAlert->id,
                                 'name'       => ($firstAlert->patient->rank ?? '') . ($firstAlert->patient->first_name ?? '') . ' ' . ($firstAlert->patient->last_name ?? ''),
                                 'unit'       => $firstAlert->patient->militaryUnit->short_name ?? $firstAlert->patient->company ?? '-',
                                 'score'      => $firstAlert->total_score,
-                                'risk_level' => $firstAlert->risk_level,
+                                'risk_level' => $resolvedRisk,
                                 'url'        => route('backend.mews.show', $firstAlert->id),
                             ];
                         }
@@ -530,12 +533,15 @@
                                 </div>
                                 @foreach($bellNotifications as $alert)
                                     @php
-                                        $badgeColor = $alert->risk_level === 'emergency' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700';
-                                        $scoreColor = $alert->risk_level === 'emergency' ? 'text-rose-600' : 'text-amber-600';
-                                        $hasSym = !empty($alert->symptoms) && $alert->symptoms !== '[]';
-                                        if ($alert->risk_level === 'normal' && $hasSym) {
-                                            $badgeColor = 'bg-rose-100 text-rose-700'; // ถ้าเขียวแต่มีอาการเฉพาะโรค ให้ป้ายเป็นสีแดง
-                                        }
+                                        $rawAlertSyms = is_string($alert->symptoms) ? json_decode($alert->symptoms, true) : ($alert->symptoms ?? []);
+                                        $hasSym = is_array($rawAlertSyms) && count(array_filter($rawAlertSyms)) > 0;
+                                        $isEmerRow = $alert->risk_level === 'emergency' || $hasSym;
+                                        $isObsRow  = !$isEmerRow && $alert->risk_level === 'observe';
+
+                                        $badgeColor = $isEmerRow ? 'bg-rose-100 text-rose-700' : ($isObsRow ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700');
+                                        $scoreColor = $isEmerRow ? 'text-rose-600' : ($isObsRow ? 'text-amber-600' : 'text-emerald-600');
+                                        $borderLeft = $isEmerRow ? 'border-l-rose-500' : ($isObsRow ? 'border-l-amber-400' : 'border-l-emerald-400');
+                                        $badgeText  = $hasSym ? 'อาการฉุกเฉิน' : ($isEmerRow ? 'EMERGENCY' : ($isObsRow ? 'OBSERVE' : 'ปกติ (OPD)'));
                                     @endphp
                                     <a href="{{ route('backend.mews.show', $alert->id) }}" class="block px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors border-l-4 {{ $alert->risk_level === 'emergency' || $hasSym ? 'border-l-rose-500' : 'border-l-amber-400' }}">
                                         <div class="flex justify-between items-start mb-1">
@@ -1336,7 +1342,7 @@
                 }
                 
                 const isMedic = userRoles.includes('medic');
-                const isER    = userRoles.includes('er_nurse') || userRoles.includes('opd_nurse');
+                const isER = userRoles.includes('er_nurse') || userRoles.includes('opd_nurse') || userRoles.includes('screening');
                 const isAdmin = userRoles.includes('admin');
 
                 // 1. แจ้งเตือนเข้าห้องฉุกเฉิน (ER / OPD / Admin) แบบ Real-time
