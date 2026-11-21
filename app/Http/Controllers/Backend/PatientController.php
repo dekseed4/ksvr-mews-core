@@ -3,26 +3,62 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Models\HosxpPatient;
+use App\Models\MilitaryDischarge;
+use App\Models\MilitaryUnit;
 use App\Models\Patient;
+use App\Services\AuditLog;
+use App\Services\SettingService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use App\Services\AuditLog;
 
 class PatientController extends Controller
 {
-    // 🌟 1. ตรวจสอบว่า User เป็นบุคลากรระดับโรงพยาบาลที่มีสิทธิ์ดูคนไข้ทั้งหมดหรือไม่
-    private function canViewAllPatients($user)
+    private bool $hosxpTimeoutApplied = false;
+
+    // 🌟 แปลงสิทธิ์ผู้ใช้เป็น Array มาตรฐาน
+    private function getUserRoles($user): array
     {
-        $roles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        
-        return in_array('admin', $roles) 
-            || in_array('er_nurse', $roles) 
-            || in_array('opd_nurse', $roles) 
-            || in_array('executive', $roles) 
-            || in_array('registration', $roles)
-            || in_array('medical_staff', $roles)
-            || in_array('screening', $roles);
+        if (!$user) {
+            return [];
+        }
+
+        $raw = $user->roles ?? $user->role ?? [];
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            return is_array($decoded) ? $decoded : [$raw];
+        }
+
+        return is_array($raw) ? $raw : (array) $raw;
+    }
+
+    // 🌟 1. ตรวจสอบว่า User เป็นบุคลากรระดับโรงพยาบาลที่มีสิทธิ์ดูคนไข้ทั้งหมดหรือไม่
+    private function canViewAllPatients($user): bool
+    {
+        $roles = $this->getUserRoles($user);
+
+        return !empty(array_intersect(
+            ['admin', 'er_nurse', 'opd_nurse', 'executive', 'registration', 'medical_staff', 'screening'],
+            $roles
+        ));
+    }
+
+    // 🛡️ ตรวจสอบสิทธิ์การดูข้อมูลโรคประจำตัวตามนโยบาย PDPA จาก SettingService
+    private function canViewChronicData($user): bool
+    {
+        $roles = $this->getUserRoles($user);
+        if (in_array('admin', $roles, true)) {
+            return true;
+        }
+
+        $allowedRoles = class_exists(SettingService::class)
+            ? (array) SettingService::get('pdpa_chronic_roles', ['admin'])
+            : ['admin'];
+
+        return !empty(array_intersect($roles, $allowedRoles));
     }
 
     // 🌟 2. ฟังก์ชันตัวช่วยกรอง Query สำหรับ "เสนารักษ์" (ผูกทั้งหน่วยฝึก + ผลัดที่)
@@ -41,11 +77,11 @@ class PatientController extends Controller
         return $query;
     }
 
-    // 🌟 3. เช็คสิทธิ์การเข้าถึงคนไข้รายบุคคล
-    private function checkPatientAccess($patient)
+    // 🌟 3. เช็กสิทธิ์การเข้าถึงคนไข้รายบุคคล
+    private function checkPatientAccess($patient): bool
     {
         $user = auth()->user();
-        
+
         if ($this->canViewAllPatients($user)) {
             return true;
         }
@@ -57,46 +93,168 @@ class PatientController extends Controller
         if (!empty($user->intake_batch) && $user->intake_batch !== $patient->intake_batch) {
             abort(403, 'คุณไม่มีสิทธิ์เข้าถึงข้อมูลทหารใหม่ต่างผลัดครับ');
         }
-        
+
         return true;
     }
 
+    // =========================================================================
+    // 🛡️ HosXP Safety Helpers (อ่านจาก Cache 0 DB Query เพื่อปกป้องเซิร์ฟเวอร์ HIS)
+    // =========================================================================
+    private function isHosxpSyncPaused(): bool
+    {
+        return class_exists(SettingService::class)
+            ? (bool) SettingService::get('hosxp_sync_paused', false)
+            : false;
+    }
+
+    private function getHosxpMaxBatchSize(): int
+    {
+        $size = class_exists(SettingService::class)
+            ? (int) SettingService::get('hosxp_max_batch_size', 50)
+            : 50;
+
+        return max(10, min(200, $size));
+    }
+
+    private function applyHosxpTimeout(): void
+    {
+        if ($this->hosxpTimeoutApplied) {
+            return;
+        }
+
+        $timeout = class_exists(SettingService::class)
+            ? (int) SettingService::get('hosxp_timeout_seconds', 5)
+            : 5;
+        $timeout = max(2, min(30, $timeout));
+
+        $options = config('database.connections.hosxp.options', []);
+        if (!is_array($options)) {
+            $options = [];
+        }
+        $options[\PDO::ATTR_TIMEOUT] = $timeout;
+
+        config(['database.connections.hosxp.options' => $options]);
+        DB::purge('hosxp');
+
+        $this->hosxpTimeoutApplied = true;
+    }
+
+    private function hosxpPausedJsonResponse()
+    {
+        return response()->json([
+            'status'  => 'error',
+            'paused'  => true,
+            'message' => 'ขณะนี้ผู้ดูแลระบบพักการเชื่อมต่อ/ซิงค์ข้อมูล HosXP ชั่วคราว (อยู่ในช่วงดูแลรักษาฐานข้อมูล HIS) กรุณาลองใหม่ภายหลังครับ',
+        ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    private function cleanHosxpUtf8($string): string
+    {
+        if (empty($string)) {
+            return '';
+        }
+        $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string) $string);
+        return trim(mb_convert_encoding($utf8 ?: (string) $string, 'UTF-8', 'UTF-8'));
+    }
+
+    private function normalizeHosxpBloodGroup($rawBlood): ?string
+    {
+        $bg = strtoupper(str_replace(' ', '', $this->cleanHosxpUtf8($rawBlood)));
+        if (empty($bg) || str_contains($bg, 'ไม่') || $bg === '-') {
+            return null;
+        }
+        if (preg_match('/^(AB|A|B|O)[+-]?$/', $bg, $matches)) {
+            return $matches[0];
+        }
+        return null;
+    }
+
+    private function parseHosxpBirthday($hosxpRecord): ?string
+    {
+        try {
+            $rawBday = method_exists($hosxpRecord, 'getRawOriginal')
+                ? $hosxpRecord->getRawOriginal('birthday')
+                : ($hosxpRecord->birthday ?? null);
+            $bdayStr = trim((string) $rawBday);
+
+            if ($bdayStr !== '' && $bdayStr !== '0000-00-00' && !str_starts_with($bdayStr, '0000') && !str_contains($bdayStr, '-00')) {
+                $dt = Carbon::parse($bdayStr);
+                $yr = $dt->year > (int) date('Y') ? ($dt->year - 543) : $dt->year;
+                if ($yr >= 1900 && $yr <= (int) date('Y') && checkdate($dt->month, $dt->day, $yr)) {
+                    return sprintf('%04d-%02d-%02d', $yr, $dt->month, $dt->day);
+                }
+            }
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return null;
+    }
+
+    private function buildBatchOptionsForUser($user): array
+    {
+        if (!$this->canViewAllPatients($user) && !empty($user->intake_batch)) {
+            return [$user->intake_batch];
+        }
+
+        $currentYearBE = (int) date('Y') + 544;
+        $batches = [];
+        for ($i = 0; $i < 5; $i++) {
+            $beYear = $currentYearBE - $i;
+            $shortYear = substr((string) $beYear, -2);
+            $batches[] = "1/{$shortYear}";
+            $batches[] = "2/{$shortYear}";
+        }
+
+        $activeBatch = class_exists(SettingService::class)
+            ? trim((string) SettingService::get('active_intake_batch', ''))
+            : '';
+
+        if ($activeBatch !== '' && !in_array($activeBatch, $batches, true)) {
+            array_unshift($batches, $activeBatch);
+        }
+
+        return $batches;
+    }
+
+    // =========================================================================
+    // 📋 หน้าทะเบียนรายชื่อและภาพรวมข้อมูลพลทหาร (Index & Overview Dashboard)
+    // =========================================================================
     public function index(Request $request)
     {
         $user = auth()->user();
-        $roles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        $isAdmin = in_array('admin', $roles);
+        $canViewChronic = $this->canViewChronicData($user);
 
         $viewMode = $request->input('view', 'list');
-        
+
         // 🌟 Eager Load ความสัมพันธ์ทั้งหมดที่ต้องแสดงในตารางเพื่อป้องกัน N+1 Query
-        $query = \App\Models\Patient::with([
-            'latestMews', 
-            'militaryUnit', 
-            'recruitScreening', 
-            'militaryDischarge', 
+        $query = Patient::with([
+            'latestMews',
+            'militaryUnit',
+            'recruitScreening',
+            'militaryDischarge',
             'upcomingAppointment',
             'activeInfirmaryStay',
-            'activeIpdMorbidity'
+            'activeIpdMorbidity',
         ])->withCount('mews');
 
         $this->scopeForMedic($query, $user);
 
         // 1. ตัวกรองค้นหาจากข้อความ
         if ($request->filled('search')) {
-            $search = trim($request->search);
+            $search = trim((string) $request->search);
             $searchNoSpace = str_replace(' ', '', $search);
 
-            $query->where(function($q) use ($search, $searchNoSpace, $isAdmin) {
+            $query->where(function ($q) use ($search, $searchNoSpace, $canViewChronic) {
                 $q->where('cid', 'like', "%{$search}%")
-                  ->orWhere('hn', 'like', "%{$search}%") 
+                  ->orWhere('hn', 'like', "%{$search}%")
                   ->orWhere('first_name', 'like', "%{$search}%")
                   ->orWhere('last_name', 'like', "%{$search}%")
                   ->orWhere('pttype_name', 'like', "%{$search}%")
                   ->orWhere('scar_details', 'like', "%{$search}%")
                   ->orWhere('duty_status_note', 'like', "%{$search}%");
 
-                if ($isAdmin) {
+                if ($canViewChronic) {
                     $q->orWhere('chronic_disease_detail', 'like', "%{$search}%");
                 }
 
@@ -119,7 +277,7 @@ class PatientController extends Controller
         // 3.1 ตัวกรองสถานะรหัส HN
         if ($request->filled('hn_status')) {
             if ($request->hn_status === 'unsynced') {
-                $query->where(function($q) {
+                $query->where(function ($q) {
                     $q->whereNull('hn')->orWhere('hn', '')->orWhere('hn', '-');
                 });
             } elseif ($request->hn_status === 'synced') {
@@ -130,7 +288,7 @@ class PatientController extends Controller
         // 3.2 ตัวกรอง "สิทธิการรักษา (pttype)"
         if ($request->filled('pttype')) {
             if ($request->pttype === 'unsynced') {
-                $query->where(function($q) {
+                $query->where(function ($q) {
                     $q->whereNull('pttype_name')->orWhere('pttype_name', '');
                 });
             } else {
@@ -148,18 +306,18 @@ class PatientController extends Controller
                       });
             } elseif ($scStatus === 'screened') {
                 $query->whereHas('recruitScreening');
-            } elseif (in_array($scStatus, ['green', 'yellow', 'red'])) {
-                $query->whereHas('recruitScreening', function($q) use ($scStatus) {
+            } elseif (in_array($scStatus, ['green', 'yellow', 'red'], true)) {
+                $query->whereHas('recruitScreening', function ($q) use ($scStatus) {
                     $q->where('color_group', $scStatus);
                 });
             }
         }
 
-        // 3.4 ตัวกรอง "โรคประจำตัว (chronic_status)" (เฉพาะ Admin)
-        if ($isAdmin && $request->filled('chronic_status')) {
+        // 3.4 ตัวกรอง "โรคประจำตัว (chronic_status)" ตามสิทธิ์ PDPA
+        if ($canViewChronic && $request->filled('chronic_status')) {
             if ($request->chronic_status === 'has_chronic') {
                 $query->whereIn('chronic_disease_status', ['yes', 'other']);
-            } elseif (in_array($request->chronic_status, ['none', 'yes', 'other'])) {
+            } elseif (in_array($request->chronic_status, ['none', 'yes', 'other'], true)) {
                 $query->where('chronic_disease_status', $request->chronic_status);
             }
         }
@@ -174,7 +332,7 @@ class PatientController extends Controller
                       ->where(function ($q) {
                           $q->where('duty_status', 'active')->orWhereNull('duty_status');
                       });
-            } elseif (in_array($dStat, ['absent', 'imprisoned', 'deceased'])) {
+            } elseif (in_array($dStat, ['absent', 'imprisoned', 'deceased'], true)) {
                 $query->where('duty_status', $dStat);
             } elseif ($dStat === 'inactive_all') {
                 $query->where(function ($q) {
@@ -186,28 +344,27 @@ class PatientController extends Controller
 
         // 🌟 3.6 ตัวกรอง "สถานะการนัดพบแพทย์ (appointment_filter)"
         if ($request->filled('appointment_filter')) {
-            $todayDate = \Carbon\Carbon::today()->format('Y-m-d');
-            $tomorrowDate = \Carbon\Carbon::tomorrow()->format('Y-m-d');
+            $todayDate = Carbon::today()->format('Y-m-d');
+            $tomorrowDate = Carbon::tomorrow()->format('Y-m-d');
 
             if ($request->appointment_filter === 'has_upcoming') {
                 $query->whereHas('upcomingAppointment');
             } elseif ($request->appointment_filter === 'today') {
-                $query->whereHas('recruitAppointments', function($q) use ($todayDate) {
+                $query->whereHas('recruitAppointments', function ($q) use ($todayDate) {
                     $q->where('status', 'scheduled')->whereDate('appointment_date', $todayDate);
                 });
             } elseif ($request->appointment_filter === 'tomorrow') {
-                $query->whereHas('recruitAppointments', function($q) use ($tomorrowDate) {
+                $query->whereHas('recruitAppointments', function ($q) use ($tomorrowDate) {
                     $q->where('status', 'scheduled')->whereDate('appointment_date', $tomorrowDate);
                 });
             }
         }
 
-        // 🌟 3.7 ตัวกรอง "สถานะรักษา MEWS & การนอน รพ. (mews_status)" (แยกคิว ER และ คิว OPD ชัดเจน 100%)
+        // 🌟 3.7 ตัวกรอง "สถานะรักษา MEWS & การนอน รพ. (mews_status)"
         if ($request->filled('mews_status')) {
             $mStatus = $request->mews_status;
 
             if ($mStatus === 'pending_er') {
-                // ดึงเฉพาะเคสที่อยู่ในห้องฉุกเฉิน (ER) จริงเท่านั้น
                 $query->whereHas('latestMews', function ($q) {
                     $q->where('status', 'pending')
                       ->where(function ($sub) {
@@ -222,7 +379,6 @@ class PatientController extends Controller
                       });
                 });
             } elseif ($mStatus === 'pending_opd') {
-                // ดึงเฉพาะเคสสีเขียวปกติที่รอตรวจอยู่ในคิวผู้ป่วยนอก (OPD Queue)
                 $query->whereHas('latestMews', function ($q) {
                     $q->where('status', 'pending')
                       ->where('assessment_type', 'field')
@@ -235,7 +391,6 @@ class PatientController extends Controller
                       });
                 });
             } elseif ($mStatus === 'hospitalized') {
-                // กำลังนอน รพ.ค่ายฯ หรือ รพ.สาธารณสุข (ยังไม่กลับหน่วยฝึก) — เช็คทั้ง MEWS และรายงานประจำวัน
                 $query->where(function ($mainQ) {
                     $mainQ->whereHas('latestMews', function ($q) {
                         $q->where('status', 'completed')
@@ -249,7 +404,6 @@ class PatientController extends Controller
                     });
                 });
             } elseif ($mStatus === 'admitted_only') {
-                // เฉพาะกำลังนอน รพ.ค่ายฯ (ยังไม่กลับหน่วยฝึก)
                 $query->where(function ($mainQ) {
                     $mainQ->whereHas('latestMews', function ($q) {
                         $q->where('status', 'completed')
@@ -264,7 +418,6 @@ class PatientController extends Controller
                     });
                 });
             } elseif ($mStatus === 'refer_only') {
-                // เฉพาะกำลังส่งต่อ Refer รพ.สาธารณสุข (ยังไม่กลับหน่วยฝึก)
                 $query->where(function ($mainQ) {
                     $mainQ->whereHas('latestMews', function ($q) {
                         $q->where('status', 'completed')
@@ -279,7 +432,6 @@ class PatientController extends Controller
                     });
                 });
             } elseif ($mStatus === 'admit_cumulative') {
-                // 📊 ยอดสะสมผู้ที่เคย Admit หรือ Refer ทั้งหมด (รวมทั้งที่ยังนอนอยู่ และที่กลับหน่วยฝึกแล้ว)
                 $query->where(function ($mainQ) {
                     $mainQ->whereHas('mews', function ($q) {
                         $q->where('status', 'completed')
@@ -318,7 +470,7 @@ class PatientController extends Controller
             $exportQuery = clone $query;
 
             if ($request->filled('selected_ids')) {
-                $selectedIds = array_filter(explode(',', (string)$request->selected_ids));
+                $selectedIds = array_filter(explode(',', (string) $request->selected_ids));
                 if (!empty($selectedIds)) {
                     $exportQuery->whereIn('id', $selectedIds);
                 }
@@ -330,7 +482,7 @@ class PatientController extends Controller
                 ->orderBy('first_name', 'asc')
                 ->get();
 
-            $formattedRows = $exportRecords->map(function ($p) use ($isAdmin) {
+            $formattedRows = $exportRecords->map(function ($p) use ($canViewChronic) {
                 $sc = $p->recruitScreening;
                 $mews = $p->latestMews;
                 $dc = $p->militaryDischarge;
@@ -347,18 +499,19 @@ class PatientController extends Controller
                 $ageText = '-';
                 if (!empty($p->dob)) {
                     try {
-                        $dt = \Carbon\Carbon::parse($p->dob);
+                        $dt = Carbon::parse($p->dob);
                         $dobText = $dt->copy()->addYears(543)->format('d/m/Y');
                         $ageText = $dt->age . ' ปี';
-                    } catch (\Throwable $e) {}
+                    } catch (\Throwable $e) {
+                    }
                 }
 
                 $screeningColorText = 'รอคัดกรอง';
-                if (in_array($dutyStat, ['absent', 'imprisoned', 'deceased'])) {
+                if (in_array($dutyStat, ['absent', 'imprisoned', 'deceased'], true)) {
                     $screeningColorText = 'ไม่ได้คัดกรอง (' . ($dutyLabels[$dutyStat] ?? '-') . ')';
                 } elseif ($sc) {
-                    $screeningColorText = $sc->color_group === 'red' 
-                        ? 'พบเชื้อ (สีแดง)' 
+                    $screeningColorText = $sc->color_group === 'red'
+                        ? 'พบเชื้อ (สีแดง)'
                         : ($sc->color_group === 'yellow' ? 'กลุ่มเสี่ยง (สีเหลือง)' : 'ปกติ (สีเขียว)');
                 }
 
@@ -368,21 +521,21 @@ class PatientController extends Controller
                 $mewsStatusText = 'ไม่มีประวัติ';
                 if ($mews && $mews->status === 'pending') {
                     $rawExportSyms = is_string($mews->symptoms) ? json_decode($mews->symptoms, true) : ($mews->symptoms ?? []);
-                    $isErExport = ($mews->assessment_type === 'er') || in_array($mews->risk_level, ['observe', 'emergency']) || (!empty($rawExportSyms));
+                    $isErExport = ($mews->assessment_type === 'er') || in_array($mews->risk_level, ['observe', 'emergency'], true) || (!empty($rawExportSyms));
                     $mewsStatusText = $isErExport ? 'กำลังรักษา (ER)' : 'รอตรวจแผนกผู้ป่วยนอก (OPD)';
-                } elseif (($mews && $mews->status === 'completed' && in_array($mews->discharge_type, ['admitted', 'refer']) && empty($mews->returned_to_unit_at)) || $activeIpd) {
+                } elseif (($mews && $mews->status === 'completed' && in_array($mews->discharge_type, ['admitted', 'refer'], true) && empty($mews->returned_to_unit_at)) || $activeIpd) {
                     $isPub = $activeIpd ? ($activeIpd->sub_type === 'public_hospital') : ($mews && $mews->discharge_type === 'refer');
                     $dxStr = ($activeIpd && $activeIpd->diagnosis_text) ? " [Dx: {$activeIpd->diagnosis_text}]" : '';
                     $mewsStatusText = ($isPub ? 'นอน รพ.สาธารณสุข (ยังไม่กลับหน่วยฝึก)' : 'Admit นอน รพ.ค่ายฯ (ยังไม่กลับหน่วยฝึก)') . $dxStr;
                 } elseif ($dc) {
                     $mewsStatusText = 'ปลดทหารแล้ว (งดประเมิน MEWS)';
-                } elseif (in_array($dutyStat, ['absent', 'imprisoned', 'deceased'])) {
+                } elseif (in_array($dutyStat, ['absent', 'imprisoned', 'deceased'], true)) {
                     $mewsStatusText = ($dutyLabels[$dutyStat] ?? '-') . ' (งดประเมิน MEWS)';
                 } elseif ($mews) {
                     if ($mews->status === 'cancelled') {
                         $mewsStatusText = 'ยกเลิกเคส';
-                    } elseif (in_array($mews->discharge_type, ['admitted', 'refer']) && !empty($mews->returned_to_unit_at)) {
-                        $mewsStatusText = 'กลับหน่วยฝึกแล้ว (เมื่อ ' . \Carbon\Carbon::parse($mews->returned_to_unit_at)->addYears(543)->format('d/m/Y') . ')';
+                    } elseif (in_array($mews->discharge_type, ['admitted', 'refer'], true) && !empty($mews->returned_to_unit_at)) {
+                        $mewsStatusText = 'กลับหน่วยฝึกแล้ว (เมื่อ ' . Carbon::parse($mews->returned_to_unit_at)->addYears(543)->format('d/m/Y') . ')';
                     } else {
                         $mewsStatusText = 'จำหน่ายกลับหน่วย';
                     }
@@ -406,11 +559,11 @@ class PatientController extends Controller
                 if ($upApp && $upApp->appointment_date && !$dc && $dutyStat === 'active') {
                     $appDateTh = $upApp->appointment_date->copy()->addYears(543)->format('d/m/Y');
                     $hospLabel = $upApp->hospital_name ?: ($upApp->hospital_type === 'public_hospital' ? 'รพ.สธ.' : 'รพ.ค่ายฯ');
-                    $nextAppText = "{$appDateTh} ({$hospLabel} - " . ($upApp->clinic_name ?: ($upApp->app_cause ?: 'นัดตรวจ')) . ")";
+                    $nextAppText = "{$appDateTh} ({$hospLabel} - " . ($upApp->clinic_name ?: ($upApp->app_cause ?: 'นัดตรวจ')) . ')';
                 }
 
-                $resolvedDischargeStatus = $dc 
-                    ? ($dc->process_status === 'completed' ? 'ปลดทหารแล้ว (ส่ง ศปน. ครบ)' : 'ขึ้นทะเบียนนำปลด (' . $dc->diagnosis_text . ')') 
+                $resolvedDischargeStatus = $dc
+                    ? ($dc->process_status === 'completed' ? 'ปลดทหารแล้ว (ส่ง ศปน. ครบ)' : 'ขึ้นทะเบียนนำปลด (' . $dc->diagnosis_text . ')')
                     : (($dutyLabels[$dutyStat] ?? 'ประจำการปกติ') . (!empty($p->duty_status_note) ? " ({$p->duty_status_note})" : ''));
 
                 $row = [
@@ -437,7 +590,7 @@ class PatientController extends Controller
                     'screening_status'    => $screeningColorText,
                     'screening_note'      => $sc ? ($sc->symptoms_note ?: 'ปกติ') : '-',
                     'mews_status'         => $mewsStatusText,
-                    'mews_score'          => $mews ? (string)$mews->total_score : '-',
+                    'mews_score'          => $mews ? (string) $mews->total_score : '-',
                     'discharge_status'    => $resolvedDischargeStatus,
                     'phone'               => $p->phone ?: '-',
                     'father_name'         => $p->father_name ?: '-',
@@ -454,7 +607,7 @@ class PatientController extends Controller
                     'infirmary_status'    => $infirmaryStatusText,
                 ];
 
-                if ($isAdmin) {
+                if ($canViewChronic) {
                     $cStatus = $p->chronic_disease_status ?? 'none';
                     $row['chronic_status'] = $cStatus === 'yes' ? 'มีโรคประจำตัว' : ($cStatus === 'other' ? 'อื่นๆ (ระบุ)' : 'ไม่มีโรคประจำตัว');
                     $row['chronic_detail'] = $p->chronic_disease_detail ?: '-';
@@ -476,32 +629,32 @@ class PatientController extends Controller
             ->where(function ($q) {
                 $q->where('duty_status', 'active')->orWhereNull('duty_status');
             })
-            ->whereHas('latestMews', function($q) {
+            ->whereHas('latestMews', function ($q) {
                 $q->where('status', 'pending');
             })
             ->get()
-            ->sortByDesc(function($patient) {
+            ->sortByDesc(function ($patient) {
                 return $patient->latestMews->updated_at ?? $patient->created_at;
             });
 
         // 5. ดึงรายชื่อผลัดไปทำ Dropdown
-        $availableBatchesQuery = \App\Models\Patient::whereNotNull('intake_batch')
+        $availableBatchesQuery = Patient::whereNotNull('intake_batch')
             ->where('intake_batch', '!=', '');
         $this->scopeForMedic($availableBatchesQuery, $user);
-        
+
         $availableBatches = $availableBatchesQuery->distinct()
             ->pluck('intake_batch')
             ->sortDesc();
 
         $patients = $query->orderBy('intake_batch', 'desc')
-                          ->orderBy('military_unit_id', 'asc')
-                          ->orderBy('battalion', 'asc') 
-                          ->orderBy('created_at', 'desc')
-                          ->paginate(20) 
-                          ->appends($request->query());
+            ->orderBy('military_unit_id', 'asc')
+            ->orderBy('battalion', 'asc')
+            ->orderBy('created_at', 'desc')
+            ->paginate(20)
+            ->appends($request->query());
 
         // 6. สถิติ Dashboard ยอดรวม
-        $pttypeStatsQuery = \App\Models\Patient::query();
+        $pttypeStatsQuery = Patient::query();
         $this->scopeForMedic($pttypeStatsQuery, $user);
         if ($request->filled('batch')) {
             $pttypeStatsQuery->where('intake_batch', $request->batch);
@@ -512,12 +665,8 @@ class PatientController extends Controller
 
         $totalPatientsCount = (clone $pttypeStatsQuery)->count();
 
-        $emergencyCount = $activePatients->filter(function($p) {
-            return $p->latestMews && $p->latestMews->risk_level === 'emergency';
-        })->count();
-        $observeCount = $activePatients->filter(function($p) {
-            return $p->latestMews && $p->latestMews->risk_level === 'observe';
-        })->count();
+        $emergencyCount = $activePatients->filter(fn ($p) => $p->latestMews && $p->latestMews->risk_level === 'emergency')->count();
+        $observeCount = $activePatients->filter(fn ($p) => $p->latestMews && $p->latestMews->risk_level === 'observe')->count();
 
         // 6.1 สถิติแยกตาม "สิทธิการรักษา"
         $pttypeCounts = (clone $pttypeStatsQuery)
@@ -529,7 +678,7 @@ class PatientController extends Controller
             ->orderByDesc('total')
             ->get();
 
-        $availablePttypesQuery = \App\Models\Patient::whereNotNull('pttype_name')->where('pttype_name', '!=', '');
+        $availablePttypesQuery = Patient::whereNotNull('pttype_name')->where('pttype_name', '!=', '');
         $this->scopeForMedic($availablePttypesQuery, $user);
         $availablePttypes = $availablePttypesQuery->distinct()->orderBy('pttype_name')->pluck('pttype_name');
 
@@ -538,9 +687,9 @@ class PatientController extends Controller
             $q->where('duty_status', 'active')->orWhereNull('duty_status');
         });
         $totalScopedForScreening = (clone $screeningBaseQuery)->count();
-        $greenScreeningCount  = (clone $screeningBaseQuery)->whereHas('recruitScreening', fn($q) => $q->where('color_group', 'green'))->count();
-        $yellowScreeningCount = (clone $screeningBaseQuery)->whereHas('recruitScreening', fn($q) => $q->where('color_group', 'yellow'))->count();
-        $redScreeningCount    = (clone $screeningBaseQuery)->whereHas('recruitScreening', fn($q) => $q->where('color_group', 'red'))->count();
+        $greenScreeningCount  = (clone $screeningBaseQuery)->whereHas('recruitScreening', fn ($q) => $q->where('color_group', 'green'))->count();
+        $yellowScreeningCount = (clone $screeningBaseQuery)->whereHas('recruitScreening', fn ($q) => $q->where('color_group', 'yellow'))->count();
+        $redScreeningCount    = (clone $screeningBaseQuery)->whereHas('recruitScreening', fn ($q) => $q->where('color_group', 'red'))->count();
         $screenedTotalCount   = $greenScreeningCount + $yellowScreeningCount + $redScreeningCount;
         $unscreenedCount      = max(0, $totalScopedForScreening - $screenedTotalCount);
 
@@ -554,8 +703,7 @@ class PatientController extends Controller
             'percent'    => $totalScopedForScreening > 0 ? round(($screenedTotalCount / $totalScopedForScreening) * 100, 1) : 0,
         ];
 
-        // 6.3 สถิติเสริมสำหรับหน้า "ภาพรวมข้อมูลพลทหาร (Overview Dashboard)"
-        // 🚀 อัปเกรด Performance: รวบการนับสถิติเสริมทั้งหมดไว้ใน 1 Query เดียว
+        // 6.3 สถิติเสริมสำหรับหน้า Overview Dashboard (รวบไว้ใน 1 Query เดียว)
         $aggStats = (clone $pttypeStatsQuery)->selectRaw("
             SUM(CASE WHEN hn IS NOT NULL AND hn != '' AND hn != '-' THEN 1 ELSE 0 END) as synced_hn,
             SUM(CASE WHEN chronic_disease_status = 'yes' THEN 1 ELSE 0 END) as chronic_yes,
@@ -567,15 +715,16 @@ class PatientController extends Controller
 
         $syncedHnCount     = (int) ($aggStats->synced_hn ?? 0);
         $unsyncedHnCount   = max(0, $totalPatientsCount - $syncedHnCount);
-        $chronicYesCount   = $isAdmin ? (int) ($aggStats->chronic_yes ?? 0) : 0;
-        $chronicOtherCount = $isAdmin ? (int) ($aggStats->chronic_other ?? 0) : 0;
+        $chronicYesCount   = $canViewChronic ? (int) ($aggStats->chronic_yes ?? 0) : 0;
+        $chronicOtherCount = $canViewChronic ? (int) ($aggStats->chronic_other ?? 0) : 0;
         $absentCount       = (int) ($aggStats->absent_count ?? 0);
         $imprisonedCount   = (int) ($aggStats->imprisoned_count ?? 0);
         $deceasedCount     = (int) ($aggStats->deceased_count ?? 0);
 
         $dischargeTotalCount = 0;
-        if (class_exists('\App\Models\MilitaryDischarge') && Schema::hasTable('military_discharges')) {
-            $dcQuery = \App\Models\MilitaryDischarge::query();
+        if (class_exists(MilitaryDischarge::class) && Schema::hasTable('military_discharges')) {
+            $dcQuery = MilitaryDischarge::query();
+            $this->scopeForMedic($dcQuery, $user);
             if ($request->filled('batch')) {
                 $dcQuery->where('intake_batch', $request->batch);
             }
@@ -600,7 +749,7 @@ class PatientController extends Controller
         ];
 
         // 7. ดึงชื่อ 4 ผลัดล่าสุดตามสิทธิ์
-        $batchQuery = \App\Models\Patient::select('intake_batch')
+        $batchQuery = Patient::select('intake_batch')
             ->whereNotNull('intake_batch')
             ->where('intake_batch', '!=', '');
         $this->scopeForMedic($batchQuery, $user);
@@ -610,9 +759,9 @@ class PatientController extends Controller
             ->limit(4)
             ->pluck('intake_batch');
 
-        // 8. Query สถิติแยกตามหน่วยและผลัด (4 ผลัดล่าสุด)
-        $unitStatsQuery = \App\Models\Patient::whereIn('intake_batch', $recentBatches)
-            ->select('intake_batch', 'military_unit_id', \Illuminate\Support\Facades\DB::raw('count(*) as total'))
+        // 8. สถิติแยกตามหน่วยและผลัด (4 ผลัดล่าสุด)
+        $unitStatsQuery = Patient::whereIn('intake_batch', $recentBatches)
+            ->select('intake_batch', 'military_unit_id', DB::raw('count(*) as total'))
             ->with('militaryUnit:id,name,short_name');
         $this->scopeForMedic($unitStatsQuery, $user);
 
@@ -621,10 +770,10 @@ class PatientController extends Controller
             ->get()
             ->groupBy('intake_batch');
 
-        // 8.1 ดึงสถิติของทุกผลัดทั้งหมด
-        $allUnitStatsQuery = \App\Models\Patient::whereNotNull('intake_batch')
+        // 8.1 สถิติของทุกผลัดทั้งหมด
+        $allUnitStatsQuery = Patient::whereNotNull('intake_batch')
             ->where('intake_batch', '!=', '')
-            ->select('intake_batch', 'military_unit_id', \Illuminate\Support\Facades\DB::raw('count(*) as total'))
+            ->select('intake_batch', 'military_unit_id', DB::raw('count(*) as total'))
             ->with('militaryUnit:id,name,short_name');
         $this->scopeForMedic($allUnitStatsQuery, $user);
 
@@ -633,18 +782,21 @@ class PatientController extends Controller
             ->get()
             ->groupBy('intake_batch');
 
-        // 9. ดึงรายชื่อหน่วยฝึกไปทำ Dropdown
-        $unitsDropdownQuery = \App\Models\MilitaryUnit::where('is_active', true)->orderBy('name');
+        // 9. รายชื่อหน่วยฝึกสำหรับ Dropdown
+        $unitsDropdownQuery = MilitaryUnit::where('is_active', true)->orderBy('name');
         if (!$this->canViewAllPatients($user)) {
             $unitsDropdownQuery->where('id', $user->military_unit_id);
         }
         $allUnits = $unitsDropdownQuery->get();
 
+        $hosxpSyncPaused   = $this->isHosxpSyncPaused();
+        $hosxpMaxBatchSize = $this->getHosxpMaxBatchSize();
+
         return view('backend.patients.index', compact(
-            'patients', 'activePatients', 'availableBatches', 
+            'patients', 'activePatients', 'availableBatches',
             'totalPatientsCount', 'emergencyCount', 'observeCount', 'batchUnitStats', 'recentBatches', 'allBatchUnitStats',
             'allUnits', 'availablePttypes', 'pttypeCounts', 'screeningStats',
-            'viewMode', 'overviewExtraStats'
+            'viewMode', 'overviewExtraStats', 'hosxpSyncPaused', 'hosxpMaxBatchSize'
         ));
     }
 
@@ -664,19 +816,18 @@ class PatientController extends Controller
             'search_term.min'      => 'กรุณากรอกข้อมูลอย่างน้อย 2 ตัวอักษร',
         ]);
 
-        $term        = trim($request->search_term);
+        $term        = trim((string) $request->search_term);
         $termNoSpace = str_replace(' ', '', $term);
         $cleanDigits = preg_replace('/[^0-9]/', '', $term);
         $scannedName = trim((string) $request->input('scanned_name', ''));
         $isScanned   = $request->boolean('is_scanned');
         $user        = auth()->user();
 
-        $userRoles  = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        $isClinical = in_array('admin', $userRoles)
-            || in_array('er_nurse', $userRoles)
-            || in_array('opd_nurse', $userRoles)
-            || in_array('medic', $userRoles)
-            || in_array('medical_staff', $userRoles);
+        $userRoles = $this->getUserRoles($user);
+        $isClinical = !empty(array_intersect(
+            ['admin', 'er_nurse', 'opd_nurse', 'medic', 'medical_staff', 'screening'],
+            $userRoles
+        ));
 
         $query = Patient::with(['militaryUnit', 'militaryDischarge'])->where(function ($q) use ($term, $termNoSpace) {
             $q->where('cid', 'LIKE', "%{$term}%")
@@ -695,34 +846,34 @@ class PatientController extends Controller
             $patient = $ksvrResults->first();
 
             // 🚫 บล็อกการส่งไปหน้าประเมิน MEWS หากปลดทหาร หรือ ไม่มารายงานตัว/ต้องโทษ/เสียชีวิต
-            if ($patient->militaryDischarge || in_array($patient->duty_status ?? 'active', ['absent', 'imprisoned', 'deceased'])) {
+            if ($patient->militaryDischarge || in_array($patient->duty_status ?? 'active', ['absent', 'imprisoned', 'deceased'], true)) {
                 return redirect()->route('backend.patients.show', $patient->id)
-                                 ->with('error', "พลทหาร {$patient->first_name} อยู่ในสถานะ \"{$patient->duty_status_label}\" ไม่สามารถแจ้งหรือประเมิน MEWS ได้ครับ");
+                    ->with('error', "พลทหาร {$patient->first_name} อยู่ในสถานะ \"{$patient->duty_status_label}\" ไม่สามารถแจ้งหรือประเมิน MEWS ได้ครับ");
             }
 
             if ($isClinical) {
                 return redirect()->route('backend.mews.create', ['patient_id' => $patient->id])
-                                 ->with('success', 'พบข้อมูลประวัติในระบบ KSVR เรียบร้อยแล้ว');
+                    ->with('success', 'พบข้อมูลประวัติในระบบ KSVR เรียบร้อยแล้ว');
             }
 
             return redirect()->route('backend.patients.show', $patient->id)
-                             ->with('success', 'พบข้อมูลประวัติผู้ป่วยแล้ว');
+                ->with('success', 'พบข้อมูลประวัติผู้ป่วยแล้ว');
         }
 
         if ($ksvrResults->count() > 1) {
             return redirect()->route('backend.patients.index', ['view' => 'list', 'search' => $term])
-                             ->with('info', 'พบข้อมูลมากกว่า 1 รายการ กรุณาเลือกจากตารางด้านล่างครับ');
+                ->with('info', 'พบข้อมูลมากกว่า 1 รายการ กรุณาเลือกจากตารางด้านล่างครับ');
         }
 
         // =========================================================================
-        // 🔍 กรณีไม่พบในสิทธิ์ที่ดูแล: รวบรวม "เลขบัตร ปชช. + ชื่อ-สกุล" เพื่อยืนยันว่าสแกนถูกต้องหรือไม่
+        // 🔍 กรณีไม่พบในสิทธิ์ที่ดูแล: รวบรวม "เลขบัตร ปชช. + ชื่อ-สกุล" เพื่อยืนยัน
         // =========================================================================
-        $resolvedCid    = strlen($cleanDigits) === 13 ? $cleanDigits : null;
-        $resolvedName   = $scannedName !== '' ? $scannedName : null;
-        $nameSource     = $resolvedName ? 'ocr' : null;
-        $extraNote      = null;
-        $hosxpHn        = null;
-        $existsInKsvr   = false;
+        $resolvedCid  = strlen($cleanDigits) === 13 ? $cleanDigits : null;
+        $resolvedName = $scannedName !== '' ? $scannedName : null;
+        $nameSource   = $resolvedName ? 'ocr' : null;
+        $extraNote    = null;
+        $hosxpHn      = null;
+        $existsInKsvr = false;
 
         if ($resolvedCid) {
             // 1. ตรวจสอบว่ามีเลขบัตรนี้ในระบบ KSVR แต่อยู่ต่างหน่วย/ต่างผลัดหรือไม่ (Query ผ่าน Index cid)
@@ -737,29 +888,27 @@ class PatientController extends Controller
                 $unitLabel    = $otherScopePatient->militaryUnit->short_name ?? $otherScopePatient->militaryUnit->name ?? 'ไม่ระบุหน่วย';
                 $batchLabel   = $otherScopePatient->intake_batch ?: 'ไม่ระบุผลัด';
                 $extraNote    = "พบประวัติในระบบ KSVR แล้ว แต่อยู่ต่างสังกัด/ผลัด ({$unitLabel} | ผลัด {$batchLabel})";
+            } elseif ($this->isHosxpSyncPaused()) {
+                // 🛡️ เคารพสวิตช์พักการเชื่อมต่อ HosXP ชั่วคราวจากหน้าตั้งค่าระบบ
+                $extraNote = 'ขณะนี้ระบบพักการเชื่อมต่อ HosXP ชั่วคราว จึงแสดงข้อมูลเฉพาะจากฝั่ง KSVR และบัตรที่สแกนครับ';
             } else {
                 // 2. ตรวจสอบแบบ Read-Only ความเร็วสูงจาก HosXP ด้วยเลขบัตร 13 หลัก (Exact Match ผ่าน Index cid)
                 try {
-                    $hosxpPatient = \App\Models\HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname')
+                    $this->applyHosxpTimeout();
+                    $hosxpPatient = HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname')
                         ->where('cid', $resolvedCid)
                         ->first();
 
                     if ($hosxpPatient) {
-                        $cleanUTF8 = function ($str) {
-                            if (empty($str)) return '';
-                            $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string)$str);
-                            return trim(mb_convert_encoding($utf8 ?: (string)$str, 'UTF-8', 'UTF-8'));
-                        };
-
-                        $pname = $cleanUTF8($hosxpPatient->pname ?? '');
-                        $fname = $cleanUTF8($hosxpPatient->fname ?? '');
-                        $lname = $cleanUTF8($hosxpPatient->lname ?? '');
+                        $pname = $this->cleanHosxpUtf8($hosxpPatient->pname ?? '');
+                        $fname = $this->cleanHosxpUtf8($hosxpPatient->fname ?? '');
+                        $lname = $this->cleanHosxpUtf8($hosxpPatient->lname ?? '');
                         $fullHosxpName = trim($pname . $fname . ' ' . $lname);
 
                         if ($fullHosxpName !== '') {
                             $resolvedName = $fullHosxpName;
                             $nameSource   = 'hosxp';
-                            $hosxpHn      = $cleanUTF8($hosxpPatient->hn ?? '');
+                            $hosxpHn      = $this->cleanHosxpUtf8($hosxpPatient->hn ?? '');
                             $extraNote    = 'ยังไม่ได้ลงทะเบียนในระบบ KSVR แต่พบชื่อ-สกุลตรงกันในฐานข้อมูล HosXP ของโรงพยาบาล';
                         }
                     }
@@ -787,7 +936,7 @@ class PatientController extends Controller
                 : null,
             'is_cid_valid'   => $isCidValid,
             'full_name'      => $resolvedName,
-            'name_source'    => $nameSource, // 'ksvr_other_scope' | 'hosxp' | 'ocr' | null
+            'name_source'    => $nameSource,
             'hosxp_hn'       => $hosxpHn,
             'exists_in_ksvr' => $existsInKsvr,
             'is_scanned'     => $isScanned,
@@ -797,29 +946,29 @@ class PatientController extends Controller
 
     public function autocomplete(Request $request)
     {
-        $term = trim($request->get('term'));
+        $term = trim((string) $request->get('term'));
         $termNoSpace = str_replace(' ', '', $term);
-        $user = auth()->user(); 
+        $user = auth()->user();
 
-        if (empty($term)) {
+        if ($term === '') {
             return response()->json([]);
         }
 
         $query = Patient::with(['militaryUnit', 'militaryDischarge']);
         $this->scopeForMedic($query, $user);
 
-        $patients = $query->where(function($q) use ($term, $termNoSpace) {
-                $q->where('cid', 'LIKE', "%{$term}%")
-                  ->orWhere('hn', 'LIKE', "%{$term}%")
-                  ->orWhere('first_name', 'LIKE', "%{$term}%")
-                  ->orWhere('last_name', 'LIKE', "%{$term}%")
-                  ->orWhereRaw("CONCAT(IFNULL(first_name,''), IFNULL(last_name,'')) LIKE ?", ["%{$termNoSpace}%"]);
-            })
+        $patients = $query->where(function ($q) use ($term, $termNoSpace) {
+            $q->where('cid', 'LIKE', "%{$term}%")
+              ->orWhere('hn', 'LIKE', "%{$term}%")
+              ->orWhere('first_name', 'LIKE', "%{$term}%")
+              ->orWhere('last_name', 'LIKE', "%{$term}%")
+              ->orWhereRaw("CONCAT(IFNULL(first_name,''), IFNULL(last_name,'')) LIKE ?", ["%{$termNoSpace}%"]);
+        })
             ->take(10)
-            ->get(['id', 'cid', 'hn', 'rank', 'first_name', 'last_name', 'military_unit_id', 'battalion', 'duty_status', 'duty_status_note']); 
+            ->get(['id', 'cid', 'hn', 'rank', 'first_name', 'last_name', 'military_unit_id', 'battalion', 'duty_status', 'duty_status_note']);
 
         $mappedPatients = $patients->map(function ($patient) {
-            $isLocked = $patient->militaryDischarge !== null || in_array($patient->duty_status ?? 'active', ['absent', 'imprisoned', 'deceased']);
+            $isLocked = $patient->militaryDischarge !== null || in_array($patient->duty_status ?? 'active', ['absent', 'imprisoned', 'deceased'], true);
             return [
                 'id'           => $patient->id,
                 'cid'          => $patient->cid,
@@ -841,47 +990,34 @@ class PatientController extends Controller
     {
         $user = auth()->user();
 
-        $unitsQuery = \App\Models\MilitaryUnit::where('is_active', true)->orderBy('name');
+        $unitsQuery = MilitaryUnit::where('is_active', true)->orderBy('name');
         if (!$this->canViewAllPatients($user)) {
             $unitsQuery->where('id', $user->military_unit_id);
         }
         $units = $unitsQuery->get();
-        
-        if (!$this->canViewAllPatients($user) && !empty($user->intake_batch)) {
-            $batches = [$user->intake_batch];
-        } else {
-            $currentYearBE = date('Y') + 544;
-            $batches = [];
-            for ($i = 0; $i < 5; $i++) {
-                $beYear = $currentYearBE - $i;
-                $shortYear = substr($beYear, -2);
-                $batches[] = "1/{$shortYear}";
-                $batches[] = "2/{$shortYear}";
-            }
-        }
+        $batches = $this->buildBatchOptionsForUser($user);
 
         return view('backend.patients.create', compact('units', 'batches'));
     }
 
     public function show($id)
     {
-        // 🌟 โหลดความสัมพันธ์ครบทุกตาราง
-        $patient = \App\Models\Patient::with([
-            'mewsAssessments' => function($query) {
+        $patient = Patient::with([
+            'mewsAssessments' => function ($query) {
                 $query->orderBy('created_at', 'desc');
-            }, 
+            },
             'recruitScreening',
             'militaryDischarge',
             'upcomingAppointment',
             'recruitAppointments',
             'activeInfirmaryStay',
-            'infirmaryStays' => function($query) {
+            'infirmaryStays' => function ($query) {
                 $query->orderBy('admitted_at', 'desc');
             },
             'activeIpdMorbidity',
             'morbidityRecords',
             'medications',
-            'covidVitalLogs'
+            'covidVitalLogs',
         ])->findOrFail($id);
 
         $this->checkPatientAccess($patient);
@@ -951,46 +1087,33 @@ class PatientController extends Controller
         }
 
         try {
-            $patient = \App\Models\Patient::create($validatedData);
+            $patient = Patient::create($validatedData);
 
-            \App\Services\AuditLog::record('create_patient', $patient, [
+            AuditLog::record('create_patient', $patient, [
                 'cid'     => $patient->cid,
-                'unit_id' => $patient->military_unit_id
+                'unit_id' => $patient->military_unit_id,
             ]);
 
             return redirect()->route('backend.patients.index', ['view' => 'list'])
-                             ->with('success', 'เพิ่มข้อมูลประวัติทหารใหม่เรียบร้อยแล้ว');
-                             
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Patient Create Error: ' . $e->getMessage());
+                ->with('success', 'เพิ่มข้อมูลประวัติทหารใหม่เรียบร้อยแล้ว');
+        } catch (\Throwable $e) {
+            Log::error('Patient Create Error: ' . $e->getMessage());
             return back()->withInput()->with('error', 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
         }
     }
-    
+
     public function edit($id)
     {
-        $patient = \App\Models\Patient::findOrFail($id);
+        $patient = Patient::findOrFail($id);
         $this->checkPatientAccess($patient);
 
         $user = auth()->user();
-        $unitsQuery = \App\Models\MilitaryUnit::where('is_active', true)->orderBy('name');
+        $unitsQuery = MilitaryUnit::where('is_active', true)->orderBy('name');
         if (!$this->canViewAllPatients($user)) {
             $unitsQuery->where('id', $user->military_unit_id);
         }
         $units = $unitsQuery->get();
-        
-        if (!$this->canViewAllPatients($user) && !empty($user->intake_batch)) {
-            $batches = [$user->intake_batch];
-        } else {
-            $currentYearBE = date('Y') + 544;
-            $batches = [];
-            for ($i = 0; $i < 5; $i++) {
-                $beYear = $currentYearBE - $i;
-                $shortYear = substr($beYear, -2);
-                $batches[] = "1/{$shortYear}";
-                $batches[] = "2/{$shortYear}";
-            }
-        }
+        $batches = $this->buildBatchOptionsForUser($user);
 
         return view('backend.patients.edit', compact('patient', 'units', 'batches'));
     }
@@ -1005,10 +1128,10 @@ class PatientController extends Controller
                 'intake_batch'     => $user->intake_batch ?? $request->intake_batch,
             ]);
         }
-        
-        $patient = \App\Models\Patient::findOrFail($id);
+
+        $patient = Patient::findOrFail($id);
         $this->checkPatientAccess($patient);
-    
+
         $validatedData = $request->validate([
             'cid'                    => 'required|string|size:13|unique:patients,cid,' . $patient->id,
             'hn'                     => 'nullable|string|max:20',
@@ -1062,20 +1185,19 @@ class PatientController extends Controller
         try {
             $patient->update($validatedData);
 
-            \App\Services\AuditLog::record('update_patient', $patient, [
-                'updated_fields' => array_keys($validatedData) 
+            AuditLog::record('update_patient', $patient, [
+                'updated_fields' => array_keys($validatedData),
             ]);
 
             return redirect()->route('backend.patients.show', $patient->id)
-                             ->with('success', 'อัปเดตข้อมูลประวัติเรียบร้อยแล้ว');
-                             
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Patient Update Error: ' . $e->getMessage());
+                ->with('success', 'อัปเดตข้อมูลประวัติเรียบร้อยแล้ว');
+        } catch (\Throwable $e) {
+            Log::error('Patient Update Error: ' . $e->getMessage());
             return back()->withInput()->with('error', 'เกิดข้อผิดพลาดในการอัปเดตข้อมูล กรุณาลองใหม่อีกครั้ง');
         }
     }
 
-    // 🌟 ฟังก์ชันอัปเดตสถานะการรายงานตัว / สถานะกำลังพลแบบด่วน (1-Click Status Update)
+    // 🌟 อัปเดตสถานะการรายงานตัว / สถานะกำลังพลแบบด่วน (1-Click Status Update)
     public function updateDutyStatus(Request $request, $id)
     {
         $patient = Patient::findOrFail($id);
@@ -1102,14 +1224,16 @@ class PatientController extends Controller
             'note'       => $data['duty_status_note'] ?? null,
         ]);
 
+        $msg = "อัปเดตสถานะของ {$patient->rank}{$patient->first_name} เป็น \"{$patient->duty_status_label}\" เรียบร้อยแล้ว";
+
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
                 'status'  => 'success',
-                'message' => "อัปเดตสถานะของ {$patient->rank}{$patient->first_name} เป็น \"{$patient->duty_status_label}\" เรียบร้อยแล้ว",
+                'message' => $msg,
             ]);
         }
 
-        return back()->with('success', "อัปเดตสถานะของ {$patient->rank}{$patient->first_name} เป็น \"{$patient->duty_status_label}\" เรียบร้อยแล้ว");
+        return back()->with('success', $msg);
     }
 
     public function destroy($id)
@@ -1117,19 +1241,19 @@ class PatientController extends Controller
         try {
             $patient = Patient::findOrFail($id);
             $this->checkPatientAccess($patient);
-            
+
             $deletedName = $patient->rank . $patient->first_name . ' ' . $patient->last_name;
             $deletedCid = $patient->cid;
 
             $patient->delete();
 
-            \App\Services\AuditLog::record('delete_patient', null, [
+            AuditLog::record('delete_patient', null, [
                 'deleted_name' => $deletedName,
-                'deleted_cid'  => $deletedCid
+                'deleted_cid'  => $deletedCid,
             ]);
 
             return back()->with('success', 'ลบข้อมูลประวัติผู้ป่วยออกจากระบบเรียบร้อยแล้ว');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return back()->with('error', 'ไม่สามารถลบข้อมูลได้: ' . $e->getMessage());
         }
     }
@@ -1137,36 +1261,44 @@ class PatientController extends Controller
     public function bulkDestroy(Request $request)
     {
         $request->validate([
-            'patient_ids' => 'required|string'
+            'patient_ids' => 'required|string',
         ]);
 
         try {
-            $ids = explode(',', $request->patient_ids);
-            
-            $roles = is_string(auth()->user()->roles) ? json_decode(auth()->user()->roles, true) : (array)(auth()->user()->roles ?? auth()->user()->role);
-            if (!in_array('admin', $roles)) {
+            $ids = array_values(array_unique(array_filter(array_map('intval', explode(',', (string) $request->patient_ids)))));
+            if (empty($ids)) {
+                return back()->with('error', 'ไม่พบรายการที่ต้องการลบ');
+            }
+
+            $roles = $this->getUserRoles(auth()->user());
+            if (!in_array('admin', $roles, true)) {
                 abort(403, 'เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถลบข้อมูลจำนวนมากได้');
             }
 
             Patient::whereIn('id', $ids)->delete();
-            
-            \App\Services\AuditLog::record('bulk_delete_patients', null, [
+
+            AuditLog::record('bulk_delete_patients', null, [
                 'deleted_count' => count($ids),
-                'deleted_ids'   => $ids
+                'deleted_ids'   => $ids,
             ]);
 
             return back()->with('success', 'ลบข้อมูลพลทหารจำนวน ' . count($ids) . ' รายการเรียบร้อยแล้ว');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return back()->with('error', 'ไม่สามารถลบข้อมูลได้: ' . $e->getMessage());
         }
     }
 
     // =========================================================================
-    // 🔍 ค้นหาข้อมูลจาก HosXP (สำหรับหน้า Create / Edit) พร้อมดึงสิทธิการรักษา
+    // 🔍 ค้นหาข้อมูลจาก HosXP แบบ Read-Only (หน้า Create / Edit) — คุมด้วย HIS Safety
     // =========================================================================
     public function searchHosxp(Request $request)
     {
-        $rawTerm = $request->get('term');
+        // 🛡️ เช็กสวิตช์พักการซิงค์ HosXP ชั่วคราวก่อนยิง Query
+        if ($this->isHosxpSyncPaused()) {
+            return $this->hosxpPausedJsonResponse();
+        }
+
+        $rawTerm = (string) $request->get('term', '');
         $term = preg_replace('/[^0-9]/', '', $rawTerm);
 
         if (empty($term)) {
@@ -1174,11 +1306,13 @@ class PatientController extends Controller
         }
 
         try {
+            $this->applyHosxpTimeout();
+
             try {
-                $query = \App\Models\HosxpPatient::leftJoin('pttype', 'patient.pttype', '=', 'pttype.pttype')
+                $query = HosxpPatient::leftJoin('pttype', 'patient.pttype', '=', 'pttype.pttype')
                     ->select(
-                        'patient.hn', 'patient.cid', 'patient.pname', 'patient.fname', 'patient.lname', 
-                        'patient.birthday', 'patient.bloodgrp', 
+                        'patient.hn', 'patient.cid', 'patient.pname', 'patient.fname', 'patient.lname',
+                        'patient.birthday', 'patient.bloodgrp',
                         'patient.pttype as pttype_code', 'pttype.name as pttype_name'
                     );
                 if (strlen($term) === 13) {
@@ -1188,7 +1322,7 @@ class PatientController extends Controller
                 }
                 $hosxpPatient = $query->first();
             } catch (\Throwable $joinErr) {
-                $query = \App\Models\HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname', 'birthday', 'bloodgrp', 'pttype as pttype_code');
+                $query = HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname', 'birthday', 'bloodgrp', 'pttype as pttype_code');
                 if (strlen($term) === 13) {
                     $query->where('cid', $term);
                 } else {
@@ -1202,84 +1336,87 @@ class PatientController extends Controller
                 return response()->json(['status' => 'not_found', 'message' => 'ไม่พบข้อมูลใน HosXP กรุณาตรวจสอบเลขอีกครั้งครับ']);
             }
 
-            $cleanUTF8 = function ($string) {
-                if (empty($string)) return '';
-                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string)$string);
-                return trim(mb_convert_encoding($utf8 ?: (string)$string, 'UTF-8', 'UTF-8'));
-            };
-
-            $ptCode = mb_substr($cleanUTF8($hosxpPatient->pttype_code ?? ''), 0, 10);
-            $ptName = mb_substr($cleanUTF8($hosxpPatient->pttype_name ?? ''), 0, 150);
+            $ptCode = mb_substr($this->cleanHosxpUtf8($hosxpPatient->pttype_code ?? ''), 0, 10);
+            $ptName = mb_substr($this->cleanHosxpUtf8($hosxpPatient->pttype_name ?? ''), 0, 150);
             if (empty($ptName) && !empty($ptCode)) {
                 $ptName = 'รหัสสิทธิ: ' . $ptCode;
             }
 
+            $foundHn = $this->cleanHosxpUtf8($hosxpPatient->hn);
+
             AuditLog::record('search_hosxp_success', null, [
                 'searched_term' => $term,
-                'found_hn'      => $cleanUTF8($hosxpPatient->hn) 
+                'found_hn'      => $foundHn,
             ]);
 
             return response()->json([
                 'status' => 'success',
-                'data' => [
-                    'hn'          => $cleanUTF8($hosxpPatient->hn),
-                    'cid'         => $cleanUTF8($hosxpPatient->cid),
-                    'rank'        => $cleanUTF8($hosxpPatient->pname), 
-                    'first_name'  => $cleanUTF8($hosxpPatient->fname),
-                    'last_name'   => $cleanUTF8($hosxpPatient->lname),
-                    'dob'         => $hosxpPatient->birthday,
-                    'blood_group' => $cleanUTF8($hosxpPatient->bloodgrp),
+                'data'   => [
+                    'hn'          => $foundHn,
+                    'cid'         => $this->cleanHosxpUtf8($hosxpPatient->cid),
+                    'rank'        => $this->cleanHosxpUtf8($hosxpPatient->pname),
+                    'first_name'  => $this->cleanHosxpUtf8($hosxpPatient->fname),
+                    'last_name'   => $this->cleanHosxpUtf8($hosxpPatient->lname),
+                    'dob'         => $this->parseHosxpBirthday($hosxpPatient) ?? $hosxpPatient->birthday,
+                    'blood_group' => $this->normalizeHosxpBloodGroup($hosxpPatient->bloodgrp ?? '') ?? $this->cleanHosxpUtf8($hosxpPatient->bloodgrp),
                     'pttype_code' => $ptCode ?: null,
                     'pttype_name' => $ptName ?: null,
-                ]
-            ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); 
+                ],
+            ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
 
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('HosXP Connection Failed: ' . $e->getMessage());
-            
+            Log::error('HosXP Connection Failed: ' . $e->getMessage());
+
             return response()->json([
-                'status'  => 'error', 
-                'message' => 'ไม่สามารถเชื่อมต่อฐานข้อมูล HosXP ได้ (Connection Timeout)' 
+                'status'  => 'error',
+                'message' => 'ไม่สามารถเชื่อมต่อฐานข้อมูล HosXP ได้ (Connection Timeout)',
             ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
 
     // =========================================================================
-    // 🔄 ฟังก์ชันซิงค์ข้อมูล HN, วันเกิด, กรุ๊ปเลือด และ "สิทธิการรักษา" กับ HosXP (รายบุคคล)
+    // 🔄 ซิงค์ข้อมูล HN, วันเกิด, กรุ๊ปเลือด และสิทธิการรักษา กับ HosXP (รายบุคคล)
     // =========================================================================
-    public function syncHosxp(\Illuminate\Http\Request $request, $id)
+    public function syncHosxp(Request $request, $id)
     {
         try {
-            $patient = \App\Models\Patient::findOrFail($id);
+            // 🛡️ เช็กสวิตช์พักการซิงค์ HosXP ชั่วคราวก่อนเริ่มงาน
+            if ($this->isHosxpSyncPaused()) {
+                return $this->hosxpPausedJsonResponse();
+            }
+
+            $patient = Patient::findOrFail($id);
             $user = auth()->user();
-            $userRoles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
+            $userRoles = $this->getUserRoles($user);
 
             $allowedRoles = ['admin', 'registration', 'er_nurse', 'opd_nurse', 'medical_staff'];
             if (empty(array_intersect($allowedRoles, $userRoles))) {
                 return response()->json(['status' => 'ignored', 'message' => 'สิทธิ์ของคุณไม่จำเป็นต้องซิงค์ข้อมูล HosXP']);
             }
 
-            $isRegistrarOrAdmin = in_array('admin', $userRoles) || in_array('registration', $userRoles);
+            $isRegistrarOrAdmin = in_array('admin', $userRoles, true) || in_array('registration', $userRoles, true);
 
             $cleanCid = preg_replace('/[^0-9]/', '', $patient->cid ?? '');
             if (strlen($cleanCid) !== 13) {
                 return response()->json([
                     'status'  => 'error',
-                    'message' => 'เลขบัตรประชาชนในระบบไม่ครบ 13 หลัก ไม่สามารถค้นหาใน HosXP ได้'
+                    'message' => 'เลขบัตรประชาชนในระบบไม่ครบ 13 หลัก ไม่สามารถค้นหาใน HosXP ได้',
                 ]);
             }
 
+            $this->applyHosxpTimeout();
+
             try {
-                $hosxpPatient = \App\Models\HosxpPatient::leftJoin('pttype', 'patient.pttype', '=', 'pttype.pttype')
+                $hosxpPatient = HosxpPatient::leftJoin('pttype', 'patient.pttype', '=', 'pttype.pttype')
                     ->select(
-                        'patient.hn', 'patient.cid', 'patient.pname', 'patient.fname', 'patient.lname', 
-                        'patient.birthday', 'patient.bloodgrp', 
+                        'patient.hn', 'patient.cid', 'patient.pname', 'patient.fname', 'patient.lname',
+                        'patient.birthday', 'patient.bloodgrp',
                         'patient.pttype as pttype_code', 'pttype.name as pttype_name'
                     )
                     ->where('patient.cid', $cleanCid)
                     ->first();
             } catch (\Throwable $joinErr) {
-                $hosxpPatient = \App\Models\HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname', 'birthday', 'bloodgrp', 'pttype as pttype_code')
+                $hosxpPatient = HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname', 'birthday', 'bloodgrp', 'pttype as pttype_code')
                     ->where('cid', $cleanCid)
                     ->first();
             }
@@ -1287,53 +1424,20 @@ class PatientController extends Controller
             if (!$hosxpPatient || empty($hosxpPatient->hn)) {
                 return response()->json([
                     'status'  => 'not_found',
-                    'message' => 'ยังไม่พบประวัติเลขบัตรประชาชนนี้ในระบบ HosXP ของโรงพยาบาล'
+                    'message' => 'ยังไม่พบประวัติเลขบัตรประชาชนนี้ในระบบ HosXP ของโรงพยาบาล',
                 ]);
             }
 
-            $cleanUTF8 = function ($string) {
-                if (empty($string)) return '';
-                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string)$string);
-                return trim(mb_convert_encoding($utf8 ?: (string)$string, 'UTF-8', 'UTF-8'));
-            };
-
-            $normalizeBloodGroup = function ($rawBlood) use ($cleanUTF8) {
-                $bg = strtoupper(str_replace(' ', '', $cleanUTF8($rawBlood)));
-                if (empty($bg) || str_contains($bg, 'ไม่') || $bg === '-') {
-                    return null;
-                }
-                if (preg_match('/^(AB|A|B|O)[+-]?$/', $bg, $matches)) {
-                    return $matches[0];
-                }
-                return null;
-            };
-
-            $hosxpHn     = $cleanUTF8($hosxpPatient->hn);
-            $hosxpFname  = $cleanUTF8($hosxpPatient->fname ?? '');
-            $hosxpLname  = $cleanUTF8($hosxpPatient->lname ?? '');
-            $hosxpBlood  = $normalizeBloodGroup($hosxpPatient->bloodgrp ?? '');
-            $hosxpPtCode = mb_substr($cleanUTF8($hosxpPatient->pttype_code ?? ''), 0, 10);
-            $hosxpPtName = mb_substr($cleanUTF8($hosxpPatient->pttype_name ?? ''), 0, 150);
+            $hosxpHn     = $this->cleanHosxpUtf8($hosxpPatient->hn);
+            $hosxpFname  = $this->cleanHosxpUtf8($hosxpPatient->fname ?? '');
+            $hosxpLname  = $this->cleanHosxpUtf8($hosxpPatient->lname ?? '');
+            $hosxpBlood  = $this->normalizeHosxpBloodGroup($hosxpPatient->bloodgrp ?? '');
+            $hosxpPtCode = mb_substr($this->cleanHosxpUtf8($hosxpPatient->pttype_code ?? ''), 0, 10);
+            $hosxpPtName = mb_substr($this->cleanHosxpUtf8($hosxpPatient->pttype_name ?? ''), 0, 150);
             if (empty($hosxpPtName) && !empty($hosxpPtCode)) {
                 $hosxpPtName = 'รหัสสิทธิ: ' . $hosxpPtCode;
             }
-
-            $hosxpDob = null;
-            try {
-                $rawBday = method_exists($hosxpPatient, 'getRawOriginal') 
-                    ? $hosxpPatient->getRawOriginal('birthday') 
-                    : $hosxpPatient->birthday;
-                $bdayStr = trim((string)$rawBday);
-                if ($bdayStr !== '' && $bdayStr !== '0000-00-00' && !str_starts_with($bdayStr, '0000') && !str_contains($bdayStr, '-00')) {
-                    $dt = \Carbon\Carbon::parse($bdayStr);
-                    $yr = $dt->year > (int)date('Y') ? ($dt->year - 543) : $dt->year;
-                    if ($yr >= 1900 && $yr <= (int)date('Y') && checkdate($dt->month, $dt->day, $yr)) {
-                        $hosxpDob = sprintf('%04d-%02d-%02d', $yr, $dt->month, $dt->day);
-                    }
-                }
-            } catch (\Throwable $dobErr) {
-                $hosxpDob = null;
-            }
+            $hosxpDob = $this->parseHosxpBirthday($hosxpPatient);
 
             $mewsFname = trim($patient->first_name ?? '');
             $mewsLname = trim($patient->last_name ?? '');
@@ -1358,10 +1462,16 @@ class PatientController extends Controller
                     $syncPayload['last_name']  = $hosxpLname;
                 }
                 try {
-                    \App\Models\Patient::where('id', $patient->id)->update($syncPayload);
+                    Patient::where('id', $patient->id)->update($syncPayload);
                 } catch (\Throwable $saveErr) {
-                    \App\Models\Patient::where('id', $patient->id)->update(['hn' => $hosxpHn]);
+                    Patient::where('id', $patient->id)->update(['hn' => $hosxpHn]);
                 }
+
+                AuditLog::record('sync_hosxp', $patient, [
+                    'hn'          => $hosxpHn,
+                    'pttype_name' => $hosxpPtName ?: null,
+                    'force_sync'  => true,
+                ]);
 
                 return response()->json([
                     'status'       => 'synced',
@@ -1370,7 +1480,7 @@ class PatientController extends Controller
                     'pttype_name'  => $hosxpPtName ?: null,
                     'dob'          => $hosxpDob ?? $patient->dob,
                     'updated_name' => $request->boolean('update_name') ? ($patient->rank . $hosxpFname . ' ' . $hosxpLname) : null,
-                    'message'      => 'ยืนยันและซิงค์รหัส HN: ' . $hosxpHn . ($hosxpPtName ? " ({$hosxpPtName})" : '') . ' เรียบร้อยแล้ว!'
+                    'message'      => 'ยืนยันและซิงค์รหัส HN: ' . $hosxpHn . ($hosxpPtName ? " ({$hosxpPtName})" : '') . ' เรียบร้อยแล้ว!',
                 ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             }
 
@@ -1378,10 +1488,16 @@ class PatientController extends Controller
 
             if ($isNameMatch) {
                 try {
-                    \App\Models\Patient::where('id', $patient->id)->update($syncPayload);
+                    Patient::where('id', $patient->id)->update($syncPayload);
                 } catch (\Throwable $saveErr) {
-                    \App\Models\Patient::where('id', $patient->id)->update(['hn' => $hosxpHn]);
+                    Patient::where('id', $patient->id)->update(['hn' => $hosxpHn]);
                 }
+
+                AuditLog::record('sync_hosxp', $patient, [
+                    'hn'          => $hosxpHn,
+                    'pttype_name' => $hosxpPtName ?: null,
+                    'force_sync'  => false,
+                ]);
 
                 return response()->json([
                     'status'      => 'synced',
@@ -1389,7 +1505,7 @@ class PatientController extends Controller
                     'pttype_code' => $hosxpPtCode ?: null,
                     'pttype_name' => $hosxpPtName ?: null,
                     'dob'         => $hosxpDob ?? $patient->dob,
-                    'message'     => 'ซิงค์ HN: ' . $hosxpHn . ($hosxpPtName ? " | สิทธิ: {$hosxpPtName}" : '') . ' สำเร็จ!'
+                    'message'     => 'ซิงค์ HN: ' . $hosxpHn . ($hosxpPtName ? " | สิทธิ: {$hosxpPtName}" : '') . ' สำเร็จ!',
                 ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             }
 
@@ -1401,47 +1517,67 @@ class PatientController extends Controller
                     'cid'         => $cleanCid,
                     'mews_name'   => $mewsFname . ' ' . $mewsLname,
                     'hosxp_name'  => $hosxpFname . ' ' . $hosxpLname,
-                    'message'     => 'พบเลข ปชช. ตรงกัน แต่ชื่อ-นามสกุลใน MEWS กับ HosXP ไม่ตรงกัน กรุณาตรวจสอบ'
+                    'message'     => 'พบเลข ปชช. ตรงกัน แต่ชื่อ-นามสกุลใน MEWS กับ HosXP ไม่ตรงกัน กรุณาตรวจสอบ',
                 ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             }
 
             return response()->json([
                 'status'  => 'mismatch_pass',
-                'message' => 'พบ HN ใน HosXP แต่ชื่อ-นามสกุลไม่ตรงกัน ระบบส่งเรื่องให้ห้องทะเบียนตรวจสอบแล้ว (ดำเนินการรักษาต่อได้เลยครับ)'
+                'message' => 'พบ HN ใน HosXP แต่ชื่อ-นามสกุลไม่ตรงกัน ระบบส่งเรื่องให้ห้องทะเบียนตรวจสอบแล้ว (ดำเนินการรักษาต่อได้เลยครับ)',
             ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
 
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('HosXP Sync Error: ' . $e->getMessage());
+            Log::warning('HosXP Sync Error: ' . $e->getMessage());
             return response()->json([
                 'status'  => 'error',
-                'message' => 'ไม่สามารถเชื่อมต่อฐานข้อมูล HosXP ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ'
+                'message' => 'ไม่สามารถเชื่อมต่อฐานข้อมูล HosXP ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ',
             ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
 
     // =========================================================================
-    // 🔄 ฟังก์ชันซิงค์ข้อมูล HN + วันเกิด + สิทธิการรักษา แบบกลุ่ม (Bulk Sync HosXP)
+    // 🔄 ซิงค์ข้อมูล HN + วันเกิด + สิทธิการรักษา แบบกลุ่ม (Bulk Sync HosXP)
+    // คุมความปลอดภัยด้วย hosxp_sync_paused + hosxp_max_batch_size + hosxp_timeout_seconds
     // =========================================================================
-    public function bulkSyncHosxp(\Illuminate\Http\Request $request)
+    public function bulkSyncHosxp(Request $request)
     {
         try {
+            // 🛡️ 1. เช็กสวิตช์พักการซิงค์ HosXP ชั่วคราว
+            if ($this->isHosxpSyncPaused()) {
+                return $this->hosxpPausedJsonResponse();
+            }
+
             $request->validate([
                 'patient_ids' => 'required|array|min:1',
             ]);
 
             $user = auth()->user();
-            $userRoles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
+            $userRoles = $this->getUserRoles($user);
 
             $allowedRoles = ['admin', 'registration', 'er_nurse', 'opd_nurse', 'medical_staff'];
             if (empty(array_intersect($allowedRoles, $userRoles))) {
                 return response()->json(['status' => 'error', 'message' => 'สิทธิ์ของคุณไม่จำเป็นต้องซิงค์ข้อมูล HosXP']);
             }
 
-            $isRegistrarOrAdmin = in_array('admin', $userRoles) || in_array('registration', $userRoles);
+            // 🛡️ 2. ตรวจสอบเพดานจำนวนสูงสุดต่อรอบ (hosxp_max_batch_size) ป้องกันโหลดหนักบนเซิร์ฟเวอร์ HIS
+            $patientIds = array_values(array_unique(array_filter(array_map('intval', $request->input('patient_ids', [])))));
+            $maxBatchSize = $this->getHosxpMaxBatchSize();
+
+            if (count($patientIds) > $maxBatchSize) {
+                return response()->json([
+                    'status'         => 'error',
+                    'limit_exceeded' => true,
+                    'max_batch_size' => $maxBatchSize,
+                    'selected_count' => count($patientIds),
+                    'message'        => "ระบบจำกัดการซิงค์แบบกลุ่มไม่เกิน {$maxBatchSize} รายต่อครั้ง เพื่อป้องกันโหลดหนักต่อเซิร์ฟเวอร์ HosXP (คุณเลือกไว้ " . count($patientIds) . " ราย กรุณาแบ่งซิงค์ทีละไม่เกิน {$maxBatchSize} รายครับ)",
+                ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            }
+
+            $isRegistrarOrAdmin = in_array('admin', $userRoles, true) || in_array('registration', $userRoles, true);
             $forceSync  = $request->boolean('force_sync') && $isRegistrarOrAdmin;
             $updateName = $request->boolean('update_name') && $isRegistrarOrAdmin;
 
-            $patientsQuery = \App\Models\Patient::whereIn('id', $request->patient_ids);
+            $patientsQuery = Patient::whereIn('id', $patientIds);
             $this->scopeForMedic($patientsQuery, $user);
             $patients = $patientsQuery->get();
 
@@ -1461,67 +1597,41 @@ class PatientController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'รายการที่เลือกไม่มีเลขบัตรประชาชนครบ 13 หลัก']);
             }
 
+            // 🛡️ 3. ตั้ง Connection Timeout จาก SettingService แล้วยิง Query Read-Only แบบ Batch 1 ครั้งผ่าน Index cid
+            $this->applyHosxpTimeout();
+            $targetCids = array_keys($cidMap);
+
             try {
-                $hosxpRecords = \App\Models\HosxpPatient::leftJoin('pttype', 'patient.pttype', '=', 'pttype.pttype')
+                $hosxpRecords = HosxpPatient::leftJoin('pttype', 'patient.pttype', '=', 'pttype.pttype')
                     ->select(
-                        'patient.hn', 'patient.cid', 'patient.pname', 'patient.fname', 'patient.lname', 
-                        'patient.birthday', 'patient.bloodgrp', 
+                        'patient.hn', 'patient.cid', 'patient.pname', 'patient.fname', 'patient.lname',
+                        'patient.birthday', 'patient.bloodgrp',
                         'patient.pttype as pttype_code', 'pttype.name as pttype_name'
                     )
-                    ->whereIn('patient.cid', array_keys($cidMap))
+                    ->whereIn('patient.cid', $targetCids)
                     ->get();
             } catch (\Throwable $joinErr) {
-                $hosxpRecords = \App\Models\HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname', 'birthday', 'bloodgrp', 'pttype as pttype_code')
-                    ->whereIn('cid', array_keys($cidMap))
+                $hosxpRecords = HosxpPatient::select('hn', 'cid', 'pname', 'fname', 'lname', 'birthday', 'bloodgrp', 'pttype as pttype_code')
+                    ->whereIn('cid', $targetCids)
                     ->get();
             }
 
-            $cleanUTF8 = function ($string) {
-                if (empty($string)) return '';
-                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string)$string);
-                return trim(mb_convert_encoding($utf8 ?: (string)$string, 'UTF-8', 'UTF-8'));
-            };
-
-            $normalizeBloodGroup = function ($rawBlood) use ($cleanUTF8) {
-                $bg = strtoupper(str_replace(' ', '', $cleanUTF8($rawBlood)));
-                if (empty($bg) || str_contains($bg, 'ไม่') || $bg === '-') {
-                    return null;
-                }
-                if (preg_match('/^(AB|A|B|O)[+-]?$/', $bg, $matches)) {
-                    return $matches[0];
-                }
-                return null;
-            };
-
             $hosxpByCid = [];
             foreach ($hosxpRecords as $hp) {
-                $c = $cleanUTF8($hp->cid);
+                $c = $this->cleanHosxpUtf8($hp->cid);
                 if (!empty($hp->hn)) {
-                    $validDob = null;
-                    try {
-                        $rawBday = method_exists($hp, 'getRawOriginal') ? $hp->getRawOriginal('birthday') : $hp->birthday;
-                        $bdayStr = trim((string)$rawBday);
-                        if ($bdayStr !== '' && $bdayStr !== '0000-00-00' && !str_starts_with($bdayStr, '0000') && !str_contains($bdayStr, '-00')) {
-                            $dt = \Carbon\Carbon::parse($bdayStr);
-                            $yr = $dt->year > (int)date('Y') ? ($dt->year - 543) : $dt->year;
-                            if ($yr >= 1900 && $yr <= (int)date('Y') && checkdate($dt->month, $dt->day, $yr)) {
-                                $validDob = sprintf('%04d-%02d-%02d', $yr, $dt->month, $dt->day);
-                            }
-                        }
-                    } catch (\Throwable $dobErr) {}
-
-                    $ptCode = mb_substr($cleanUTF8($hp->pttype_code ?? ''), 0, 10);
-                    $ptName = mb_substr($cleanUTF8($hp->pttype_name ?? ''), 0, 150);
+                    $ptCode = mb_substr($this->cleanHosxpUtf8($hp->pttype_code ?? ''), 0, 10);
+                    $ptName = mb_substr($this->cleanHosxpUtf8($hp->pttype_name ?? ''), 0, 150);
                     if (empty($ptName) && !empty($ptCode)) {
                         $ptName = 'รหัสสิทธิ: ' . $ptCode;
                     }
 
                     $hosxpByCid[$c] = [
-                        'hn'          => $cleanUTF8($hp->hn),
-                        'fname'       => $cleanUTF8($hp->fname ?? ''),
-                        'lname'       => $cleanUTF8($hp->lname ?? ''),
-                        'dob'         => $validDob,
-                        'blood_group' => $normalizeBloodGroup($hp->bloodgrp ?? ''),
+                        'hn'          => $this->cleanHosxpUtf8($hp->hn),
+                        'fname'       => $this->cleanHosxpUtf8($hp->fname ?? ''),
+                        'lname'       => $this->cleanHosxpUtf8($hp->lname ?? ''),
+                        'dob'         => $this->parseHosxpBirthday($hp),
+                        'blood_group' => $this->normalizeHosxpBloodGroup($hp->bloodgrp ?? ''),
                         'pttype_code' => $ptCode ?: null,
                         'pttype_name' => $ptName ?: null,
                     ];
@@ -1564,9 +1674,9 @@ class PatientController extends Controller
                     }
 
                     try {
-                        \App\Models\Patient::where('id', $patient->id)->update($updateFields);
+                        Patient::where('id', $patient->id)->update($updateFields);
                     } catch (\Throwable $saveErr) {
-                        \App\Models\Patient::where('id', $patient->id)->update(['hn' => $hData['hn']]);
+                        Patient::where('id', $patient->id)->update(['hn' => $hData['hn']]);
                     }
                     $syncedCount++;
                 } else {
@@ -1582,7 +1692,8 @@ class PatientController extends Controller
             }
 
             AuditLog::record('bulk_sync_hosxp', null, [
-                'selected_count' => count($request->patient_ids),
+                'selected_count' => count($patientIds),
+                'max_batch_size' => $maxBatchSize,
                 'synced_count'   => $syncedCount,
                 'mismatch_count' => count($mismatched),
                 'not_found'      => $notFoundCount,
@@ -1594,13 +1705,14 @@ class PatientController extends Controller
                 'not_found_count'    => $notFoundCount,
                 'mismatched'         => $mismatched,
                 'is_registrar_admin' => $isRegistrarOrAdmin,
+                'max_batch_size'     => $maxBatchSize,
             ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
 
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('HosXP Sync Error: ' . $e->getMessage());
+            Log::warning('HosXP Bulk Sync Error: ' . $e->getMessage());
             return response()->json([
                 'status'  => 'error',
-                'message' => 'ไม่สามารถเชื่อมต่อฐานข้อมูล HosXP ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ'
+                'message' => 'ไม่สามารถเชื่อมต่อฐานข้อมูล HosXP ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ',
             ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
