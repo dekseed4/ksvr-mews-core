@@ -2,22 +2,29 @@
 
 namespace App\Http\Controllers\Backend;
 
+use App\Events\EmergencyMewsAlert;
+use App\Events\MewsStatusUpdated;
+use App\Events\PatientMewsUpdated;
 use App\Http\Controllers\Controller;
-use App\Models\Patient;
+use App\Models\EmergencySymptom;
 use App\Models\MewsAssessment;
+use App\Models\MewsTemplate;
+use App\Models\Patient;
+use App\Models\RecruitMorbidity;
+use App\Services\AuditLog;
+use App\Services\SettingService;
+use App\Services\WebPushService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use App\Services\AuditLog;
-use Illuminate\Support\Facades\Cache;
-use App\Events\EmergencyMewsAlert;
-use App\Events\PatientMewsUpdated;
 
 class MewsAssessmentController extends Controller
 {
-    // 🌟 ฟังก์ชันส่วนตัวสำหรับรวม Validation Rules
-    private function getValidationRules()
+    // 🌟 รวม Validation Rules ไว้ศูนย์กลาง
+    private function getValidationRules(): array
     {
         return [
             'sbp'                  => 'required|numeric',
@@ -29,46 +36,78 @@ class MewsAssessmentController extends Controller
             'emergency_conditions' => 'nullable|array',
             'symptoms_note'        => 'nullable|string|max:1000',
             'total_score'          => 'required|numeric',
-            'risk_level'           => 'required|string'
+            'risk_level'           => 'required|string',
         ];
     }
 
-    // 🌟 ฟังก์ชันดึง URL ของ Discord Webhook แบบกันเหนียว 100% (ทำงานได้แม้ติด Config Cache)
-    private function getDiscordWebhookUrl(): ?string
+    // 🌟 แปลงข้อมูลสิทธิ์ผู้ใช้ให้เป็น Array เสมอ (ลดโค้ดซ้ำซ้อน)
+    private function getUserRoles($user): array
     {
-        $url = config('services.discord.mews_webhook_url')
-            ?: env('DISCORD_MEWS_WEBHOOK_URL')
-            ?: env('DISCORD_WEBHOOK_URL');
+        if (!$user) {
+            return [];
+        }
 
-        // กรณีเซิร์ฟเวอร์ทำ config:cache ไว้ทำให้ env() เป็น null ให้ดึงจากไฟล์ .env โดยตรง
-        if (empty($url) && file_exists(base_path('.env'))) {
-            $envContent = @file_get_contents(base_path('.env'));
-            if ($envContent) {
-                if (preg_match('/^DISCORD_MEWS_WEBHOOK_URL\s*=\s*([^\r\n]+)/m', $envContent, $matches)) {
-                    $url = trim($matches[1], " \t\n\r\0\x0B\"'");
-                } elseif (preg_match('/^DISCORD_WEBHOOK_URL\s*=\s*([^\r\n]+)/m', $envContent, $matches)) {
-                    $url = trim($matches[1], " \t\n\r\0\x0B\"'");
+        $raw = $user->roles ?? $user->role ?? [];
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            return is_array($decoded) ? $decoded : [$raw];
+        }
+
+        return is_array($raw) ? $raw : (array) $raw;
+    }
+
+    // 🌟 ดึง URL ของ Discord Webhook ผ่านศูนย์กลาง SettingService (คุมสวิตช์เปิด-ปิดและไม่เด้งซ้ำ)
+    private function getDiscordWebhookUrl(string $channel = 'er'): ?string
+    {
+        // ถ้า Admin ปิดสวิตช์แจ้งเตือน Discord ในหน้าตั้งค่า ให้หยุดส่งทันที
+        if (!SettingService::get('discord_enabled', true)) {
+            return null;
+        }
+
+        $url = SettingService::getDiscordWebhook($channel);
+        if (!empty($url)) {
+            return $url;
+        }
+
+        // Fallback อ่านจากไฟล์ .env โดยตรง เผื่อกรณีเซิร์ฟเวอร์ติด Config Cache เก่า
+        $envPath = base_path('.env');
+        if (file_exists($envPath)) {
+            $envContent = file_get_contents($envPath);
+
+            if ($channel === 'exec' && preg_match('/^DISCORD_EXEC_WEBHOOK_URL\s*=\s*([^\r\n]+)/m', $envContent, $matches)) {
+                $val = trim($matches[1], " \t\n\r\0\x0B\"'");
+                if ($val !== '') {
+                    return $val;
                 }
+            }
+
+            if (preg_match('/^DISCORD_MEWS_WEBHOOK_URL\s*=\s*([^\r\n]+)/m', $envContent, $matches)) {
+                return trim($matches[1], " \t\n\r\0\x0B\"'");
+            } elseif (preg_match('/^DISCORD_WEBHOOK_URL\s*=\s*([^\r\n]+)/m', $envContent, $matches)) {
+                return trim($matches[1], " \t\n\r\0\x0B\"'");
             }
         }
 
-        return !empty($url) ? trim($url) : null;
+        return null;
     }
 
-    // 🌟 ฟังก์ชันจัดเรียงลำดับหมวดหมู่อาการฉุกเฉินแยกตามบทบาท (เสนารักษ์ vs พยาบาล รพ.)
+    // 🌟 จัดเรียงลำดับหมวดหมู่อาการฉุกเฉินแยกตามบทบาท (เสนารักษ์ vs พยาบาล รพ.)
     private function getSortedActiveSymptomsForUser($user)
     {
-        $roles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        
-        // ตรวจสอบว่าเป็น "เสนารักษ์" (ที่ไม่ได้เป็นพยาบาล ER/OPD หรือ Admin)
-        $isMedic = in_array('medic', $roles) && !in_array('er_nurse', $roles) && !in_array('opd_nurse', $roles) && !in_array('admin', $roles);
+        $roles = $this->getUserRoles($user);
 
-        $grouped = \App\Models\EmergencySymptom::where('is_active', true)
+        // ตรวจสอบว่าเป็น "เสนารักษ์" (ที่ไม่ได้เป็นพยาบาล ER/OPD หรือ Admin)
+        $isMedic = in_array('medic', $roles, true)
+            && !in_array('er_nurse', $roles, true)
+            && !in_array('opd_nurse', $roles, true)
+            && !in_array('admin', $roles, true);
+
+        $grouped = EmergencySymptom::where('is_active', true)
             ->get()
             ->groupBy('category');
 
         if ($isMedic) {
-            // 🎖️ ลำดับความสำคัญสำหรับ "เสนารักษ์ภาคสนาม" (เอาโรคลมร้อนและอุบัติเหตุขึ้นบนสุด!)
+            // 🎖️ ลำดับความสำคัญสำหรับ "เสนารักษ์ภาคสนาม" (เอาโรคลมร้อนและอุบัติเหตุขึ้นบนสุด)
             $priorityOrder = [
                 'Heat Injury',
                 'Trauma',
@@ -79,18 +118,17 @@ class MewsAssessmentController extends Controller
                 'Stroke',
             ];
 
-            // จัดเรียงรายการย่อยในหมวด Heat Injury ให้ไล่ตามลำดับที่เสนารักษ์พบบ่อยหน้างาน
             if ($grouped->has('Heat Injury')) {
                 $heatItemOrder = [
-                    'heat_fatigue',   // 1. อ่อนเพลียไม่มีแรง เหงื่อออกมาก (พบบ่อยที่สุด)
-                    'heat_pale',      // 2. หน้าซีดหน้ามืด เป็นลม
-                    'heat_cramp',     // 3. ตะคริว หายใจหอบเร็วลึก
-                    'heat_numbness',  // 4. ชาปลายมือ/เท้า
-                    'heat_confusion', // 5. ซึมสับสน ชัก หมดสติ (วิกฤต Heat Stroke)
-                    'heat_urine',     // 6. ปัสสาวะสีเข้ม (กล้ามเนื้อสลาย)
+                    'heat_fatigue',
+                    'heat_pale',
+                    'heat_cramp',
+                    'heat_numbness',
+                    'heat_confusion',
+                    'heat_urine',
                 ];
                 $grouped['Heat Injury'] = $grouped['Heat Injury']->sortBy(function ($item) use ($heatItemOrder) {
-                    $pos = array_search($item->code, $heatItemOrder);
+                    $pos = array_search($item->code, $heatItemOrder, true);
                     return $pos === false ? 99 : $pos;
                 })->values();
             }
@@ -108,70 +146,77 @@ class MewsAssessmentController extends Controller
         }
 
         return $grouped->sortBy(function ($items, $categoryKey) use ($priorityOrder) {
-            $pos = array_search($categoryKey, $priorityOrder);
+            $pos = array_search($categoryKey, $priorityOrder, true);
             return $pos === false ? 999 : $pos;
         });
     }
-    
+
     public function create($patient_id)
     {
         $user = auth()->user();
-        $userRoles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        $isClinical = in_array('admin', $userRoles) 
-                        || in_array('er_nurse', $userRoles) 
-                        || in_array('opd_nurse', $userRoles) 
-                        || in_array('medic', $userRoles)
-                        || in_array('medical_staff', $userRoles)
-                        || in_array('screening', $userRoles);
+        $userRoles = $this->getUserRoles($user);
+        $isClinical = !empty(array_intersect(
+            ['admin', 'er_nurse', 'opd_nurse', 'medic', 'medical_staff', 'screening'],
+            $userRoles
+        ));
 
         if (!$isClinical) {
             abort(403, 'คุณไม่มีสิทธิ์เข้าถึงหน้าจอประเมินทางการแพทย์ครับ');
         }
 
-        $patient = \App\Models\Patient::with(['latestMews', 'recruitScreening', 'militaryDischarge', 'upcomingAppointment'])->findOrFail($patient_id);
+        $patient = Patient::with(['latestMews', 'recruitScreening', 'militaryDischarge', 'upcomingAppointment'])
+            ->findOrFail($patient_id);
 
-        // 🚫 ป้องกันชั้นที่ 0: ตรวจสอบว่าพลทหารนายนี้ถูกจำหน่าย/ปลดทหารแล้วหรือไม่
-        if ($patient->militaryDischarge) {
-            $dx = $patient->militaryDischarge->diagnosis_text ?: 'ไม่ระบุ';
+        // 🚫 ป้องกันชั้นที่ 0: บล็อกพลทหารที่ปลดทหาร/นำปลด หรือมีสถานะกำลังพลไม่พร้อมประเมิน (ขาดหนี/ต้องโทษ/เสียชีวิต)
+        if ($patient->militaryDischarge || (method_exists($patient, 'isCannotAssessMews') && $patient->isCannotAssessMews())) {
+            $statusReason = $patient->duty_status_label ?? 'อยู่ในสถานะปลดทหาร/ไม่สามารถประเมินได้';
             return redirect()->route('backend.patients.show', $patient->id)
-                ->with('error', "ไม่สามารถประเมิน MEWS ได้ เนื่องจาก {$patient->rank}{$patient->first_name} อยู่ในสถานะปลดทหาร/นำปลดแล้ว (โรควินิจฉัย: {$dx})");
+                ->with('error', "ไม่สามารถประเมิน MEWS ได้ เนื่องจาก {$patient->rank}{$patient->first_name} มีสถานะ: {$statusReason}");
         }
 
-        // 1. ดึงใบล่าสุดมาเช็คสถานะการจบเคส
-        $latestMews = \App\Models\MewsAssessment::where('patient_id', $patient_id)->orderBy('id', 'desc')->first();
+        // 1. ดึงใบล่าสุดมาเช็กสถานะการจบเคส
+        $latestMews = MewsAssessment::where('patient_id', $patient_id)->orderBy('id', 'desc')->first();
 
-        // ป้องกันชั้นที่ 1: ตรวจสอบว่าเป็นเคสค้าง (Pending) และผู้ใช้ไม่ใช่ ER หรือไม่?
-        $isERorAdmin = in_array('admin', $userRoles) || in_array('er_nurse', $userRoles) || in_array('screening', $userRoles);
+        // ป้องกันชั้นที่ 1: ตรวจสอบว่าเป็นเคสค้าง (Pending) และผู้ใช้ไม่ใช่ ER/คัดกรอง/Admin
+        $isERorAdmin = !empty(array_intersect(['admin', 'er_nurse', 'screening'], $userRoles));
         if ($latestMews && $latestMews->status === 'pending' && !$isERorAdmin) {
-            return redirect()->route('backend.patients.index')->with('error', 'ผู้ป่วยรายนี้ถูกส่งตัวเข้า ER ไปแล้วครับ การประเมินซ้ำ (ครั้งที่ 2) ต้องเป็นหน้าที่ของพยาบาล ER เท่านั้นครับ');
+            return redirect()->route('backend.patients.index')
+                ->with('error', 'ผู้ป่วยรายนี้ถูกส่งตัวเข้า ER ไปแล้วครับ การประเมินซ้ำ (ครั้งที่ 2) ต้องเป็นหน้าที่ของพยาบาล ER เท่านั้นครับ');
         }
-        
-        // 2. นับว่าคนไข้คนนี้มีกี่แฟ้ม (Case/VN) มาแล้วในระบบ
-        $totalCases = \App\Models\MewsAssessment::where('patient_id', $patient_id)->distinct('case_id')->count('case_id');
+
+        // 2. นับจำนวนแฟ้มการรักษา (Case/VN) ทั้งหมดของคนไข้รายนี้
+        $totalCases = MewsAssessment::where('patient_id', $patient_id)->distinct('case_id')->count('case_id');
 
         // 3. ลอจิกแยก "รอบการรักษา (Case)" และ "ครั้งที่ประเมิน (Assessment)"
-        if (!$latestMews || in_array($latestMews->status, ['completed', 'cancelled'])) {
+        if (!$latestMews || in_array($latestMews->status, ['completed', 'cancelled'], true)) {
             $isReassessment = false;
             $previousCount = 0;
             $currentCaseNumber = $totalCases + 1;
         } else {
             $isReassessment = true;
-            $previousCount = \App\Models\MewsAssessment::where('case_id', $latestMews->case_id)->count();
+            $previousCount = MewsAssessment::where('case_id', $latestMews->case_id)->count();
             $currentCaseNumber = $totalCases;
         }
 
         $activeSymptoms = $this->getSortedActiveSymptomsForUser($user);
+        $symptomsDict = EmergencySymptom::pluck('name', 'code')->toArray();
+        $activeTemplate = MewsTemplate::where('is_active', true)->first();
 
-        $symptomsDict = \App\Models\EmergencySymptom::pluck('name', 'code')->toArray();
-        $activeTemplate = \App\Models\MewsTemplate::where('is_active', true)->first();
-
-        return view('backend.mews.create', compact('patient', 'previousCount', 'isReassessment', 'currentCaseNumber', 'activeSymptoms', 'symptomsDict', 'activeTemplate'));
+        return view('backend.mews.create', compact(
+            'patient',
+            'previousCount',
+            'isReassessment',
+            'currentCaseNumber',
+            'activeSymptoms',
+            'symptomsDict',
+            'activeTemplate'
+        ));
     }
 
     public function store(Request $request)
     {
         $rules = $this->getValidationRules();
-        $rules['patient_id'] = 'required|exists:patients,id'; 
+        $rules['patient_id'] = 'required|exists:patients,id';
         $request->validate($rules);
 
         $lockKey = 'mews_store_lock_' . auth()->id() . '_' . $request->patient_id;
@@ -179,22 +224,23 @@ class MewsAssessmentController extends Controller
         return Cache::lock($lockKey, 5)->get(function () use ($request) {
 
             // 1. ดึงข้อมูลคนไข้พร้อมสถานะการปลดทหาร
-            $patient = \App\Models\Patient::with(['militaryUnit', 'militaryDischarge'])->findOrFail($request->patient_id);
+            $patient = Patient::with(['militaryUnit', 'militaryDischarge'])->findOrFail($request->patient_id);
 
-            // 🚫 บล็อกการบันทึก MEWS ทันทีหากพลทหารอยู่ในสถานะปลดทหารแล้ว
-            if ($patient->militaryDischarge) {
+            // 🚫 บล็อกการบันทึก MEWS ทันทีหากพลทหารปลดทหารหรือมีสถานะไม่พร้อมประจำการ
+            if ($patient->militaryDischarge || (method_exists($patient, 'isCannotAssessMews') && $patient->isCannotAssessMews())) {
+                $statusReason = $patient->duty_status_label ?? 'ปลดทหาร/อยู่ในทะเบียนนำปลดแล้ว';
                 return redirect()->route('backend.patients.show', $patient->id)
-                    ->with('error', "ระบบไม่อนุญาตให้บันทึก MEWS เนื่องจาก {$patient->rank}{$patient->first_name} ปลดทหาร/อยู่ในทะเบียนนำปลดแล้วครับ");
+                    ->with('error', "ระบบไม่อนุญาตให้บันทึก MEWS เนื่องจาก {$patient->rank}{$patient->first_name} มีสถานะ: {$statusReason}");
             }
 
             $latestMews = MewsAssessment::where('patient_id', $request->patient_id)->orderBy('id', 'desc')->first();
 
-            // 2. เช็คสิทธิ์ผู้ประเมิน
-            $userRoles = is_string(auth()->user()->roles) ? json_decode(auth()->user()->roles, true) : (array)(auth()->user()->roles ?? auth()->user()->role);
-            $isERorAdmin = in_array('admin', $userRoles) || in_array('er_nurse', $userRoles) || in_array('screening', $userRoles);
+            // 2. เช็กสิทธิ์ผู้ประเมิน
+            $userRoles = $this->getUserRoles(auth()->user());
+            $isERorAdmin = !empty(array_intersect(['admin', 'er_nurse', 'screening'], $userRoles));
 
-            // 3. เช็คว่าเป็นการ "เปิดแฟ้มใหม่ (ประเมินครั้งที่ 1)" หรือ "ประเมินซ้ำในแฟ้มเดิม (ครั้งที่ 2+)"
-            $isNewCase = (!$latestMews || in_array($latestMews->status, ['completed', 'cancelled']));
+            // 3. เช็กว่าเป็นการ "เปิดแฟ้มใหม่ (ครั้งที่ 1)" หรือ "ประเมินซ้ำในแฟ้มเดิม (ครั้งที่ 2+)"
+            $isNewCase = (!$latestMews || in_array($latestMews->status, ['completed', 'cancelled'], true));
             $isSoldier = ($patient->rank === 'พลฯ' || !empty($patient->military_unit_id) || !empty($patient->intake_batch));
 
             if ($isNewCase) {
@@ -209,8 +255,8 @@ class MewsAssessmentController extends Controller
             }
 
             // 4. ดึงเกณฑ์ MEWS ที่กำลังเปิดใช้งานอยู่
-            $activeTemplate = \App\Models\MewsTemplate::where('is_active', true)->first();
-            
+            $activeTemplate = MewsTemplate::where('is_active', true)->first();
+
             try {
                 DB::beginTransaction();
 
@@ -219,8 +265,7 @@ class MewsAssessmentController extends Controller
                     'case_id'          => $caseId,
                     'evaluator_id'     => auth()->id(),
                     'mews_template_id' => $activeTemplate ? $activeTemplate->id : null,
-                    'assessment_type'  => $realAssessmentType, 
-                    
+                    'assessment_type'  => $realAssessmentType,
                     'systolic_bp'      => $request->sbp,
                     'heart_rate'       => $request->hr,
                     'respiratory_rate' => $request->rr,
@@ -230,7 +275,7 @@ class MewsAssessmentController extends Controller
                     'symptoms'         => $request->emergency_conditions,
                     'symptoms_note'    => $request->symptoms_note,
                     'total_score'      => $request->total_score,
-                    'risk_level'       => $request->risk_level, 
+                    'risk_level'       => $request->risk_level,
                     'status'           => 'pending',
                 ]);
 
@@ -238,11 +283,10 @@ class MewsAssessmentController extends Controller
                     'patient_id'      => $assessment->patient_id,
                     'total_score'     => $assessment->total_score,
                     'risk_level'      => $assessment->risk_level,
-                    'assessment_type' => $assessment->assessment_type
+                    'assessment_type' => $assessment->assessment_type,
                 ]);
 
                 DB::commit();
-
             } catch (\Throwable $e) {
                 DB::rollBack();
                 Log::error('MEWS Store Error: ' . $e->getMessage());
@@ -260,13 +304,13 @@ class MewsAssessmentController extends Controller
                 }
             }
 
-            // ✅ 2. ยิงสัญญาณ Real-time WebSocket & Web Push เฉพาะรอบแรก ($isNewCase) ทุกเคส (รวมสีเขียว)
+            // ✅ 2. ยิงสัญญาณ Real-time WebSocket & Web Push เฉพาะรอบแรก ($isNewCase) ทุกเคส
             try {
                 broadcast(new PatientMewsUpdated($request->patient_id));
 
                 if ($isNewCase) {
                     $hasEmergencyConditions = !empty($request->emergency_conditions) && count($request->emergency_conditions) > 0;
-                    $isHighRiskMews = in_array($request->risk_level, ['observe', 'emergency']);
+                    $isHighRiskMews = in_array($request->risk_level, ['observe', 'emergency'], true);
                     $isUrgentCase = $isHighRiskMews || $hasEmergencyConditions;
 
                     $displayRisk = $request->risk_level;
@@ -280,18 +324,17 @@ class MewsAssessmentController extends Controller
                         'unit'         => $patient->militaryUnit->name ?? $patient->company ?? '-',
                         'score'        => $request->total_score,
                         'risk_level'   => $displayRisk,
-                        'evaluator_id' => auth()->id()
+                        'evaluator_id' => auth()->id(),
                     ];
                     broadcast(new EmergencyMewsAlert($patientData));
 
-                    $pushTitle = $displayRisk === 'emergency' || $displayRisk === 'emergency_condition'
+                    $pushTitle = ($displayRisk === 'emergency' || $displayRisk === 'emergency_condition')
                         ? "🚨 เคสฉุกเฉินใหม่ (MEWS: {$request->total_score} คะแนน)"
                         : ($displayRisk === 'observe'
                             ? "⚠️ เคสเฝ้าระวังใหม่ (MEWS: {$request->total_score} คะแนน)"
                             : "✅ เคสประเมิน MEWS ใหม่ (ปกติ: {$request->total_score} คะแนน)");
 
-                    // 🚀 ยิง Background Web Push ให้จุดคัดกรอง, ER, OPD และ Admin ทุกเคสในรอบแรก
-                    \App\Services\WebPushService::sendToHospitalRoles(
+                    WebPushService::sendToHospitalRoles(
                         ['er_nurse', 'opd_nurse', 'screening', 'admin'],
                         $pushTitle,
                         "ผู้ป่วย: {$patient->rank}{$patient->first_name} {$patient->last_name} (" . ($patient->militaryUnit->short_name ?? 'ไม่ระบุหน่วย') . ")",
@@ -304,7 +347,8 @@ class MewsAssessmentController extends Controller
                 Log::warning('MEWS WebSocket Broadcast Warning: ' . $broadcastError->getMessage());
             }
 
-            return redirect()->route('backend.patients.show', $request->patient_id)->with('success', 'บันทึกผลการประเมิน MEWS เรียบร้อยแล้ว!');
+            return redirect()->route('backend.patients.show', $request->patient_id)
+                ->with('success', 'บันทึกผลการประเมิน MEWS เรียบร้อยแล้ว!');
 
         }) ?: back()->withInput()->with('error', 'ระบบกำลังบันทึกข้อมูล กรุณาอย่ากดส่งซ้ำครับ!');
     }
@@ -312,15 +356,15 @@ class MewsAssessmentController extends Controller
     public function show($id)
     {
         $currentMews = MewsAssessment::findOrFail($id);
-        
+
         $patient = Patient::with([
-            'mewsAssessments' => function($q) {
+            'mewsAssessments' => function ($q) {
                 $q->orderBy('created_at', 'desc')->with(['evaluator', 'template']);
             },
-            'upcomingAppointment'
+            'upcomingAppointment',
         ])->findOrFail($currentMews->patient_id);
 
-        $activeTemplate = \App\Models\MewsTemplate::where('is_active', true)->first();
+        $activeTemplate = MewsTemplate::where('is_active', true)->first();
 
         return view('backend.mews.show', compact('patient', 'currentMews', 'activeTemplate'));
     }
@@ -330,18 +374,19 @@ class MewsAssessmentController extends Controller
         $mews = MewsAssessment::with('patient')->findOrFail($id);
         $user = auth()->user();
 
-        $roles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        $isAdmin = in_array('admin', $roles);
+        $roles = $this->getUserRoles($user);
+        $isAdmin = in_array('admin', $roles, true);
         $isCreator = $user->id === $mews->evaluator_id;
-        $isSameUnit = $user->military_unit_id !== null && $user->military_unit_id === $mews->patient->military_unit_id;
+        $isSameUnit = $user->military_unit_id !== null
+            && $mews->patient
+            && $user->military_unit_id === $mews->patient->military_unit_id;
 
         if (!$isAdmin && !$isCreator && !$isSameUnit) {
             return back()->with('error', 'คุณไม่มีสิทธิ์แก้ไขข้อมูลประเมินของหน่วยอื่นครับ');
         }
 
         $activeSymptoms = $this->getSortedActiveSymptomsForUser($user);
-
-        $symptomsDict = \App\Models\EmergencySymptom::pluck('name', 'code')->toArray();
+        $symptomsDict = EmergencySymptom::pluck('name', 'code')->toArray();
 
         return view('backend.mews.edit', compact('mews', 'activeSymptoms', 'symptomsDict'));
     }
@@ -354,8 +399,21 @@ class MewsAssessmentController extends Controller
 
         return Cache::lock($lockKey, 5)->get(function () use ($request, $id) {
 
-            $mews = MewsAssessment::findOrFail($id);
-            
+            $mews = MewsAssessment::with('patient')->findOrFail($id);
+            $user = auth()->user();
+
+            // 🛡️ ตรวจสิทธิ์ก่อนบันทึกแก้ไขให้ตรงกับหน้า edit()
+            $roles = $this->getUserRoles($user);
+            $isAdmin = in_array('admin', $roles, true);
+            $isCreator = $user->id === $mews->evaluator_id;
+            $isSameUnit = $user->military_unit_id !== null
+                && $mews->patient
+                && $user->military_unit_id === $mews->patient->military_unit_id;
+
+            if (!$isAdmin && !$isCreator && !$isSameUnit) {
+                return back()->with('error', 'คุณไม่มีสิทธิ์แก้ไขข้อมูลประเมินของหน่วยอื่นครับ');
+            }
+
             try {
                 DB::beginTransaction();
 
@@ -375,19 +433,24 @@ class MewsAssessmentController extends Controller
                 AuditLog::record('update_mews', $mews, [
                     'patient_id'      => $mews->patient_id,
                     'new_total_score' => $mews->total_score,
-                    'new_risk_level'  => $mews->risk_level
+                    'new_risk_level'  => $mews->risk_level,
                 ]);
 
                 DB::commit();
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 DB::rollBack();
                 Log::error('MEWS Update Error: ' . $e->getMessage());
                 return back()->withInput()->with('error', 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล กรุณาลองใหม่อีกครั้ง');
             }
 
-            // (ปิดการยิง Discord ตอนแก้ไข เพื่อให้แจ้งเตือนเฉพาะการประเมินครั้งที่ 1 ตอนเปิดเคสเท่านั้น)
+            try {
+                broadcast(new PatientMewsUpdated($mews->patient_id));
+            } catch (\Throwable $e) {
+            }
 
-            return redirect()->route('backend.patients.show', $mews->patient_id)->with('success', 'แก้ไขผลการประเมิน MEWS สำเร็จแล้ว!'); 
+            // (ปิดการยิง Discord ตอนแก้ไข เพื่อให้แจ้งเตือนเฉพาะการประเมินครั้งที่ 1 ตอนเปิดเคสเท่านั้น)
+            return redirect()->route('backend.patients.show', $mews->patient_id)
+                ->with('success', 'แก้ไขผลการประเมิน MEWS สำเร็จแล้ว!');
 
         }) ?: back()->withInput()->with('error', 'ระบบกำลังอัปเดตข้อมูล กรุณาอย่ากดส่งซ้ำครับ!');
     }
@@ -396,20 +459,20 @@ class MewsAssessmentController extends Controller
     public function cancel(Request $request, $id)
     {
         $request->validate([
-            'cancel_reason' => 'required|string|max:255'
+            'cancel_reason' => 'required|string|max:255',
         ]);
 
         $lockKey = 'mews_cancel_lock_' . auth()->id() . '_' . $id;
 
-        return \Illuminate\Support\Facades\Cache::lock($lockKey, 5)->get(function () use ($request, $id) {
+        return Cache::lock($lockKey, 5)->get(function () use ($request, $id) {
             $mews = MewsAssessment::findOrFail($id);
-            
+
             try {
                 DB::beginTransaction();
 
-                \App\Models\MewsAssessment::where('case_id', $mews->case_id)->update([
+                MewsAssessment::where('case_id', $mews->case_id)->update([
                     'status'        => 'cancelled',
-                    'cancel_reason' => $request->cancel_reason
+                    'cancel_reason' => $request->cancel_reason,
                 ]);
 
                 $mews->refresh();
@@ -417,11 +480,11 @@ class MewsAssessmentController extends Controller
                 AuditLog::record('cancel_mews', $mews, [
                     'patient_id'    => $mews->patient_id,
                     'cancel_reason' => $request->cancel_reason,
-                    'cancelled_by'  => auth()->user()->name
+                    'cancelled_by'  => auth()->user()->name,
                 ]);
-                
+
                 DB::commit();
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 DB::rollBack();
                 Log::error('MEWS Cancel Error: ' . $e->getMessage());
                 return back()->with('error', 'เกิดข้อผิดพลาดในการยกเลิกเคส กรุณาลองใหม่อีกครั้ง');
@@ -429,7 +492,8 @@ class MewsAssessmentController extends Controller
 
             try {
                 broadcast(new PatientMewsUpdated($mews->patient_id));
-            } catch (\Throwable $e) {}
+            } catch (\Throwable $e) {
+            }
 
             return redirect()->route('backend.patients.index')->with('success', 'ยกเลิกเคสการประเมินนี้เรียบร้อยแล้ว');
 
@@ -439,7 +503,7 @@ class MewsAssessmentController extends Controller
     public function destroy($id)
     {
         $mews = MewsAssessment::with('patient')->findOrFail($id);
-        
+
         try {
             DB::beginTransaction();
 
@@ -450,11 +514,11 @@ class MewsAssessmentController extends Controller
 
             AuditLog::record('delete_mews', null, [
                 'deleted_patient_id' => $patientId,
-                'deleted_score'      => $deletedScore
+                'deleted_score'      => $deletedScore,
             ]);
-            
+
             DB::commit();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('MEWS Delete Error: ' . $e->getMessage());
             return back()->with('error', 'ไม่สามารถลบข้อมูลได้ในขณะนี้');
@@ -462,28 +526,29 @@ class MewsAssessmentController extends Controller
 
         try {
             broadcast(new PatientMewsUpdated($patientId));
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+        }
 
         return redirect()->route('backend.patients.index')->with('success', 'ลบข้อมูลการประเมินเรียบร้อยแล้ว');
     }
 
-    // 🌟 ฟังก์ชันจบการรักษา (Discharge: จำหน่ายกลับ / Admit / Refer) — ซิงค์อัตโนมัติกับรายงานเจ็บป่วยประจำวัน 100%
+    // 🌟 จบการรักษา (Discharge: จำหน่ายกลับ / Admit / Refer) — ซิงค์อัตโนมัติกับรายงานเจ็บป่วยประจำวัน 100%
     public function discharge(Request $request, $id)
     {
         $request->validate([
             'discharge_type'    => 'required|in:recovered,refer,admitted',
-            'discharge_details' => 'nullable|string|max:255'
+            'discharge_details' => 'nullable|string|max:255',
         ]);
 
         $mews = MewsAssessment::with('patient')->findOrFail($id);
-        
+
         try {
             DB::beginTransaction();
 
             $updatePayload = [
                 'status'            => 'completed',
                 'discharge_type'    => $request->discharge_type,
-                'discharge_details' => $request->discharge_details
+                'discharge_details' => $request->discharge_details,
             ];
 
             // หากเลือกเป็น "จำหน่ายกลับกองร้อย (recovered)" ให้ล้างค่าติดตาม Admit เดิมออก
@@ -494,18 +559,18 @@ class MewsAssessmentController extends Controller
 
             MewsAssessment::where('case_id', $mews->case_id)->update($updatePayload);
 
-            // 🔄 ซิงค์ข้อมูลไปยังตารางรายงานอาการเจ็บป่วยประจำวัน (RecruitMorbidity) ทันที!
-            if (class_exists('\App\Models\RecruitMorbidity')) {
+            // 🔄 ซิงค์ข้อมูลไปยังตารางรายงานอาการเจ็บป่วยประจำวัน (RecruitMorbidity)
+            if (class_exists(RecruitMorbidity::class)) {
                 if ($request->discharge_type === 'recovered') {
                     // ลบเฉพาะรายการนอน รพ. (other_ipd) ที่เกิดจาก MEWS และปรับเฉพาะเคสความร้อน (heat) เป็น recovered
-                    // 🛡️ ห้ามเปลี่ยนสถานะหมวด respiratory (โควิด/ไข้หวัดใหญ่) เพราะทหารยังแยกกักอยู่ในห้องพยาบาลหน่วยฝึก (CI)!
-                    \App\Models\RecruitMorbidity::where('patient_id', $mews->patient_id)
+                    // 🛡️ ห้ามเปลี่ยนสถานะหมวด respiratory (โควิด/ไข้หวัดใหญ่) เพราะทหารยังแยกกักอยู่ในห้องพยาบาลหน่วยฝึก (CI)
+                    RecruitMorbidity::where('patient_id', $mews->patient_id)
                         ->where('category', 'other_ipd')
                         ->where('status', 'treating')
                         ->whereNull('recorded_by')
                         ->delete();
 
-                    \App\Models\RecruitMorbidity::where('patient_id', $mews->patient_id)
+                    RecruitMorbidity::where('patient_id', $mews->patient_id)
                         ->where('category', 'heat')
                         ->where('status', 'treating')
                         ->update([
@@ -513,9 +578,8 @@ class MewsAssessmentController extends Controller
                             'recovered_date' => now()->format('Y-m-d'),
                         ]);
                 } else {
-                    // กรณีเลือกเป็น admitted หรือ refer ให้อัปเดตประเภทโรงพยาบาลในรายงานประจำวันให้ตรงกัน
                     $hospSubType = $request->discharge_type === 'refer' ? 'public_hospital' : 'camp_hospital';
-                    \App\Models\RecruitMorbidity::where('patient_id', $mews->patient_id)
+                    RecruitMorbidity::where('patient_id', $mews->patient_id)
                         ->where('category', 'other_ipd')
                         ->where('status', 'treating')
                         ->update([
@@ -528,11 +592,11 @@ class MewsAssessmentController extends Controller
                 'patient_id'        => $mews->patient_id,
                 'discharge_type'    => $request->discharge_type,
                 'discharge_details' => $request->discharge_details,
-                'final_mews_score'  => $mews->total_score
+                'final_mews_score'  => $mews->total_score,
             ]);
 
             DB::commit();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('MEWS Discharge Error: ' . $e->getMessage());
             return back()->with('error', 'เกิดข้อผิดพลาดในการบันทึกผลการรักษา กรุณาลองใหม่อีกครั้ง');
@@ -541,16 +605,16 @@ class MewsAssessmentController extends Controller
         $labels = [
             'recovered' => 'จำหน่ายกลับกองร้อย (อาการปกติ)',
             'refer'     => 'ส่งตัวรักษาต่อ (Refer)',
-            'admitted'  => 'รับไว้รักษาตัวในโรงพยาบาล (Admit)'
+            'admitted'  => 'รับไว้รักษาตัวในโรงพยาบาล (Admit)',
         ];
-        
+
         $dischargeText = $labels[$request->discharge_type] ?? 'จบการรักษา';
 
         if (!empty($request->discharge_details)) {
             if ($request->discharge_type === 'admitted') {
-                $dischargeText .= " [เตียง/หอผู้ป่วย: " . $request->discharge_details . "]";
+                $dischargeText .= ' [เตียง/หอผู้ป่วย: ' . $request->discharge_details . ']';
             } elseif ($request->discharge_type === 'refer') {
-                $dischargeText .= " [รพ.ปลายทาง: " . $request->discharge_details . "]";
+                $dischargeText .= ' [รพ.ปลายทาง: ' . $request->discharge_details . ']';
             }
         }
 
@@ -561,9 +625,19 @@ class MewsAssessmentController extends Controller
             $targetUnitId = $patient->military_unit_id ?? null;
             $statusJS = $request->discharge_type === 'admitted' ? 'admit' : 'discharge';
 
-            // 🚀 ยิง Background Web Push แจ้งผลการรักษาเข้ามือถือของเสนารักษ์ประจำหน่วยฝึกทันที
             if ($targetUnitId) {
-                \App\Services\WebPushService::sendToUnitMedics(
+                // 🔔 แจ้ง Real-time ผ่าน Echo กลับไปหน้าจอเสนารักษ์กองร้อย
+                if (class_exists(MewsStatusUpdated::class)) {
+                    event(new MewsStatusUpdated([
+                        'name'        => trim(($patient->rank ?? '') . ' ' . ($patient->first_name ?? '')),
+                        'status'      => $statusJS,
+                        'status_text' => $dischargeText,
+                        'case_id'     => $mews->case_id,
+                    ], $targetUnitId));
+                }
+
+                // 🚀 ยิง Background Web Push แจ้งผลการรักษาเข้ามือถือของเสนารักษ์ประจำหน่วยฝึก
+                WebPushService::sendToUnitMedics(
                     $targetUnitId,
                     $patient->intake_batch,
                     "🏥 อัปเดตผลรักษาจาก ER: {$patient->rank}{$patient->first_name}",
@@ -575,18 +649,18 @@ class MewsAssessmentController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Discharge Broadcast Warning: ' . $e->getMessage());
         }
-        
+
         return back()->with('success', 'บันทึกข้อมูลการจำหน่าย/ปิดเคสเรียบร้อย: ' . $dischargeText);
     }
 
     // =========================================================================
-    // 🏠 ฟังก์ชันบันทึก/แก้ไข "กลับหน่วยฝึกแล้ว" หรือ "ย้อนสถานะกลับเป็นกำลังนอน รพ."
+    // 🏠 บันทึก/แก้ไข "กลับหน่วยฝึกแล้ว" หรือ "ย้อนสถานะกลับเป็นกำลังนอน รพ."
     // =========================================================================
-    public function returnToUnit(Request $request,$id)
+    public function returnToUnit(Request $request, $id)
     {
         $mews = MewsAssessment::with('patient')->findOrFail($id);
 
-        // 🔄 กรณีที่ 1: เจ้าหน้าที่กดปุ่ม "ย้อนสถานะกลับเป็น กำลังนอน รพ. (ยังไม่กลับหน่วยฝึก)"
+        // 🔄 กรณีที่ 1: ย้อนสถานะกลับเป็น "กำลังนอน รพ. (ยังไม่กลับหน่วยฝึก)"
         if ($request->boolean('revert_to_admit')) {
             try {
                 DB::beginTransaction();
@@ -596,9 +670,8 @@ class MewsAssessmentController extends Controller
                     'return_note'         => null,
                 ]);
 
-                // ซิงค์ตารางรายงานเจ็บป่วยประจำวันให้กลับมาเป็น "กำลังรักษา (treating)"
-                if (class_exists('\App\Models\RecruitMorbidity')) {
-                    \App\Models\RecruitMorbidity::where('patient_id', $mews->patient_id)
+                if (class_exists(RecruitMorbidity::class)) {
+                    RecruitMorbidity::where('patient_id', $mews->patient_id)
                         ->where('category', 'other_ipd')
                         ->orderBy('id', 'desc')
                         ->limit(1)
@@ -622,7 +695,8 @@ class MewsAssessmentController extends Controller
 
             try {
                 broadcast(new PatientMewsUpdated($mews->patient_id));
-            } catch (\Throwable $e) {}
+            } catch (\Throwable $e) {
+            }
 
             return back()->with('success', 'ย้อนสถานะกลับเป็น "กำลังนอนรักษาตัวใน รพ. (ยังไม่กลับหน่วยฝึก)" เรียบร้อยแล้ว');
         }
@@ -634,9 +708,9 @@ class MewsAssessmentController extends Controller
             'return_note'   => 'nullable|string|max:255',
         ]);
 
-        $timePart = $request->filled('returned_time') ?$request->returned_time . ':00' : now()->format('H:i:s');
-        $returnedTimestamp =$request->filled('returned_date')
-            ? \Carbon\Carbon::parse($request->returned_date . ' ' .$timePart)
+        $timePart = $request->filled('returned_time') ? $request->returned_time . ':00' : now()->format('H:i:s');
+        $returnedTimestamp = $request->filled('returned_date')
+            ? Carbon::parse($request->returned_date . ' ' . $timePart)
             : now();
 
         try {
@@ -647,8 +721,8 @@ class MewsAssessmentController extends Controller
                 'return_note'         => $request->return_note ?: 'อาการดีขึ้น จำหน่ายกลับหน่วยฝึกเรียบร้อยแล้ว',
             ]);
 
-            if (class_exists('\App\Models\RecruitMorbidity')) {
-                \App\Models\RecruitMorbidity::where('patient_id', $mews->patient_id)
+            if (class_exists(RecruitMorbidity::class)) {
+                RecruitMorbidity::where('patient_id', $mews->patient_id)
                     ->where('status', 'treating')
                     ->update([
                         'status'         => 'recovered',
@@ -673,10 +747,10 @@ class MewsAssessmentController extends Controller
         try {
             broadcast(new PatientMewsUpdated($mews->patient_id));
 
-            $patient =$mews->patient;
-            if ($patient &&$patient->military_unit_id) {
-                event(new \App\Events\MewsStatusUpdated([
-                    'name'        => ($patient->rank ?? '') . ' ' . ($patient->first_name ?? ''),
+            $patient = $mews->patient;
+            if ($patient && $patient->military_unit_id && class_exists(MewsStatusUpdated::class)) {
+                event(new MewsStatusUpdated([
+                    'name'        => trim(($patient->rank ?? '') . ' ' . ($patient->first_name ?? '')),
                     'status'      => 'discharge',
                     'status_text' => 'ออกจาก รพ. กลับถึงหน่วยฝึกเรียบร้อยแล้ว' . ($request->return_note ? " ({$request->return_note})" : ''),
                     'case_id'     => $mews->case_id,
@@ -689,33 +763,37 @@ class MewsAssessmentController extends Controller
         return back()->with('success', 'บันทึกข้อมูลสถานะ "กลับถึงหน่วยฝึกแล้ว" เรียบร้อยแล้วครับ!');
     }
 
-    
+    public function printForm($id)
+    {
+        $mews = MewsAssessment::with(['patient.militaryUnit', 'evaluator', 'template'])->findOrFail($id);
+        $symptomCodes = is_array($mews->symptoms) ? $mews->symptoms : [];
+
+        return view('backend.mews.print_form', compact('mews', 'symptomCodes'));
+    }
 
     // =========================================================================
-    // 🌟 Private Functions: ระบบส่งแจ้งเตือนเข้า Discord Webhook
-    // (ล็อกให้ส่งเฉพาะการประเมินครั้งที่ 1 จากหน่วยฝึกเท่านั้น)
+    // 🌟 Private Functions: ระบบส่งแจ้งเตือนเข้า Discord Webhook (ช่อง ER / MEWS)
+    // (ล็อกให้ส่งเฉพาะการประเมินครั้งที่ 1 ตอนเปิดแฟ้มใหม่เท่านั้น)
     // =========================================================================
-    private function sendDiscordAlert($assessment, bool $isReassessment = false, bool $isEdited = false)
+    private function sendDiscordAlert($assessment, bool $isReassessment = false, bool $isEdited = false): void
     {
-        // 🔒 ส่งแจ้งเตือนเฉพาะการประเมินรอบแรกเท่านั้น (ประเมินซ้ำหรือแก้ไขจะไม่ส่ง)
         if ($isReassessment || $isEdited) {
             return;
         }
 
-        $rawSymptoms = is_string($assessment->symptoms) ? json_decode($assessment->symptoms, true) : ($assessment->symptoms ?? []);
-        $hasEmergencyConditions = is_array($rawSymptoms) && count($rawSymptoms) > 0;
-
-        $webhookUrl = $this->getDiscordWebhookUrl();
-        
+        // ✅ ส่งไปยังช่องห้องฉุกเฉิน (ER / จุดคัดกรอง MEWS)
+        $webhookUrl = $this->getDiscordWebhookUrl('er');
         if (!$webhookUrl) {
-            Log::warning('Discord Alert: ไม่พบ DISCORD_MEWS_WEBHOOK_URL หรือ DISCORD_WEBHOOK_URL ในไฟล์ .env');
             return;
         }
 
         $patient = $assessment->patient()->with('militaryUnit')->first() ?? $assessment->patient;
-        if (!$patient) return;
-        
-        $symptomLabels = [
+        if (!$patient) {
+            return;
+        }
+
+        // ผสานชื่ออาการจากฐานข้อมูล EmergencySymptom ร่วมกับพจนานุกรมสำรอง (รองรับอาการที่เพิ่มใหม่ในหน้าตั้งค่า)
+        $fallbackLabels = [
             'mi_chest_pain'           => 'เจ็บแน่นหน้าอกเหมือนโดนกดทับ (MI)',
             'mi_dyspnea'              => 'เหนื่อย หายใจไม่อิ่ม ใจสั่น (MI)',
             'mi_referred_pain'        => 'เจ็บร้าวไปไหล่ซ้าย กราม แขน (MI)',
@@ -738,101 +816,100 @@ class MewsAssessmentController extends Controller
             'appendicitis'            => 'ปวดท้อง RLQ (Appendicitis)',
             'sepsis_drowsy'           => 'ซึม (Sepsis)',
             'sepsis_tachypnea'        => 'หายใจหอบ (Sepsis)',
-            'trauma'                  => 'เกิดอุบัติเหตุภายใน 24 ชม. (Trauma)'
+            'trauma'                  => 'เกิดอุบัติเหตุภายใน 24 ชม. (Trauma)',
         ];
+        $dbSymptomLabels = EmergencySymptom::pluck('name', 'code')->toArray();
+        $symptomLabels = array_merge($fallbackLabels, $dbSymptomLabels);
 
         $rawSymptoms = is_string($assessment->symptoms) ? json_decode($assessment->symptoms, true) : ($assessment->symptoms ?? []);
-        
+        $rawSymptoms = is_array($rawSymptoms) ? array_values(array_filter($rawSymptoms)) : [];
+        $hasEmergencyConditions = count($rawSymptoms) > 0;
+
         $translatedSymptoms = [];
-        if (is_array($rawSymptoms)) {
-            foreach ($rawSymptoms as $key) {
-                $translatedSymptoms[] = $symptomLabels[$key] ?? $key; 
-            }
+        foreach ($rawSymptoms as $key) {
+            $translatedSymptoms[] = $symptomLabels[$key] ?? $key;
         }
 
-        $symptomsText = (count($translatedSymptoms) > 0) 
-                        ? "• " . implode("\n• ", $translatedSymptoms) 
-                        : "✅ ไม่มีอาการฉุกเฉินเฉพาะโรค";
+        $symptomsText = count($translatedSymptoms) > 0
+            ? '• ' . implode("\n• ", $translatedSymptoms)
+            : '✅ ไม่มีอาการฉุกเฉินเฉพาะโรค';
 
-        if (!empty(trim((string)$assessment->symptoms_note))) {
+        if (!empty(trim((string) $assessment->symptoms_note))) {
             $symptomsText .= "\n\n📝 **อาการสำคัญ / บันทึกเพิ่มเติม:**\n" . trim($assessment->symptoms_note);
         }
 
         $mewsUrl = route('backend.mews.show', $assessment->id);
-        
         $riskLevel = $assessment->risk_level;
-        $hasEmergencyConditions = is_array($rawSymptoms) && count($rawSymptoms) > 0;
-        
+
         $embedColor = 3066993; // สีเขียว (Normal)
-        $alertIcon = "✅";
-        $riskText = "ปกติ (Normal) -> ส่ง OPD";
-        $contentMsg = ""; 
+        $alertIcon = '✅';
+        $riskText = 'ปกติ (Normal) -> ส่ง OPD';
+        $contentMsg = '';
 
         if ($riskLevel === 'emergency') {
             $embedColor = 15158332; // สีแดง
-            $alertIcon = "🚨";
-            $riskText = "ฉุกเฉิน (EMERGENCY) -> ส่ง ER";
-            $contentMsg = "@here 🚨 **มีเคสฉุกเฉินสีแดงส่งมาจากหน่วยฝึก!** กรุณาตรวจสอบทันที!"; 
+            $alertIcon = '🚨';
+            $riskText = 'ฉุกเฉิน (EMERGENCY) -> ส่ง ER';
+            $contentMsg = '@here 🚨 **มีเคสฉุกเฉินสีแดงส่งมาจากหน่วยฝึก!** กรุณาตรวจสอบทันที!';
         } elseif ($hasEmergencyConditions) {
             $embedColor = 15158332; // สีแดง
-            $alertIcon = "🚨";
-            $riskText = "มีอาการฉุกเฉินเฉพาะโรค -> ส่ง ER";
-            $contentMsg = "@here 🚨 **มีผู้ป่วยพบอาการฉุกเฉินเฉพาะโรคส่งมาจากหน่วยฝึก!** ส่งตัวเข้า ER ด่วน!"; 
+            $alertIcon = '🚨';
+            $riskText = 'มีอาการฉุกเฉินเฉพาะโรค -> ส่ง ER';
+            $contentMsg = '@here 🚨 **มีผู้ป่วยพบอาการฉุกเฉินเฉพาะโรคส่งมาจากหน่วยฝึก!** ส่งตัวเข้า ER ด่วน!';
         } elseif ($riskLevel === 'observe') {
             $embedColor = 16753920; // สีเหลืองส้ม
-            $alertIcon = "⚠️";
-            $riskText = "เฝ้าระวัง (Observe) -> ส่ง ER";
+            $alertIcon = '⚠️';
+            $riskText = 'เฝ้าระวัง (Observe) -> ส่ง ER';
             $contentMsg = "⚠️ **มีเคสเฝ้าระวังใหม่ (MEWS: {$assessment->total_score}) ส่งตัวเข้า ER**";
         }
 
         $hnText = $patient->hn ?: 'ยังไม่มี HN';
         $pttypeText = $patient->pttype_name ?: 'รอซิงค์สิทธิ';
-        $unitDisplay = ($patient->militaryUnit->short_name ?? $patient->militaryUnit->name ?? $patient->company ?? '-') 
-                     . ($patient->battalion ? " ({$patient->battalion})" : "");
+        $unitDisplay = ($patient->militaryUnit->short_name ?? $patient->militaryUnit->name ?? $patient->company ?? '-')
+            . ($patient->battalion ? " ({$patient->battalion})" : '');
 
-        // ข้อมูลโรคประจำตัว
         $chronicText = 'ไม่มีโรคประจำตัว';
         if (($patient->chronic_disease_status ?? 'none') === 'yes') {
-            $chronicText = "⚠️ มีโรคประจำตัว: " . ($patient->chronic_disease_detail ?: 'ระบุ');
+            $chronicText = '⚠️ มีโรคประจำตัว: ' . ($patient->chronic_disease_detail ?: 'ระบุ');
         } elseif (($patient->chronic_disease_status ?? 'none') === 'other') {
-            $chronicText = "📌 อื่นๆ: " . ($patient->chronic_disease_detail ?: 'ระบุ');
+            $chronicText = '📌 อื่นๆ: ' . ($patient->chronic_disease_detail ?: 'ระบุ');
         }
 
         $embed = [
-            "title"       => "{$alertIcon} [เคสใหม่จากหน่วย] ผลประเมิน MEWS: {$assessment->total_score} คะแนน [{$riskText}]",
-            "url"         => $mewsUrl,
-            "description" => "**ผู้ป่วย:** {$patient->rank}{$patient->first_name} {$patient->last_name}\n"
+            'title'       => "{$alertIcon} [เคสใหม่จากหน่วย] ผลประเมิน MEWS: {$assessment->total_score} คะแนน [{$riskText}]",
+            'url'         => $mewsUrl,
+            'description' => "**ผู้ป่วย:** {$patient->rank}{$patient->first_name} {$patient->last_name}\n"
                            . "**เลข ปชช.:** `{$patient->cid}` | **HN:** `{$hnText}`\n"
                            . "**สิทธิการรักษา:** {$pttypeText}\n"
                            . "**โรคประจำตัว:** {$chronicText}\n\n"
                            . "👉 **[คลิกที่นี่เพื่อเปิดดูรายละเอียดเคส]({$mewsUrl})**",
-            "color"       => $embedColor,
-            "fields"      => [
+            'color'       => $embedColor,
+            'fields'      => [
                 [
-                    "name"   => "🏢 สังกัด / หน่วยฝึกทหาร",
-                    "value"  => $unitDisplay,
-                    "inline" => true
+                    'name'   => '🏢 สังกัด / หน่วยฝึกทหาร',
+                    'value'  => $unitDisplay,
+                    'inline' => true,
                 ],
                 [
-                    "name"   => "🎖️ ผลัดที่",
-                    "value"  => "` ผลัด " . ($patient->intake_batch ?? 'ไม่ระบุ') . " `", 
-                    "inline" => true
+                    'name'   => '🎖️ ผลัดที่',
+                    'value'  => '` ผลัด ' . ($patient->intake_batch ?? 'ไม่ระบุ') . ' `',
+                    'inline' => true,
                 ],
                 [
-                    "name"   => "❤️ สัญญาณชีพแรกรับ (Vital Signs)",
-                    "value"  => "BP: **{$assessment->systolic_bp}** | HR: **{$assessment->heart_rate}** | RR: **{$assessment->respiratory_rate}** | Temp: **{$assessment->temperature}°C** | O2: **{$assessment->o2sat}%** | AVPU: **{$assessment->consciousness}**",
-                    "inline" => false
+                    'name'   => '❤️ สัญญาณชีพแรกรับ (Vital Signs)',
+                    'value'  => "BP: **{$assessment->systolic_bp}** | HR: **{$assessment->heart_rate}** | RR: **{$assessment->respiratory_rate}** | Temp: **{$assessment->temperature}°C** | O2: **{$assessment->o2sat}%** | AVPU: **{$assessment->consciousness}**",
+                    'inline' => false,
                 ],
                 [
-                    "name"   => "🏥 อาการที่พบ (Emergency Conditions)",
-                    "value"  => $symptomsText,
-                    "inline" => false
-                ]
+                    'name'   => '🏥 อาการที่พบ (Emergency Conditions)',
+                    'value'  => $symptomsText,
+                    'inline' => false,
+                ],
             ],
-            "footer" => [
-                "text" => "ประเมินส่งตัวโดย: " . (auth()->user()->name ?? 'เจ้าหน้าที่หน่วยฝึก') . " | VN: " . ($assessment->case_id ?? '-')
+            'footer'      => [
+                'text' => 'ประเมินส่งตัวโดย: ' . (auth()->user()->name ?? 'เจ้าหน้าที่หน่วยฝึก') . ' | VN: ' . ($assessment->case_id ?? '-'),
             ],
-            "timestamp" => now()->toIso8601String()
+            'timestamp'   => now()->toIso8601String(),
         ];
 
         $payload = ['embeds' => [$embed]];
@@ -841,27 +918,27 @@ class MewsAssessmentController extends Controller
         }
 
         try {
-            $response = Http::withoutVerifying()->timeout(10)->post($webhookUrl, $payload);
+            $response = Http::withoutVerifying()->timeout(5)->post($webhookUrl, $payload);
             if ($response->failed()) {
                 Log::error('KSVR Discord Webhook HTTP Error: ' . $response->status() . ' | ' . $response->body());
             }
-        } catch (\Throwable $e) {            
+        } catch (\Throwable $e) {
             Log::error('KSVR Discord Webhook Exception: ' . $e->getMessage());
         }
     }
 
-    public function printForm($id)
+    // =========================================================================
+    // 🦠 เรดาร์เฝ้าระวังโรคระบาด (ดึงเกณฑ์จริงจาก SettingService และส่งช่องผู้บริหาร)
+    // =========================================================================
+    private function checkAndSendOutbreakAlert($assessment, $patient): void
     {
-        $mews = \App\Models\MewsAssessment::with(['patient.militaryUnit', 'evaluator', 'template'])->findOrFail($id);
-        $symptomCodes = is_array($mews->symptoms) ? $mews->symptoms : [];
+        // ดึงเกณฑ์จากหน้าตั้งค่าระบบทั่วไป (อ่านจาก Cache 0 DB Query)
+        $tempThreshold = (float) SettingService::get('outbreak_temp_threshold', 38.0);
+        $minCases      = (int) SettingService::get('outbreak_min_cases', 3);
+        $windowHours   = (int) SettingService::get('outbreak_window_hours', 24);
 
-        return view('backend.mews.print_form', compact('mews', 'symptomCodes'));
-    }
-
-    private function checkAndSendOutbreakAlert($assessment, $patient)
-    {
         $temp = (float) $assessment->temperature;
-        if ($temp < 38.0) {
+        if ($temp < $tempThreshold) {
             return;
         }
 
@@ -870,15 +947,15 @@ class MewsAssessmentController extends Controller
 
         $isRedScreening = $screening && $screening->color_group === 'red';
         $hasFluNote = $screening && !empty($screening->symptoms_note) && (
-            str_contains($screening->symptoms_note, 'ไข้หวัดใหญ่') || 
-            str_contains(strtolower($screening->symptoms_note), 'flu') ||
-            str_contains($screening->symptoms_note, 'ติดเชื้อ')
+            str_contains($screening->symptoms_note, 'ไข้หวัดใหญ่')
+            || str_contains(strtolower($screening->symptoms_note), 'flu')
+            || str_contains($screening->symptoms_note, 'ติดเชื้อ')
         );
 
         $unitName = $patient->militaryUnit->short_name ?? $patient->company ?? 'ไม่ระบุหน่วย';
-        $clusterQuery = \App\Models\MewsAssessment::where('status', '!=', 'cancelled')
-            ->where('temperature', '>=', 38.0)
-            ->where('created_at', '>=', now()->subHours(24))
+        $clusterQuery = MewsAssessment::where('status', '!=', 'cancelled')
+            ->where('temperature', '>=', $tempThreshold)
+            ->where('created_at', '>=', now()->subHours($windowHours))
             ->whereHas('patient', function ($q) use ($patient) {
                 if ($patient->military_unit_id) {
                     $q->where('military_unit_id', $patient->military_unit_id);
@@ -888,45 +965,56 @@ class MewsAssessmentController extends Controller
             });
 
         $feverCountInUnit = $clusterQuery->distinct('patient_id')->count('patient_id');
-        $isClusterOutbreak = $feverCountInUnit >= 3;
+        $isClusterOutbreak = $feverCountInUnit >= $minCases;
 
         if ($isRedScreening || $hasFluNote || $isClusterOutbreak) {
-            $webhookUrl = $this->getDiscordWebhookUrl();
-            if (!$webhookUrl) return;
+            // ✅ ส่งไปยังช่องผู้บริหาร / โรคระบาด (หากว่างระบบจะ fallback ไปช่อง ER ให้เอง)
+            $webhookUrl = $this->getDiscordWebhookUrl('exec');
+            if (!$webhookUrl) {
+                return;
+            }
 
             $mewsUrl = route('backend.mews.show', $assessment->id);
             $alertReasons = [];
-            if ($isRedScreening) $alertReasons[] = "🔴 ผู้ป่วยอยู่ใน **กลุ่มคัดกรองสีแดง (เสี่ยงสูง/พบเชื้อ)**";
-            if ($hasFluNote) $alertReasons[] = "🦠 ประวัติคัดกรองระบุ: **{$screening->symptoms_note}**";
-            if ($isClusterOutbreak) $alertReasons[] = "📈 พบกลุ่มก้อนผู้ป่วยไข้สูง (≥ 38°C) ในหน่วย **{$unitName}** สะสม **{$feverCountInUnit} นาย** ภายใน 24 ชม.";
+            if ($isRedScreening) {
+                $alertReasons[] = '🔴 ผู้ป่วยอยู่ใน **กลุ่มคัดกรองสีแดง (เสี่ยงสูง/พบเชื้อ)**';
+            }
+            if ($hasFluNote) {
+                $alertReasons[] = "🦠 ประวัติคัดกรองระบุ: **{$screening->symptoms_note}**";
+            }
+            if ($isClusterOutbreak) {
+                $alertReasons[] = "📈 พบกลุ่มก้อนผู้ป่วยไข้สูง (≥ {$tempThreshold}°C) ในหน่วย **{$unitName}** สะสม **{$feverCountInUnit} นาย** ภายใน {$windowHours} ชม.";
+            }
 
             $embed = [
-                "title"       => "🦠 แจ้งเตือนผู้บริหาร: เฝ้าระวังโรคติดต่อ/การระบาดในหน่วยฝึก!",
-                "url"         => $mewsUrl,
-                "description" => "**ผู้ป่วยล่าสุด:** {$patient->rank}{$patient->first_name} {$patient->last_name}\n**อุณหภูมิร่างกาย:** ` {$temp} °C ` | **MEWS Score:** ` {$assessment->total_score} คะแนน `\n\n**สาเหตุการแจ้งเตือน:**\n• " . implode("\n• ", $alertReasons),
-                "color"       => 10181046,
-                "fields"      => [
+                'title'       => '🦠 แจ้งเตือนผู้บริหาร: เฝ้าระวังโรคติดต่อ/การระบาดในหน่วยฝึก!',
+                'url'         => $mewsUrl,
+                'description' => "**ผู้ป่วยล่าสุด:** {$patient->rank}{$patient->first_name} {$patient->last_name}\n"
+                               . "**อุณหภูมิร่างกาย:** ` {$temp} °C ` | **MEWS Score:** ` {$assessment->total_score} คะแนน `\n\n"
+                               . "**สาเหตุการแจ้งเตือน:**\n• " . implode("\n• ", $alertReasons),
+                'color'       => 10181046,
+                'fields'      => [
                     [
-                        "name"   => "🏕️ หน่วยฝึกที่ต้องเฝ้าระวัง",
-                        "value"  => $unitName . " (ผลัด " . ($patient->intake_batch ?? '-') . ")",
-                        "inline" => true
+                        'name'   => '🏕️ หน่วยฝึกที่ต้องเฝ้าระวัง',
+                        'value'  => $unitName . ' (ผลัด ' . ($patient->intake_batch ?? '-') . ')',
+                        'inline' => true,
                     ],
                     [
-                        "name"   => "🛡️ คำแนะนำเบื้องต้นสำหรับหน่วย",
-                        "value"  => "พิจารณาแยกกักตัว (Isolation) สวมหน้ากากอนามัย และคัดกรองทหารเตียงข้างเคียง",
-                        "inline" => true
-                    ]
+                        'name'   => '🛡️ คำแนะนำเบื้องต้นสำหรับหน่วย',
+                        'value'  => 'พิจารณาแยกกักตัว (Isolation) สวมหน้ากากอนามัย และคัดกรองทหารเตียงข้างเคียง',
+                        'inline' => true,
+                    ],
                 ],
-                "footer" => [
-                    "text" => "KSVR AI Outbreak Surveillance | รายงานโดย: " . (auth()->user()->name ?? 'เจ้าหน้าที่')
+                'footer'      => [
+                    'text' => 'KSVR AI Outbreak Surveillance | รายงานโดย: ' . (auth()->user()->name ?? 'เจ้าหน้าที่'),
                 ],
-                "timestamp" => now()->toIso8601String()
+                'timestamp'   => now()->toIso8601String(),
             ];
 
             try {
-                Http::withoutVerifying()->timeout(10)->post($webhookUrl, [
+                Http::withoutVerifying()->timeout(5)->post($webhookUrl, [
                     'content' => "@here 🦠 **[รายงานพิเศษถึงผู้บริหาร]** พบสัญญาณเฝ้าระวังโรคติดต่อ/กลุ่มก้อนไข้สูงในหน่วยฝึก **{$unitName}**!",
-                    'embeds'  => [$embed]
+                    'embeds'  => [$embed],
                 ]);
             } catch (\Throwable $e) {
                 Log::error('Outbreak Webhook Error: ' . $e->getMessage());

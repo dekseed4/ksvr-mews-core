@@ -45,4 +45,9 @@ return [
         'api_key' => env('EXTERNAL_STATUS_API_KEY'),
     ],
 
+    'discord' => [
+        'mews_webhook_url' => env('DISCORD_MEWS_WEBHOOK_URL', env('DISCORD_WEBHOOK_URL', '')),
+        'exec_webhook_url' => env('DISCORD_EXEC_WEBHOOK_URL', ''),
+    ],
+
 ];

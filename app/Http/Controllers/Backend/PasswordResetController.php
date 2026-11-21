@@ -115,7 +115,7 @@ class PasswordResetController extends Controller
             ? "{$foundUser->name} (Username: `{$foundUser->username}`)" 
             : "ไม่พบในระบบ (ข้อมูลที่แจ้ง: `{$identifier}`)";
 
-        $webhookUrl = config('services.discord.mews_webhook_url') ?: env('DISCORD_WEBHOOK_URL');
+        $webhookUrl = \App\Services\SettingService::getDiscordWebhook('er');
         if (!empty($webhookUrl)) {
             try {
                 Http::timeout(5)->post($webhookUrl, [
