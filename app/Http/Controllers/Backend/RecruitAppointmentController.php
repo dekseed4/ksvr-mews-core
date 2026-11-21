@@ -3,25 +3,41 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
-use App\Models\Patient;
 use App\Models\MilitaryUnit;
+use App\Models\Patient;
 use App\Models\RecruitAppointment;
+use App\Services\AuditLog;
+use App\Services\SettingService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class RecruitAppointmentController extends Controller
 {
+    private bool $hosxpTimeoutApplied = false;
+
+    private function getUserRoles($user): array
+    {
+        if (!$user) {
+            return [];
+        }
+        $raw = $user->roles ?? $user->role ?? [];
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            return is_array($decoded) ? $decoded : [$raw];
+        }
+        return is_array($raw) ? $raw : (array) $raw;
+    }
+
     // ตรวจสอบสิทธิ์บุคลากรส่วนกลางของ รพ. (เห็นได้ทุกหน่วยฝึก)
     private function canViewAllUnits($user): bool
     {
-        $roles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        return in_array('admin', $roles)
-            || in_array('er_nurse', $roles)
-            || in_array('opd_nurse', $roles)
-            || in_array('executive', $roles)
-            || in_array('registration', $roles)
-            || in_array('medical_staff', $roles); 
+        $roles = $this->getUserRoles($user);
+        return !empty(array_intersect(
+            ['admin', 'er_nurse', 'opd_nurse', 'executive', 'registration', 'medical_staff', 'screening'],
+            $roles
+        ));
     }
 
     // จำกัดขอบเขตข้อมูลสำหรับ "เสนารักษ์" ให้เห็นและจัดการเฉพาะหน่วยฝึกและผลัดของตนเอง
@@ -38,26 +54,107 @@ class RecruitAppointmentController extends Controller
         return $query;
     }
 
+    private function authorizeUnitAndBatch($user, $unitId, $batch = null): void
+    {
+        if ($this->canViewAllUnits($user)) {
+            return;
+        }
+
+        if ((int) $unitId !== (int) $user->military_unit_id) {
+            abort(403, 'คุณสามารถจัดการรายการนัดพบแพทย์เฉพาะทหารในหน่วยฝึกของคุณเท่านั้นครับ');
+        }
+
+        if (!empty($user->intake_batch) && !empty($batch) && $batch !== $user->intake_batch) {
+            abort(403, 'คุณไม่มีสิทธิ์จัดการรายการของทหารใหม่ต่างผลัดครับ');
+        }
+    }
+
+    // 🛡️ HosXP Safety Helpers
+    private function getDefaultActiveBatch(): string
+    {
+        return class_exists(SettingService::class)
+            ? (trim((string) SettingService::get('active_intake_batch', '2/69')) ?: '2/69')
+            : '2/69';
+    }
+
+    private function isHosxpSyncPaused(): bool
+    {
+        return class_exists(SettingService::class)
+            ? (bool) SettingService::get('hosxp_sync_paused', false)
+            : false;
+    }
+
+    private function getHosxpMaxBatchSize(): int
+    {
+        $size = class_exists(SettingService::class)
+            ? (int) SettingService::get('hosxp_max_batch_size', 50)
+            : 50;
+
+        return max(10, min(200, $size));
+    }
+
+    private function applyHosxpTimeout(): void
+    {
+        if ($this->hosxpTimeoutApplied) {
+            return;
+        }
+
+        $timeout = class_exists(SettingService::class)
+            ? (int) SettingService::get('hosxp_timeout_seconds', 5)
+            : 5;
+        $timeout = max(2, min(30, $timeout));
+
+        $options = config('database.connections.hosxp.options', []);
+        if (!is_array($options)) {
+            $options = [];
+        }
+        $options[\PDO::ATTR_TIMEOUT] = $timeout;
+
+        config(['database.connections.hosxp.options' => $options]);
+        DB::purge('hosxp');
+
+        $this->hosxpTimeoutApplied = true;
+    }
+
+    private function cleanHosxpUtf8($str): string
+    {
+        if (empty($str)) {
+            return '';
+        }
+        $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string) $str);
+        return trim(mb_convert_encoding($utf8 ?: (string) $str, 'UTF-8', 'UTF-8'));
+    }
+
     public function index(Request $request)
     {
         $user = auth()->user();
         $today = Carbon::today()->format('Y-m-d');
         $tomorrow = Carbon::tomorrow()->format('Y-m-d');
 
+        // จำนวนวันแจ้งเตือนล่วงหน้าจากหน้าตั้งค่าระบบ (ค่าเริ่มต้น 1 วัน)
+        $alertDays = class_exists(SettingService::class)
+            ? max(1, min(7, (int) SettingService::get('appointment_alert_days', 1)))
+            : 1;
+        $alertEndDate = Carbon::today()->addDays($alertDays)->format('Y-m-d');
+
         // 1. ดึงรายชื่อผลัดและหน่วยฝึกตามสิทธิ์
         $batchesQuery = Patient::whereNotNull('intake_batch')->where('intake_batch', '!=', '');
         $this->applyMedicScope($batchesQuery, $user);
         $batches = $batchesQuery->distinct()->pluck('intake_batch')->sortDesc();
 
-        $selectedBatch     = $request->input('intake_batch', $batches->first() ?? '2/69');
+        $defaultBatch = $batches->contains($this->getDefaultActiveBatch())
+            ? $this->getDefaultActiveBatch()
+            : ($batches->first() ?? $this->getDefaultActiveBatch());
+
+        $selectedBatch     = $request->input('intake_batch', $defaultBatch);
         $selectedUnit      = $request->input('unit_id', '');
         $selectedType      = $request->input('hospital_type', '');
         $selectedPatientId = $request->input('patient_id', '');
         $selectedScope     = $request->input('date_scope', !empty($selectedPatientId) ? 'all' : 'upcoming');
 
-        // 🌟 รับค่าจำนวนรายชื่อต่อหน้า (รองรับ 10, 20, 50, 100 — ค่าเริ่มต้น 10 รายชื่อ)
+        // รับค่าจำนวนรายชื่อต่อหน้า (รองรับ 10, 20, 50, 100 — ค่าเริ่มต้น 10 รายชื่อ)
         $perPage = (int) $request->input('per_page', 10);
-        if (!in_array($perPage, [10, 20, 50, 100])) {
+        if (!in_array($perPage, [10, 20, 50, 100], true)) {
             $perPage = 10;
         }
 
@@ -94,25 +191,33 @@ class RecruitAppointmentController extends Controller
             'public_count'   => (clone $baseQuery)->where('status', 'scheduled')->where('hospital_type', 'public_hospital')->whereDate('appointment_date', '>=', $today)->count(),
         ];
 
-        // 🔔 ดึงรายการแจ้งเตือนล่วงหน้า 1 วัน (นัดพรุ่งนี้) และนัดวันนี้
+        // 🔔 ดึงรายการแจ้งเตือนนัดวันนี้ และล่วงหน้าตามค่า appointment_alert_days (ใช้ whereBetween เพื่อให้ MySQL ใช้ Index)
         $alertAppointments = (clone $baseQuery)
             ->where('status', 'scheduled')
-            ->whereIn(DB::raw('DATE(appointment_date)'), [$today, $tomorrow])
+            ->whereBetween('appointment_date', [$today, $alertEndDate])
             ->orderBy('military_unit_id', 'asc')
             ->orderBy('appointment_date', 'asc')
             ->orderBy('appointment_time', 'asc')
             ->get()
-            ->map(function ($app) use ($today) {
+            ->map(function ($app) use ($today, $tomorrow) {
                 $pt = $app->patient;
-                $isToday = $app->appointment_date->format('Y-m-d') === $today;
+                $appDateStr = $app->appointment_date->format('Y-m-d');
+                $isToday = $appDateStr === $today;
+                $isTomorrow = $appDateStr === $tomorrow;
+                $daysAhead = Carbon::today()->diffInDays($app->appointment_date->copy()->startOfDay(), false);
+
+                $dayBadge = $isToday
+                    ? '🚨 นัดวันนี้!'
+                    : ($isTomorrow ? '⏰ พรุ่งนี้ (ล่วงหน้า 1 วัน)' : "📅 อีก {$daysAhead} วัน");
+
                 return [
                     'id'            => $app->id,
                     'full_name'     => ($pt->rank ?? 'พลฯ') . ($pt->first_name ?? '') . ' ' . ($pt->last_name ?? ''),
                     'hn'            => $pt->hn ?: 'ยังไม่มี HN',
                     'unit'          => $app->militaryUnit->short_name ?? $pt->militaryUnit->short_name ?? '-',
-                    'day_badge'     => $isToday ? '🚨 นัดวันนี้!' : '⏰ พรุ่งนี้ (ล่วงหน้า 1 วัน)',
+                    'day_badge'     => $dayBadge,
                     'is_today'      => $isToday,
-                    'date_thai'     => $app->appointment_date->addYears(543)->format('d/m/Y'),
+                    'date_thai'     => $app->appointment_date->copy()->addYears(543)->format('d/m/Y'),
                     'time'          => $app->appointment_time ?: '08:30 น.',
                     'hospital_type' => $app->hospital_type,
                     'hospital_name' => $app->hospital_name ?: ($app->hospital_type === 'public_hospital' ? 'รพ.สาธารณสุข' : 'รพ.ค่ายกฤษณ์สีวะรา'),
@@ -140,7 +245,7 @@ class RecruitAppointmentController extends Controller
             $listQuery->whereDate('appointment_date', '<', $today);
         }
 
-        // 🌟 เรียงลำดับตาม ผลัด -> หน่วยฝึก -> สถานะ -> วันเวลานัด เพื่อให้ตารางจัดกลุ่มแยกตามหน่วยได้อย่างสวยงาม
+        // เรียงลำดับตาม ผลัด -> หน่วยฝึก -> สถานะ -> วันเวลานัด
         $appointments = $listQuery->orderBy('intake_batch', 'desc')
             ->orderByRaw('COALESCE(military_unit_id, 9999) ASC')
             ->orderByRaw("CASE WHEN status = 'scheduled' THEN 0 ELSE 1 END")
@@ -150,25 +255,30 @@ class RecruitAppointmentController extends Controller
             ->appends($request->query());
 
         // 4. รายชื่อพลทหารสำหรับเลือกตอนเพิ่มวันนัดใหม่
-        $patientsQuery = Patient::with('militaryUnit')->doesntHave('militaryDischarge')->orderBy('first_name');
+        $patientsQuery = Patient::with('militaryUnit')
+            ->doesntHave('militaryDischarge')
+            ->orderBy('first_name');
         $this->applyMedicScope($patientsQuery, $user);
         if ($selectedBatch !== 'all') {
             $patientsQuery->where('intake_batch', $selectedBatch);
         }
         $batchPatients = $patientsQuery->get(['id', 'cid', 'hn', 'rank', 'first_name', 'last_name', 'military_unit_id', 'intake_batch']);
 
+        $hosxpSyncPaused = $this->isHosxpSyncPaused();
+
         return view('backend.recruit_appointments.index', compact(
             'batches', 'selectedBatch', 'units', 'selectedUnit', 'selectedType', 'selectedScope',
-            'summary', 'alertAppointments', 'appointments', 'batchPatients', 'focusedPatient', 'perPage'
+            'summary', 'alertAppointments', 'appointments', 'batchPatients', 'focusedPatient', 'perPage',
+            'hosxpSyncPaused', 'alertDays'
         ));
     }
-    
-    // 🌟 บันทึกการนัดพบแพทย์ใหม่ (พร้อมระบบตรวจสอบข้อมูลครบทุกช่องและข้อความแจ้งเตือนภาษาไทย)
+
+    // 🌟 บันทึกการนัดพบแพทย์ใหม่
     public function store(Request $request)
     {
         $user = auth()->user();
 
-        $data =$request->validate([
+        $data = $request->validate([
             'patient_id'       => 'required|exists:patients,id',
             'hospital_type'    => 'required|in:camp_hospital,public_hospital',
             'hospital_name'    => 'required_if:hospital_type,public_hospital|nullable|string|max:150',
@@ -192,25 +302,24 @@ class RecruitAppointmentController extends Controller
 
         $patient = Patient::with('militaryDischarge')->findOrFail($data['patient_id']);
 
-        if ($patient->militaryDischarge) {
-            return back()->with('error', "ไม่สามารถลงนัดได้ เนื่องจาก {$patient->rank}{$patient->first_name} อยู่ในทะเบียนปลดทหารแล้วครับ");
+        if ($patient->militaryDischarge || in_array($patient->duty_status ?? 'active', ['absent', 'imprisoned', 'deceased'], true)) {
+            return back()->with('error', "ไม่สามารถลงนัดได้ เนื่องจาก {$patient->rank}{$patient->first_name} อยู่ในสถานะ: " . ($patient->duty_status_label ?? 'ปลดทหารแล้ว'));
         }
 
-        // ตรวจสอบสิทธิ์เสนารักษ์ว่าตรงหน่วยหรือไม่
-        if (!$this->canViewAllUnits($user) && $patient->military_unit_id !==$user->military_unit_id) {
-            abort(403, 'คุณสามารถลงนัดพบแพทย์เฉพาะทหารในหน่วยฝึกของคุณเท่านั้นครับ');
-        }
+        // ตรวจสอบสิทธิ์เสนารักษ์ว่าตรงหน่วยฝึกและผลัดหรือไม่
+        $this->authorizeUnitAndBatch($user, $patient->military_unit_id, $patient->intake_batch);
 
-        $defaultHospName =$data['hospital_type'] === 'camp_hospital' ? 'รพ.ค่ายกฤษณ์สีวะรา' : 'รพ.สาธารณสุข (ส่งต่อ)';
+        $defaultHospName = $data['hospital_type'] === 'camp_hospital' ? 'รพ.ค่ายกฤษณ์สีวะรา' : 'รพ.สาธารณสุข (ส่งต่อ)';
 
         RecruitAppointment::create([
             'patient_id'       => $patient->id,
             'military_unit_id' => $patient->military_unit_id,
-            'intake_batch'     => $patient->intake_batch ?: '2/69',
+            'intake_batch'     => $patient->intake_batch ?: $this->getDefaultActiveBatch(),
             'hospital_type'    => $data['hospital_type'],
-            'hospital_name'    => ($data['hospital_type'] === 'camp_hospital') ? 'รพ.ค่ายกฤษณ์สีวะรา' : ($data['hospital_name'] ?:$defaultHospName),
+            'hospital_name'    => ($data['hospital_type'] === 'camp_hospital') ? 'รพ.ค่ายกฤษณ์สีวะรา' : ($data['hospital_name'] ?: $defaultHospName),
             'appointment_date' => $data['appointment_date'],
-            'appointment_time' => $data['appointment_time'] ?: '08:30', 'clinic_name'      =>$data['clinic_name'],
+            'appointment_time' => $data['appointment_time'] ?: '08:30',
+            'clinic_name'      => $data['clinic_name'],
             'doctor_name'      => $data['doctor_name'] ?? null,
             'app_cause'        => $data['app_cause'],
             'note'             => $data['note'] ?? null,
@@ -225,11 +334,7 @@ class RecruitAppointmentController extends Controller
     public function updateStatus(Request $request, $id)
     {
         $appointment = RecruitAppointment::findOrFail($id);
-        $user = auth()->user();
-
-        if (!$this->canViewAllUnits($user) && $appointment->military_unit_id !== $user->military_unit_id) {
-            abort(403, 'ไม่มีสิทธิ์จัดการรายการของหน่วยอื่นครับ');
-        }
+        $this->authorizeUnitAndBatch(auth()->user(), $appointment->military_unit_id, $appointment->intake_batch);
 
         $request->validate([
             'status'           => 'required|in:scheduled,completed,postponed,cancelled',
@@ -249,23 +354,28 @@ class RecruitAppointmentController extends Controller
     public function destroy($id)
     {
         $appointment = RecruitAppointment::findOrFail($id);
-        $user = auth()->user();
-
-        if (!$this->canViewAllUnits($user) && $appointment->military_unit_id !== $user->military_unit_id) {
-            abort(403, 'ไม่มีสิทธิ์ลบรายการของหน่วยอื่นครับ');
-        }
+        $this->authorizeUnitAndBatch(auth()->user(), $appointment->military_unit_id, $appointment->intake_batch);
 
         $appointment->delete();
         return back()->with('success', 'ลบรายการนัดพบแพทย์เรียบร้อยแล้ว');
     }
 
     // =========================================================================
-    // 🔄 ฟังก์ชันดึงข้อมูลวันนัดพบแพทย์จากตาราง `oapp` ของ HosXP อัตโนมัติ (Read-Only & Fast)
+    // 🔄 ดึงข้อมูลวันนัดพบแพทย์จากตาราง `oapp` ของ HosXP อัตโนมัติ (Read-Only + Chunk Safety)
     // =========================================================================
     public function syncFromHosxp(Request $request)
     {
+        // 🛡️ 1. เช็กสวิตช์พักการซิงค์ HosXP ชั่วคราวก่อนยิง Query
+        if ($this->isHosxpSyncPaused()) {
+            return response()->json([
+                'status'  => 'error',
+                'paused'  => true,
+                'message' => 'ขณะนี้ผู้ดูแลระบบพักการเชื่อมต่อ/ซิงค์ข้อมูล HosXP ชั่วคราว กรุณาลองใหม่ภายหลังครับ',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
+        }
+
         $user = auth()->user();
-        $batch = $request->input('intake_batch', '2/69');
+        $batch = $request->input('intake_batch', $this->getDefaultActiveBatch());
         $singlePatientId = $request->input('patient_id');
 
         try {
@@ -286,75 +396,93 @@ class RecruitAppointmentController extends Controller
             if ($patients->isEmpty()) {
                 return response()->json([
                     'status'  => 'error',
-                    'message' => 'ไม่พบรายชื่อพลทหารที่มีรหัส HN สำหรับซิงค์ข้อมูลวันนัดจาก HosXP ครับ'
-                ]);
+                    'message' => 'ไม่พบรายชื่อพลทหารที่มีรหัส HN สำหรับซิงค์ข้อมูลวันนัดจาก HosXP ครับ',
+                ], 200, [], JSON_UNESCAPED_UNICODE);
             }
 
             $hnMap = [];
             foreach ($patients as $pt) {
-                $hnMap[trim($pt->hn)] = $pt;
+                $cleanHn = trim((string) $pt->hn);
+                if ($cleanHn !== '') {
+                    $hnMap[$cleanHn] = $pt;
+                }
             }
 
-            // ดึงข้อมูลจากตาราง oapp ของ HosXP เฉพาะนัดตั้งแต่วันนี้เป็นต้นไป (ใช้ Index hn และ nextdate เร็วมาก)
-            $hosxpAppointments = DB::connection('hosxp')
-                ->table('oapp')
-                ->leftJoin('clinic', 'oapp.clinic', '=', 'clinic.clinic')
-                ->leftJoin('doctor', 'oapp.doctor', '=', 'doctor.code')
-                ->whereIn('oapp.hn', array_keys($hnMap))
-                ->whereDate('oapp.nextdate', '>=', Carbon::today()->format('Y-m-d'))
-                ->select(
-                    'oapp.oapp_id',
-                    'oapp.hn',
-                    'oapp.nextdate',
-                    'oapp.nexttime',
-                    'oapp.app_cause',
-                    'oapp.note',
-                    'oapp.contact_point',
-                    'clinic.name as clinic_name',
-                    'doctor.name as doctor_name'
-                )
-                ->orderBy('oapp.nextdate', 'asc')
-                ->get();
-
-            $cleanUTF8 = function ($str) {
-                if (empty($str)) return '';
-                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string)$str);
-                return trim(mb_convert_encoding($utf8 ?: (string)$str, 'UTF-8', 'UTF-8'));
-            };
+            // 🛡️ 2. ตั้ง Connection Timeout และแบ่งยิง Query เป็น Batch ย่อยตาม hosxp_max_batch_size เพื่อไม่ให้หนักเครื่อง HIS
+            $this->applyHosxpTimeout();
+            $todayStr = Carbon::today()->format('Y-m-d');
+            $maxBatchSize = $this->getHosxpMaxBatchSize();
+            $hnChunks = array_chunk(array_keys($hnMap), $maxBatchSize);
 
             $syncedCount = 0;
-            foreach ($hosxpAppointments as $oa) {
-                $hn = $cleanUTF8($oa->hn);
-                if (!isset($hnMap[$hn]) || empty($oa->nextdate)) continue;
+            $defaultActiveBatch = $this->getDefaultActiveBatch();
 
-                $pt = $hnMap[$hn];
-                $timeStr = !empty($oa->nexttime) ? substr($cleanUTF8($oa->nexttime), 0, 5) : '08:30';
-                $clinicName = $cleanUTF8($oa->clinic_name);
-                $doctorName = $cleanUTF8($oa->doctor_name);
-                $appCause   = $cleanUTF8($oa->app_cause);
-                $noteText   = $cleanUTF8($oa->note);
-                $contactPt  = $cleanUTF8($oa->contact_point);
+            foreach ($hnChunks as $hnChunk) {
+                // ใช้ where('oapp.nextdate', '>=', ...) แทน whereDate เพื่อให้ MySQL ใช้ Index บน nextdate ได้เต็มที่
+                $hosxpAppointments = DB::connection('hosxp')
+                    ->table('oapp')
+                    ->leftJoin('clinic', 'oapp.clinic', '=', 'clinic.clinic')
+                    ->leftJoin('doctor', 'oapp.doctor', '=', 'doctor.code')
+                    ->whereIn('oapp.hn', $hnChunk)
+                    ->where('oapp.nextdate', '>=', $todayStr)
+                    ->select(
+                        'oapp.oapp_id',
+                        'oapp.hn',
+                        'oapp.nextdate',
+                        'oapp.nexttime',
+                        'oapp.app_cause',
+                        'oapp.note',
+                        'oapp.contact_point',
+                        'clinic.name as clinic_name',
+                        'doctor.name as doctor_name'
+                    )
+                    ->orderBy('oapp.nextdate', 'asc')
+                    ->get();
 
-                $fullNote = implode(' | ', array_filter([$noteText, $contactPt ? "จุดติดต่อ: {$contactPt}" : '']));
+                foreach ($hosxpAppointments as $oa) {
+                    $hn = $this->cleanHosxpUtf8($oa->hn);
+                    if (!isset($hnMap[$hn]) || empty($oa->nextdate)) {
+                        continue;
+                    }
 
-                RecruitAppointment::updateOrCreate(
-                    ['hosxp_oapp_id' => $oa->oapp_id],
-                    [
-                        'patient_id'       => $pt->id,
-                        'military_unit_id' => $pt->military_unit_id,
-                        'intake_batch'     => $pt->intake_batch ?: '2/69',
-                        'hospital_type'    => 'camp_hospital',
-                        'hospital_name'    => 'รพ.ค่ายกฤษณ์สีวะรา',
-                        'appointment_date' => $oa->nextdate,
-                        'appointment_time' => $timeStr,
-                        'clinic_name'      => mb_substr($clinicName, 0, 150) ?: 'OPD รพ.ค่ายฯ',
-                        'doctor_name'      => mb_substr($doctorName, 0, 150) ?: null,
-                        'app_cause'        => mb_substr($appCause ?: $noteText, 0, 250) ?: 'นัดตรวจติดตามอาการ',
-                        'note'             => $fullNote ?: null,
-                        'recorded_by'      => $user->id,
-                    ]
-                );
-                $syncedCount++;
+                    $pt = $hnMap[$hn];
+                    $timeStr    = !empty($oa->nexttime) ? substr($this->cleanHosxpUtf8($oa->nexttime), 0, 5) : '08:30';
+                    $clinicName = $this->cleanHosxpUtf8($oa->clinic_name);
+                    $doctorName = $this->cleanHosxpUtf8($oa->doctor_name);
+                    $appCause   = $this->cleanHosxpUtf8($oa->app_cause);
+                    $noteText   = $this->cleanHosxpUtf8($oa->note);
+                    $contactPt  = $this->cleanHosxpUtf8($oa->contact_point);
+
+                    $fullNote = implode(' | ', array_filter([$noteText, $contactPt ? "จุดติดต่อ: {$contactPt}" : '']));
+
+                    RecruitAppointment::updateOrCreate(
+                        ['hosxp_oapp_id' => $oa->oapp_id],
+                        [
+                            'patient_id'       => $pt->id,
+                            'military_unit_id' => $pt->military_unit_id,
+                            'intake_batch'     => $pt->intake_batch ?: $defaultActiveBatch,
+                            'hospital_type'    => 'camp_hospital',
+                            'hospital_name'    => 'รพ.ค่ายกฤษณ์สีวะรา',
+                            'appointment_date' => $oa->nextdate,
+                            'appointment_time' => $timeStr,
+                            'clinic_name'      => mb_substr($clinicName, 0, 150) ?: 'OPD รพ.ค่ายฯ',
+                            'doctor_name'      => mb_substr($doctorName, 0, 150) ?: null,
+                            'app_cause'        => mb_substr($appCause ?: $noteText, 0, 250) ?: 'นัดตรวจติดตามอาการ',
+                            'note'             => $fullNote ?: null,
+                            'recorded_by'      => $user->id,
+                        ]
+                    );
+                    $syncedCount++;
+                }
+            }
+
+            if (class_exists(AuditLog::class)) {
+                AuditLog::record('sync_hosxp_appointments', null, [
+                    'batch'         => $batch,
+                    'patient_count' => count($hnMap),
+                    'synced_count'  => $syncedCount,
+                    'chunk_size'    => $maxBatchSize,
+                ]);
             }
 
             return response()->json([
@@ -362,13 +490,14 @@ class RecruitAppointmentController extends Controller
                 'synced_count' => $syncedCount,
                 'message'      => $syncedCount > 0
                     ? "ดึงข้อมูลวันนัดพบแพทย์จาก HosXP สำเร็จ {$syncedCount} รายการ!"
-                    : "ตรวจสอบกับ HosXP เรียบร้อยแล้ว ไม่พบรายการนัดพบแพทย์ล่วงหน้าเพิ่มเติมครับ",
+                    : 'ตรวจสอบกับ HosXP เรียบร้อยแล้ว ไม่พบรายการนัดพบแพทย์ล่วงหน้าเพิ่มเติมครับ',
             ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Throwable $e) {
+            Log::warning('HosXP Appointment Sync Error: ' . $e->getMessage());
             return response()->json([
                 'status'  => 'error',
-                'message' => 'ไม่สามารถเชื่อมต่อตาราง oapp ของ HosXP ได้: ' . $e->getMessage()
+                'message' => 'ไม่สามารถเชื่อมต่อตาราง oapp ของ HosXP ได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ',
             ], 200, [], JSON_UNESCAPED_UNICODE);
         }
     }

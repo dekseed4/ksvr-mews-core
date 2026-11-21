@@ -3,29 +3,44 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
-use App\Models\Patient;
-use App\Models\MilitaryUnit;
 use App\Models\CovidVitalLog;
+use App\Models\Patient;
 use App\Models\PatientMedication;
 use App\Models\PatientMedicationLog;
 use App\Models\RecruitInfirmaryStay;
-use App\Models\RecruitMorbidity;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use App\Services\SettingService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class RecruitCareChartController extends Controller
 {
+    private const SCHEMA_CACHE_KEY = 'ksvr_care_chart_schema_verified_v1';
+    private bool $hosxpTimeoutApplied = false;
+
+    private function getUserRoles($user): array
+    {
+        if (!$user) {
+            return [];
+        }
+        $raw = $user->roles ?? $user->role ?? [];
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            return is_array($decoded) ? $decoded : [$raw];
+        }
+        return is_array($raw) ? $raw : (array) $raw;
+    }
+
     private function canViewAllUnits($user): bool
     {
-        $roles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        return in_array('admin', $roles)
-            || in_array('er_nurse', $roles)
-            || in_array('opd_nurse', $roles)
-            || in_array('executive', $roles)
-            || in_array('registration', $roles)
-            || in_array('medical_staff', $roles);
+        $roles = $this->getUserRoles($user);
+        return !empty(array_intersect(
+            ['admin', 'er_nurse', 'opd_nurse', 'executive', 'registration', 'medical_staff', 'screening'],
+            $roles
+        ));
     }
 
     private function applyMedicScope($query, $user)
@@ -40,32 +55,83 @@ class RecruitCareChartController extends Controller
         return $query;
     }
 
-    // 🛡️ ตรวจสอบและเพิ่มคอลัมน์สำหรับยาเวลามีอาการ (take_prn) และช่องพิมพ์วิธีใช้เอง (custom_slot_text) อัตโนมัติ
+    private function authorizePatientAccess(Patient $patient, $user): void
+    {
+        if ($this->canViewAllUnits($user)) {
+            return;
+        }
+
+        if ((int) $patient->military_unit_id !== (int) $user->military_unit_id) {
+            abort(403, 'คุณสามารถดูและจัดการเฉพาะข้อมูลทหารในหน่วยฝึกของคุณเท่านั้นครับ');
+        }
+
+        if (!empty($user->intake_batch) && !empty($patient->intake_batch) && $patient->intake_batch !== $user->intake_batch) {
+            abort(403, 'คุณไม่มีสิทธิ์จัดการข้อมูลทหารใหม่ต่างผลัดครับ');
+        }
+    }
+
+    private function isHosxpSyncPaused(): bool
+    {
+        return class_exists(SettingService::class)
+            ? (bool) SettingService::get('hosxp_sync_paused', false)
+            : false;
+    }
+
+    private function applyHosxpTimeout(): void
+    {
+        if ($this->hosxpTimeoutApplied) {
+            return;
+        }
+
+        $timeout = class_exists(SettingService::class)
+            ? (int) SettingService::get('hosxp_timeout_seconds', 5)
+            : 5;
+        $timeout = max(2, min(30, $timeout));
+
+        $options = config('database.connections.hosxp.options', []);
+        if (!is_array($options)) {
+            $options = [];
+        }
+        $options[\PDO::ATTR_TIMEOUT] = $timeout;
+
+        config(['database.connections.hosxp.options' => $options]);
+        DB::purge('hosxp');
+
+        $this->hosxpTimeoutApplied = true;
+    }
+
+    // 🛡️ ตรวจสอบและอัปเดตคอลัมน์เพียงครั้งเดียวแล้วจำใน Cache (ป้องกัน ALTER TABLE ล็อกตารางทุกคลิก)
     public static function ensureCareChartSchema(): void
     {
+        if (Cache::get(self::SCHEMA_CACHE_KEY)) {
+            return;
+        }
+
         try {
             if (Schema::hasTable('patient_medications')) {
                 if (!Schema::hasColumn('patient_medications', 'take_prn')) {
-                    DB::statement("ALTER TABLE patient_medications ADD COLUMN take_prn TINYINT(1) NOT NULL DEFAULT 0 AFTER take_bedtime");
+                    DB::statement('ALTER TABLE patient_medications ADD COLUMN take_prn TINYINT(1) NOT NULL DEFAULT 0 AFTER take_bedtime');
                 }
                 if (!Schema::hasColumn('patient_medications', 'custom_slot_text')) {
-                    DB::statement("ALTER TABLE patient_medications ADD COLUMN custom_slot_text VARCHAR(255) NULL AFTER take_prn");
+                    DB::statement('ALTER TABLE patient_medications ADD COLUMN custom_slot_text VARCHAR(255) NULL AFTER take_prn');
                 }
                 if (!Schema::hasColumn('patient_medications', 'instruction_note')) {
-                    DB::statement("ALTER TABLE patient_medications ADD COLUMN instruction_note VARCHAR(255) NULL");
+                    DB::statement('ALTER TABLE patient_medications ADD COLUMN instruction_note VARCHAR(255) NULL');
                 }
                 DB::statement("ALTER TABLE patient_medications MODIFY COLUMN meal_timing VARCHAR(50) NOT NULL DEFAULT 'after_meal'");
             }
 
             if (Schema::hasTable('patient_medication_logs')) {
-                DB::statement("ALTER TABLE patient_medication_logs MODIFY COLUMN time_slot VARCHAR(30) NOT NULL");
+                DB::statement('ALTER TABLE patient_medication_logs MODIFY COLUMN time_slot VARCHAR(30) NOT NULL');
             }
+
+            Cache::forever(self::SCHEMA_CACHE_KEY, true);
         } catch (\Throwable $e) {
             // ข้ามกรณีที่อัปเดตโครงสร้างตารางเรียบร้อยแล้ว
         }
     }
 
-    // 🧮 ฟังก์ชันคำนวณคะแนน MEWS อัตโนมัติจากสัญญาณชีพทั้ง 5 ตัว
+    // 🧮 คำนวณคะแนน MEWS อัตโนมัติจากสัญญาณชีพทั้ง 5 ตัว
     public static function calculateMewsScore($temp, $hr, $sbp, $rr, $o2sat): int
     {
         $score = 0;
@@ -120,24 +186,28 @@ class RecruitCareChartController extends Controller
         $user = auth()->user();
         $patient = Patient::with(['militaryUnit', 'activeInfirmaryStay', 'militaryDischarge'])->findOrFail($patient_id);
 
-        if (!$this->canViewAllUnits($user) && $patient->military_unit_id !== $user->military_unit_id) {
-            abort(403, 'คุณสามารถดูและจัดการเฉพาะข้อมูลทหารในหน่วยฝึกของคุณเท่านั้นครับ');
-        }
+        $this->authorizePatientAccess($patient, $user);
 
-        $defaultStartDate = $patient->activeInfirmaryStay
+        $defaultStartDate = $patient->activeInfirmaryStay && $patient->activeInfirmaryStay->admitted_at
             ? $patient->activeInfirmaryStay->admitted_at->format('Y-m-d')
             : Carbon::today()->format('Y-m-d');
 
-        $startDateStr = $request->input('start_date', $defaultStartDate);
-        $startDate = Carbon::parse($startDateStr)->startOfDay();
-        $endDate   = $startDate->copy()->addDays(9)->endOfDay();
+        $startDateStr = (string) $request->input('start_date', $defaultStartDate);
+        try {
+            $startDate = Carbon::parse($startDateStr)->startOfDay();
+            $startDateStr = $startDate->format('Y-m-d');
+        } catch (\Throwable $e) {
+            $startDate = Carbon::parse($defaultStartDate)->startOfDay();
+            $startDateStr = $defaultStartDate;
+        }
+        $endDate = $startDate->copy()->addDays(9)->endOfDay();
 
         $dateColumns = [];
         for ($i = 0; $i < 10; $i++) {
             $d = $startDate->copy()->addDays($i);
             $dateColumns[] = [
                 'date_str'  => $d->format('Y-m-d'),
-                'thai_text' => $d->locale('th')->addYears(543)->translatedFormat('j M Y'),
+                'thai_text' => $d->copy()->locale('th')->addYears(543)->translatedFormat('j M Y'),
                 'is_today'  => $d->isToday(),
             ];
         }
@@ -146,7 +216,7 @@ class RecruitCareChartController extends Controller
         $vitalLogs = CovidVitalLog::where('patient_id', $patient->id)
             ->whereBetween('record_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
             ->get()
-            ->groupBy(fn($item) => $item->record_date instanceof Carbon ? $item->record_date->format('Y-m-d') : substr((string)$item->record_date, 0, 10));
+            ->groupBy(fn ($item) => $item->record_date instanceof Carbon ? $item->record_date->format('Y-m-d') : substr((string) $item->record_date, 0, 10));
 
         // 2. ดึงรายการยาทั้งหมดของผู้ป่วยคนนี้ พร้อมประวัติการกดรับประทานยาในรอบ 10 วัน
         $medications = PatientMedication::where('patient_id', $patient->id)
@@ -158,7 +228,7 @@ class RecruitCareChartController extends Controller
             ->whereBetween('log_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
             ->get()
             ->keyBy(function ($log) {
-                $dStr = $log->log_date instanceof Carbon ? $log->log_date->format('Y-m-d') : substr((string)$log->log_date, 0, 10);
+                $dStr = $log->log_date instanceof Carbon ? $log->log_date->format('Y-m-d') : substr((string) $log->log_date, 0, 10);
                 return $log->patient_medication_id . '_' . $dStr . '_' . $log->time_slot;
             });
 
@@ -172,8 +242,10 @@ class RecruitCareChartController extends Controller
         }
         $infirmaryPeers = $infirmaryPeersQuery->orderBy('military_unit_id')->orderBy('admitted_at', 'desc')->get();
 
+        $hosxpSyncPaused = $this->isHosxpSyncPaused();
+
         return view('backend.recruit_infirmary.care_chart', compact(
-            'patient', 'startDate', 'startDateStr', 'dateColumns', 'vitalLogs', 'medications', 'medLogs', 'infirmaryPeers'
+            'patient', 'startDate', 'startDateStr', 'dateColumns', 'vitalLogs', 'medications', 'medLogs', 'infirmaryPeers', 'hosxpSyncPaused'
         ));
     }
 
@@ -200,6 +272,9 @@ class RecruitCareChartController extends Controller
             'o2sat.required'            => 'กรุณากรอกออกซิเจนปลายนิ้ว',
         ]);
 
+        $patient = Patient::findOrFail($data['patient_id']);
+        $this->authorizePatientAccess($patient, auth()->user());
+
         $mewsScore = self::calculateMewsScore(
             $data['temperature'],
             $data['heart_rate'],
@@ -210,7 +285,7 @@ class RecruitCareChartController extends Controller
 
         CovidVitalLog::updateOrCreate(
             [
-                'patient_id'  => $data['patient_id'],
+                'patient_id'  => $patient->id,
                 'record_date' => $data['record_date'],
                 'round_time'  => $data['round_time'],
             ],
@@ -230,7 +305,7 @@ class RecruitCareChartController extends Controller
         return back()->with('success', "บันทึกสัญญาณชีพรอบ {$data['round_time']} น. สำเร็จ (MEWS Score: {$mewsScore} คะแนน)");
     }
 
-    // 💊 เพิ่มหรือแก้ไขรายการยา (รองรับทั้งมื้อปกติ, เวลามีอาการ PRN, ยานวด และยาทา โดยไม่บังคับติ๊ก 4 มื้อหลัก)
+    // 💊 เพิ่มหรือแก้ไขรายการยา (รองรับมื้อปกติ, PRN, ยานวด และยาทา)
     public function storeMedication(Request $request)
     {
         self::ensureCareChartSchema();
@@ -251,16 +326,18 @@ class RecruitCareChartController extends Controller
             'drug_name.required' => 'กรุณาระบุชื่อยา (เช่น Paracetamol 500 mg., ยานวดคลายกล้ามเนื้อ)',
         ]);
 
-        $slots       = is_array($data['slots'] ?? null) ? $data['slots'] : [];
-        $takeMorning = in_array('morning', $slots);
-        $takeNoon    = in_array('noon', $slots);
-        $takeEvening = in_array('evening', $slots);
-        $takeBedtime = in_array('bedtime', $slots);
-        $takePrn     = in_array('prn', $slots);
-        $customText  = trim((string)($data['custom_slot_text'] ?? ''));
+        $patient = Patient::findOrFail($data['patient_id']);
+        $this->authorizePatientAccess($patient, auth()->user());
 
-        // หากไม่ได้ติ๊กมื้อ เช้า-เที่ยง-เย็น-ก่อนนอน เลย หรือพิมพ์วิธีใช้ในช่องว่างไว้ ให้เปิดใช้แถว PRN อัตโนมัติ
-        if ((!$takeMorning && !$takeNoon && !$takeEvening && !$takeBedtime) || $customText !== '' || in_array($data['meal_timing'], ['prn', 'external'])) {
+        $slots       = is_array($data['slots'] ?? null) ? $data['slots'] : [];
+        $takeMorning = in_array('morning', $slots, true);
+        $takeNoon    = in_array('noon', $slots, true);
+        $takeEvening = in_array('evening', $slots, true);
+        $takeBedtime = in_array('bedtime', $slots, true);
+        $takePrn     = in_array('prn', $slots, true);
+        $customText  = trim((string) ($data['custom_slot_text'] ?? ''));
+
+        if ((!$takeMorning && !$takeNoon && !$takeEvening && !$takeBedtime) || $customText !== '' || in_array($data['meal_timing'], ['prn', 'external'], true)) {
             if (!$takeMorning && !$takeNoon && !$takeEvening && !$takeBedtime) {
                 $takePrn = true;
             }
@@ -272,7 +349,7 @@ class RecruitCareChartController extends Controller
         }
 
         $payload = [
-            'patient_id'       => $data['patient_id'],
+            'patient_id'       => $patient->id,
             'care_group'       => $data['care_group'],
             'drug_name'        => trim($data['drug_name']),
             'dosage'           => !empty($data['dosage']) ? trim($data['dosage']) : ($data['meal_timing'] === 'external' ? 'ทาบางๆ บริเวณที่มีอาการ' : 'ตามแพทย์สั่ง'),
@@ -289,10 +366,12 @@ class RecruitCareChartController extends Controller
             'created_by'       => auth()->id(),
         ];
 
+        // ใช้ Eloquent Model instance เพื่อกระตุ้น Trait RecordsSystemLog เก็บ Audit Diff อัตโนมัติ
         if (!empty($data['medication_id'])) {
-            PatientMedication::where('id', $data['medication_id'])
-                ->where('patient_id', $data['patient_id'])
-                ->update($payload);
+            $med = PatientMedication::where('id', $data['medication_id'])
+                ->where('patient_id', $patient->id)
+                ->firstOrFail();
+            $med->update($payload);
             return back()->with('success', "อัปเดตแก้ไขรายการยา \"{$data['drug_name']}\" เรียบร้อยแล้ว!");
         }
 
@@ -300,7 +379,7 @@ class RecruitCareChartController extends Controller
         return back()->with('success', "เพิ่มรายการยา \"{$data['drug_name']}\" เรียบร้อยแล้ว!");
     }
 
-    // ✅ กดติ๊กเช็คชื่อการรับประทานยา/ทายาแต่ละมื้อ (เช้า / เที่ยง / เย็น / ก่อนนอน / เวลามีอาการ prn)
+    // ✅ กดติ๊กเช็กชื่อการรับประทานยา/ทายาแต่ละมื้อ (เช้า / เที่ยง / เย็น / ก่อนนอน / prn)
     public function toggleMedicationLog(Request $request)
     {
         self::ensureCareChartSchema();
@@ -311,7 +390,10 @@ class RecruitCareChartController extends Controller
             'time_slot'             => 'required|in:morning,noon,evening,bedtime,prn',
         ]);
 
-        $med = PatientMedication::findOrFail($data['patient_medication_id']);
+        $med = PatientMedication::with('patient')->findOrFail($data['patient_medication_id']);
+        if ($med->patient) {
+            $this->authorizePatientAccess($med->patient, auth()->user());
+        }
 
         $existing = PatientMedicationLog::where('patient_medication_id', $med->id)
             ->whereDate('log_date', $data['log_date'])
@@ -342,37 +424,57 @@ class RecruitCareChartController extends Controller
 
     public function destroyMedication($id)
     {
-        $med = PatientMedication::findOrFail($id);
+        $med = PatientMedication::with('patient')->findOrFail($id);
+        if ($med->patient) {
+            $this->authorizePatientAccess($med->patient, auth()->user());
+        }
+
         PatientMedicationLog::where('patient_medication_id', $med->id)->delete();
         $med->delete();
         return back()->with('success', 'ลบรายการยาเรียบร้อยแล้ว');
     }
 
-    // 🏥 ดึงรายการยาล่าสุดจากฐานข้อมูล HosXP อัตโนมัติ (Read-Only ความเร็วสูง ไม่กระทบเซิร์ฟเวอร์หลัก)
+    // 🏥 ดึงรายการยาล่าสุดจากฐานข้อมูล HosXP อัตโนมัติ (Read-Only + Index Optimized + HIS Safety)
     public function fetchHosxpMedications(Request $request, $patient_id)
     {
+        // 🛡️ เช็กสวิตช์พักการซิงค์ HosXP ชั่วคราวก่อนยิง Query
+        if ($this->isHosxpSyncPaused()) {
+            return response()->json([
+                'status'  => 'error',
+                'paused'  => true,
+                'message' => 'ขณะนี้ผู้ดูแลระบบพักการเชื่อมต่อฐานข้อมูล HosXP ชั่วคราว กรุณาลองใหม่ภายหลังครับ',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
+        }
+
         $patient = Patient::findOrFail($patient_id);
+        $this->authorizePatientAccess($patient, auth()->user());
+
         if (empty($patient->hn)) {
             return response()->json(['status' => 'error', 'message' => 'พลทหารนายนี้ยังไม่มีรหัส HN ในระบบ']);
         }
 
         try {
+            $this->applyHosxpTimeout();
+
             $cleanUTF8 = function ($str) {
-                if (empty($str)) return '';
-                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string)$str);
-                return trim(mb_convert_encoding($utf8 ?: (string)$str, 'UTF-8', 'UTF-8'));
+                if (empty($str)) {
+                    return '';
+                }
+                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string) $str);
+                return trim(mb_convert_encoding($utf8 ?: (string) $str, 'UTF-8', 'UTF-8'));
             };
 
+            // ใช้ where('vstdate', '>=', ...) แทน whereDate เพื่อให้ HosXP วิ่งผ่าน Index (hn, vstdate) ได้ทันที
             $latestVn = DB::connection('hosxp')
                 ->table('ovst')
-                ->where('hn', $patient->hn)
-                ->whereDate('vstdate', '>=', Carbon::today()->subDays(60)->format('Y-m-d'))
+                ->where('hn', trim((string) $patient->hn))
+                ->where('vstdate', '>=', Carbon::today()->subDays(60)->format('Y-m-d'))
                 ->orderBy('vstdate', 'desc')
                 ->orderBy('vsttime', 'desc')
                 ->value('vn');
 
             if (!$latestVn) {
-                return response()->json(['status' => 'not_found', 'message' => 'ไม่พบประวัติการรับยาล่าสุดใน HosXP']);
+                return response()->json(['status' => 'not_found', 'message' => 'ไม่พบประวัติการรับยาล่าสุดในรอบ 60 วันจาก HosXP']);
             }
 
             $drugs = DB::connection('hosxp')
@@ -407,6 +509,7 @@ class RecruitCareChartController extends Controller
             return response()->json(['status' => 'success', 'data' => $list], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Throwable $e) {
+            Log::warning('HosXP Medications Fetch Error: ' . $e->getMessage());
             return response()->json(['status' => 'error', 'message' => 'ไม่สามารถเชื่อมต่อตารางยา HosXP ได้ในขณะนี้']);
         }
     }

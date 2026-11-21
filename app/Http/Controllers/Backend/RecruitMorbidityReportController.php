@@ -3,20 +3,65 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
-use App\Models\Patient;
+use App\Models\MewsAssessment;
+use App\Models\MilitaryDischarge;
 use App\Models\MilitaryUnit;
+use App\Models\Patient;
+use App\Models\PatientMedication;
+use App\Models\RecruitInfirmaryStay;
 use App\Models\RecruitMorbidity;
 use App\Models\RecruitScreening;
-use App\Models\RecruitInfirmaryStay;
-use App\Models\MilitaryDischarge;
-use App\Models\MewsAssessment;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use App\Services\AuditLog;
+use App\Services\SettingService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class RecruitMorbidityReportController extends Controller
 {
+    private const CATEGORY_SCHEMA_CACHE_KEY = 'ksvr_morbidity_category_varchar_v1';
+    private bool $hosxpTimeoutApplied = false;
+
+    private function getDefaultActiveBatch(): string
+    {
+        return class_exists(SettingService::class)
+            ? (trim((string) SettingService::get('active_intake_batch', '2/69')) ?: '2/69')
+            : '2/69';
+    }
+
+    private function isHosxpSyncPaused(): bool
+    {
+        return class_exists(SettingService::class)
+            ? (bool) SettingService::get('hosxp_sync_paused', false)
+            : false;
+    }
+
+    private function applyHosxpTimeout(): void
+    {
+        if ($this->hosxpTimeoutApplied) {
+            return;
+        }
+
+        $timeout = class_exists(SettingService::class)
+            ? (int) SettingService::get('hosxp_timeout_seconds', 5)
+            : 5;
+        $timeout = max(2, min(30, $timeout));
+
+        $options = config('database.connections.hosxp.options', []);
+        if (!is_array($options)) {
+            $options = [];
+        }
+        $options[\PDO::ATTR_TIMEOUT] = $timeout;
+
+        config(['database.connections.hosxp.options' => $options]);
+        DB::purge('hosxp');
+
+        $this->hosxpTimeoutApplied = true;
+    }
+
     public function index(Request $request)
     {
         // 1. ดึงรายชื่อผลัดทั้งหมด
@@ -26,16 +71,27 @@ class RecruitMorbidityReportController extends Controller
             ->pluck('intake_batch')
             ->sortDesc();
 
-        $defaultBatch = $batches->first() ?? '2/69';
+        $configuredBatch = $this->getDefaultActiveBatch();
+        $defaultBatch = $batches->contains($configuredBatch)
+            ? $configuredBatch
+            : ($batches->first() ?? $configuredBatch);
+
         $selectedBatch = $request->input('intake_batch', $defaultBatch);
-        $reportDate = $request->input('report_date', Carbon::today()->format('Y-m-d'));
+        $rawReportDate = (string) $request->input('report_date', Carbon::today()->format('Y-m-d'));
+
+        try {
+            $dt = Carbon::parse($rawReportDate)->locale('th');
+            $reportDate = $dt->format('Y-m-d');
+        } catch (\Throwable $e) {
+            $dt = Carbon::today()->locale('th');
+            $reportDate = $dt->format('Y-m-d');
+        }
 
         // 🔄 1.1 ซิงค์และซ่อมข้อมูลจากตารางคัดกรอง, ห้องพยาบาลหน่วยฝึก, ยาจิตเวช (e-MAR) และ MEWS อัตโนมัติ
         $this->syncFromExistingSystemData($selectedBatch);
 
         // แปลงวันที่เป็นรูปแบบภาษาไทยสำหรับหัวสไลด์ (เช่น "วันที่ 16 พ.ย. 69")
-        $dt = Carbon::parse($reportDate)->locale('th');
-        $thaiYearShort = substr((string)($dt->year + 543), -2);
+        $thaiYearShort = substr((string) ($dt->year + 543), -2);
         $thaiDateHeader = "วันที่ {$dt->day} {$dt->translatedFormat('M')} {$thaiYearShort}";
 
         // 2. ดึงหน่วยฝึกและนับยอดทหารใหม่ (จัดสรร)
@@ -65,18 +121,18 @@ class RecruitMorbidityReportController extends Controller
             }
         }
 
-        // ฟังก์ชันเช็คสถานะ ณ วันที่เลือก ($reportDate)
-        $isNewOnDate = fn($r) => $r->onset_date->format('Y-m-d') === $reportDate;
-        $isOldActiveOnDate = fn($r) => $r->onset_date->format('Y-m-d') < $reportDate
+        // ฟังก์ชันเช็กสถานะ ณ วันที่เลือก ($reportDate)
+        $isNewOnDate = fn ($r) => $r->onset_date && $r->onset_date->format('Y-m-d') === $reportDate;
+        $isOldActiveOnDate = fn ($r) => $r->onset_date && $r->onset_date->format('Y-m-d') < $reportDate
             && ($r->status === 'treating' || ($r->recovered_date && $r->recovered_date->format('Y-m-d') > $reportDate));
-        $isTreatingOnDate = fn($r) => $r->status === 'treating' || ($r->recovered_date && $r->recovered_date->format('Y-m-d') > $reportDate);
-        $isRecoveredByDate = fn($r) => $r->status === 'recovered' && (!$r->recovered_date || $r->recovered_date->format('Y-m-d') <= $reportDate);
+        $isTreatingOnDate = fn ($r) => $r->status === 'treating' || ($r->recovered_date && $r->recovered_date->format('Y-m-d') > $reportDate);
+        $isRecoveredByDate = fn ($r) => $r->status === 'recovered' && (!$r->recovered_date || $r->recovered_date->format('Y-m-d') <= $reportDate);
 
         // =====================================================================
         // 🟦 หมวดที่ 1: โรคระบบทางเดินหายใจ (โควิด-19 & ไข้หวัดใหญ่ — ล็อกนับไม่ซ้ำคน 100%)
         // =====================================================================
         $respRecords = $records->where('category', 'respiratory')
-            ->unique(fn($r) => $r->patient_id . '_' . $r->sub_type)
+            ->unique(fn ($r) => $r->patient_id . '_' . $r->sub_type)
             ->values();
 
         $respSummary = [
@@ -158,7 +214,7 @@ class RecruitMorbidityReportController extends Controller
         }
 
         // =====================================================================
-        // 🟪 หมวดที่ 3 (ใหม่!): เคสสุขภาพจิต / จิตเวช (Mental Health Surveillance)
+        // 🟪 หมวดที่ 3: เคสสุขภาพจิต / จิตเวช (Mental Health Surveillance)
         // =====================================================================
         $mentalRecords = $records->where('category', 'mental')
             ->unique('patient_id')
@@ -230,10 +286,9 @@ class RecruitMorbidityReportController extends Controller
             ];
         }
 
-        // รายชื่อผู้ป่วยที่กำลังนอน รพ. (Active IPD)
         $activeIpdList = $otherRecords->filter($isTreatingOnDate)->map(function ($r) {
             $p = $r->patient;
-            $admitDateTh = $r->onset_date->locale('th');
+            $admitDateTh = $r->onset_date->copy()->locale('th');
             $admitStr = "{$admitDateTh->day} {$admitDateTh->translatedFormat('M')} " . ($admitDateTh->year + 543);
             return [
                 'id'         => $r->id,
@@ -245,7 +300,7 @@ class RecruitMorbidityReportController extends Controller
         });
 
         // =====================================================================
-        // 🎖️ หมวดที่ 5 (ใหม่!): ตารางการนำปลดทหารใหม่ (แยก "ปลดทางกาย" กับ "ปลดทางสุขภาพจิต")
+        // 🎖️ หมวดที่ 5: ตารางการนำปลดทหารใหม่ (แยก "ปลดทางกาย" กับ "ปลดทางสุขภาพจิต")
         // =====================================================================
         $dischargeTable = [];
         $dischargeList  = collect();
@@ -257,17 +312,16 @@ class RecruitMorbidityReportController extends Controller
             'in_progress'    => 0,
         ];
 
-        if (class_exists('\App\Models\MilitaryDischarge') && Schema::hasTable('military_discharges')) {
+        if (class_exists(MilitaryDischarge::class) && Schema::hasTable('military_discharges')) {
             $dcQuery = MilitaryDischarge::with(['patient.militaryUnit', 'militaryUnit']);
             if ($selectedBatch !== 'all') {
                 $dcQuery->where('intake_batch', $selectedBatch);
             }
             $allDischarges = $dcQuery->orderBy('id', 'asc')->get();
 
-            // จำแนกแต่ละรายการว่าเป็น 'mental' (ปลดทางสุขภาพจิต) หรือ 'physical' (ปลดทางกาย)
             foreach ($allDischarges as $dc) {
-                $dc-> resolved_unit_id = $dc->military_unit_id ?? $dc->patient->military_unit_id ?? $defaultUnitId;
-                $dc->discharge_group   = $this->isPsychiatricDiagnosis($dc->diagnosis_text, $dc->patient_id) ? 'mental' : 'physical';
+                $dc->resolved_unit_id = $dc->military_unit_id ?? $dc->patient->military_unit_id ?? $defaultUnitId;
+                $dc->discharge_group  = $this->isPsychiatricDiagnosis($dc->diagnosis_text, $dc->patient_id) ? 'mental' : 'physical';
             }
 
             $dischargeSummary['physical_total'] = $allDischarges->where('discharge_group', 'physical')->count();
@@ -294,7 +348,7 @@ class RecruitMorbidityReportController extends Controller
             $dischargeList = $allDischarges->map(function ($dc) {
                 $p = $dc->patient;
                 $uShort = $dc->militaryUnit->short_name ?? $p->militaryUnit->short_name ?? '-';
-                $cleanDx = str_replace(['[ปลดทางสุขภาพจิต]', '[ปลดทางกาย]'], '', (string)$dc->diagnosis_text);
+                $cleanDx = str_replace(['[ปลดทางสุขภาพจิต]', '[ปลดทางกาย]'], '', (string) $dc->diagnosis_text);
                 return [
                     'id'              => $dc->id,
                     'patient_id'      => $dc->patient_id,
@@ -336,9 +390,9 @@ class RecruitMorbidityReportController extends Controller
                 $primary = $group->firstWhere('category', 'other_ipd')
                     ?? $group->firstWhere('category', 'mental')
                     ?? $group->first();
-                $badges = $group->map(fn($item) => $subTypeThaiDict[$item->sub_type] ?? $item->sub_type)->unique()->values()->all();
+                $badges = $group->map(fn ($item) => $subTypeThaiDict[$item->sub_type] ?? $item->sub_type)->unique()->values()->all();
 
-                return (object)[
+                return (object) [
                     'primary_id'     => $primary->id,
                     'patient_id'     => $primary->patient_id,
                     'patient'        => $primary->patient,
@@ -356,6 +410,8 @@ class RecruitMorbidityReportController extends Controller
         }
         $batchPatients = $patientsQuery->get(['id', 'cid', 'hn', 'rank', 'first_name', 'last_name', 'military_unit_id', 'battalion', 'intake_batch']);
 
+        $hosxpSyncPaused = $this->isHosxpSyncPaused();
+
         return view('backend.reports.daily_morbidity', compact(
             'batches', 'selectedBatch', 'reportDate', 'thaiDateHeader',
             'respSummary', 'respTable',
@@ -363,16 +419,16 @@ class RecruitMorbidityReportController extends Controller
             'mentalSummary', 'mentalTable', 'activeMentalList',
             'campHospTable', 'publicHospTable', 'activeIpdList',
             'dischargeSummary', 'dischargeTable', 'dischargeList',
-            'activeCasesGrouped', 'batchPatients'
+            'activeCasesGrouped', 'batchPatients', 'hosxpSyncPaused'
         ));
     }
 
     // =========================================================================
-    // 🧠 ฟังก์ชันตรวจสอบว่าการวินิจฉัยโรค (Dx.) เป็นกลุ่ม "สุขภาพจิต / จิตเวช" หรือไม่
+    // 🧠 ตรวจสอบว่าการวินิจฉัยโรค (Dx.) เป็นกลุ่ม "สุขภาพจิต / จิตเวช" หรือไม่
     // =========================================================================
     private function isPsychiatricDiagnosis(?string $dxText, ?int $patientId = null): bool
     {
-        $text = strtolower(trim((string)$dxText));
+        $text = strtolower(trim((string) $dxText));
 
         if (str_contains($text, '[ปลดทางกาย]')) {
             return false;
@@ -397,12 +453,11 @@ class RecruitMorbidityReportController extends Controller
             }
         }
 
-        // เช็ครหัส ICD-10 หมวด F00 - F99
+        // เช็กรหัส ICD-10 หมวด F00 - F99
         if (preg_match('/\bf[0-9]{2}(\.[0-9]+)?\b/i', $text)) {
             return true;
         }
 
-        // เช็คว่าพลทหารคนนี้มีประวัติเคสสุขภาพจิตในตารางรายงาน หรือได้รับยาจิตเวชใน e-MAR หรือไม่
         if ($patientId) {
             $hasMentalMorb = RecruitMorbidity::where('patient_id', $patientId)
                 ->where('category', 'mental')
@@ -411,8 +466,8 @@ class RecruitMorbidityReportController extends Controller
                 return true;
             }
 
-            if (class_exists('\App\Models\PatientMedication') && Schema::hasTable('patient_medications')) {
-                $hasPsychMed = \App\Models\PatientMedication::where('patient_id', $patientId)
+            if (class_exists(PatientMedication::class) && Schema::hasTable('patient_medications')) {
+                $hasPsychMed = PatientMedication::where('patient_id', $patientId)
                     ->where('care_group', 'psychiatric')
                     ->exists();
                 if ($hasPsychMed) {
@@ -425,7 +480,7 @@ class RecruitMorbidityReportController extends Controller
     }
 
     // =========================================================================
-    // 🧹 ฟังก์ชันตัวช่วยสกัดเฉพาะการวินิจฉัยโรค (Dx.) ภาษาอังกฤษล้วน
+    // 🧹 สกัดเฉพาะการวินิจฉัยโรค (Dx.) ภาษาอังกฤษล้วน
     // =========================================================================
     private function cleanEnglishDx(?string $raw): string
     {
@@ -468,16 +523,21 @@ class RecruitMorbidityReportController extends Controller
     }
 
     // =========================================================================
-    // 🔄 ฟังก์ชัน Auto-Sync & Self-Healing กวาดและซ่อมข้อมูลทุกหมวดหมู่
+    // 🔄 Auto-Sync & Self-Healing กวาดและซ่อมข้อมูลทุกหมวดหมู่ (ไม่ยิง ALTER TABLE ซ้ำ)
     // =========================================================================
     private function syncFromExistingSystemData(string $selectedBatch): void
     {
-        // ป้องกันกรณีคอลัมน์ category ในฐานข้อมูลเดิมถูกสร้างเป็น ENUM ที่ยังไม่รองรับคำว่า 'mental'
-        try {
-            DB::statement("ALTER TABLE recruit_morbidities MODIFY COLUMN category VARCHAR(50) NOT NULL");
-        } catch (\Throwable $e) {}
+        // ปรับคอลัมน์ category เป็น VARCHAR(50) เพียงครั้งเดียวแล้วจำลง Cache
+        if (!Cache::get(self::CATEGORY_SCHEMA_CACHE_KEY)) {
+            try {
+                DB::statement('ALTER TABLE recruit_morbidities MODIFY COLUMN category VARCHAR(50) NOT NULL');
+                Cache::forever(self::CATEGORY_SCHEMA_CACHE_KEY, true);
+            } catch (\Throwable $e) {
+            }
+        }
 
         $defaultUnitId = MilitaryUnit::where('is_active', true)->orderBy('id')->value('id');
+        $defaultActiveBatch = $this->getDefaultActiveBatch();
 
         // ---------------------------------------------------------------------
         // 🧹 สเต็ปที่ 0: ล้างแถวไข้หวัดใหญ่ (flu) ที่ถูกสร้างเกินมาจากระบบ Auto-Sync และยุบรวมแถวซ้ำ
@@ -495,7 +555,7 @@ class RecruitMorbidityReportController extends Controller
 
         foreach ($allRespRows as $rRow) {
             if ($rRow->sub_type === 'flu' && empty($rRow->recorded_by)) {
-                $dxCheck = strtolower((string)$rRow->diagnosis_text);
+                $dxCheck = strtolower((string) $rRow->diagnosis_text);
                 $isRealFluText = str_contains($dxCheck, 'ไข้หวัดใหญ่')
                     || str_contains($dxCheck, 'สายพันธุ์')
                     || str_contains($dxCheck, 'flu');
@@ -508,7 +568,7 @@ class RecruitMorbidityReportController extends Controller
         }
 
         $remainingRespGroups = RecruitMorbidity::where('category', 'respiratory')
-            ->when($selectedBatch !== 'all', fn($q) => $q->where('intake_batch', $selectedBatch))
+            ->when($selectedBatch !== 'all', fn ($q) => $q->where('intake_batch', $selectedBatch))
             ->orderByRaw("CASE WHEN sub_type = 'covid' THEN 0 ELSE 1 END")
             ->orderBy('onset_date', 'asc')
             ->orderBy('id', 'asc')
@@ -518,7 +578,7 @@ class RecruitMorbidityReportController extends Controller
         foreach ($remainingRespGroups as $patientId => $group) {
             if ($group->count() > 1) {
                 $keeper = $group->first();
-                $hasTreating = $group->contains(fn($r) => $r->status === 'treating');
+                $hasTreating = $group->contains(fn ($r) => $r->status === 'treating');
                 if ($hasTreating && $keeper->status !== 'treating') {
                     $keeper->update([
                         'status'         => 'treating',
@@ -533,7 +593,7 @@ class RecruitMorbidityReportController extends Controller
         // ---------------------------------------------------------------------
         // 🛌 สเต็ปที่ 1: ซิงค์ข้อมูลจากตารางห้องพยาบาลหน่วยฝึก (RecruitInfirmaryStay)
         // ---------------------------------------------------------------------
-        if (class_exists('\App\Models\RecruitInfirmaryStay') && Schema::hasTable('recruit_infirmary_stays')) {
+        if (class_exists(RecruitInfirmaryStay::class) && Schema::hasTable('recruit_infirmary_stays')) {
             $infQuery = RecruitInfirmaryStay::with('patient')->orderBy('admitted_at', 'asc');
             if ($selectedBatch !== 'all') {
                 $infQuery->where('intake_batch', $selectedBatch);
@@ -541,9 +601,11 @@ class RecruitMorbidityReportController extends Controller
             $infStays = $infQuery->get();
 
             foreach ($infStays as $stay) {
-                if (!$stay->patient) continue;
+                if (!$stay->patient) {
+                    continue;
+                }
 
-                $dxText  = (string)($stay->diagnosis_text ?? '');
+                $dxText  = (string) ($stay->diagnosis_text ?? '');
                 $dxLower = strtolower($dxText);
 
                 $isCovidStay = str_contains($dxText, 'โควิด')
@@ -584,7 +646,7 @@ class RecruitMorbidityReportController extends Controller
                     RecruitMorbidity::create([
                         'patient_id'         => $stay->patient_id,
                         'military_unit_id'   => $stay->military_unit_id ?? $stay->patient->military_unit_id ?? $defaultUnitId,
-                        'intake_batch'       => $stay->intake_batch ?? $stay->patient->intake_batch ?: '2/69',
+                        'intake_batch'       => $stay->intake_batch ?? ($stay->patient->intake_batch ?: $defaultActiveBatch),
                         'category'           => 'respiratory',
                         'sub_type'           => $subType,
                         'treatment_location' => $morbLocation,
@@ -601,7 +663,7 @@ class RecruitMorbidityReportController extends Controller
                 ->where(function ($q) {
                     $q->whereNull('severity')->orWhere('severity', '!=', 'manual_recovered');
                 })
-                ->when($selectedBatch !== 'all', fn($q) => $q->where('intake_batch', $selectedBatch))
+                ->when($selectedBatch !== 'all', fn ($q) => $q->where('intake_batch', $selectedBatch))
                 ->get();
 
             foreach ($wronglyRecoveredList as $wRow) {
@@ -629,8 +691,10 @@ class RecruitMorbidityReportController extends Controller
         $screenings = $screeningsQuery->get();
 
         foreach ($screenings as $sc) {
-            if (!$sc->patient) continue;
-            $note = (string)($sc->symptoms_note ?? '');
+            if (!$sc->patient) {
+                continue;
+            }
+            $note = (string) ($sc->symptoms_note ?? '');
             $noteLower = strtolower($note);
 
             $isCovid = str_contains($note, 'โควิด') || str_contains($note, 'โควิค') || str_contains($noteLower, 'covid');
@@ -648,7 +712,7 @@ class RecruitMorbidityReportController extends Controller
                     RecruitMorbidity::create([
                         'patient_id'         => $sc->patient_id,
                         'military_unit_id'   => $sc->military_unit_id ?? $sc->patient->military_unit_id ?? $defaultUnitId,
-                        'intake_batch'       => $sc->intake_batch ?? $sc->patient->intake_batch,
+                        'intake_batch'       => $sc->intake_batch ?? ($sc->patient->intake_batch ?: $defaultActiveBatch),
                         'category'           => 'respiratory',
                         'sub_type'           => $subType,
                         'treatment_location' => 'ci',
@@ -687,11 +751,13 @@ class RecruitMorbidityReportController extends Controller
             $firstMews  = $caseGroup->first();
             $latestMews = $caseGroup->last();
             $patient    = $latestMews->patient;
-            if (!$patient) continue;
+            if (!$patient) {
+                continue;
+            }
 
             $onsetDate = $firstMews->created_at ? $firstMews->created_at->format('Y-m-d') : Carbon::today()->format('Y-m-d');
             $unitId    = $patient->military_unit_id ?? $defaultUnitId;
-            $batch     = $patient->intake_batch ?: ($selectedBatch !== 'all' ? $selectedBatch : '2/69');
+            $batch     = $patient->intake_batch ?: ($selectedBatch !== 'all' ? $selectedBatch : $defaultActiveBatch);
 
             $isCaseRecoveredInMews = ($latestMews->status === 'completed') && (
                 $latestMews->discharge_type === 'recovered' || !empty($latestMews->returned_to_unit_at)
@@ -711,14 +777,14 @@ class RecruitMorbidityReportController extends Controller
                 if (is_array($sArr)) {
                     $allSymCodes = array_unique(array_merge($allSymCodes, $sArr));
                 }
-                if (!empty(trim((string)$m->symptoms_note))) {
-                    $notesList[] = trim((string)$m->symptoms_note);
+                if (!empty(trim((string) $m->symptoms_note))) {
+                    $notesList[] = trim((string) $m->symptoms_note);
                 }
             }
             $combinedNote = !empty($notesList) ? end($notesList) : '';
 
             foreach ($heatMapping as $code => $hMeta) {
-                if (in_array($code, $allSymCodes)) {
+                if (in_array($code, $allSymCodes, true)) {
                     $existingHeat = RecruitMorbidity::where('patient_id', $patient->id)
                         ->where('category', 'heat')
                         ->where('sub_type', $hMeta['sub_type'])
@@ -751,7 +817,7 @@ class RecruitMorbidityReportController extends Controller
                 }
             }
 
-            if (in_array($latestMews->discharge_type, ['admitted', 'refer'])) {
+            if (in_array($latestMews->discharge_type, ['admitted', 'refer'], true)) {
                 $hospSubType = $latestMews->discharge_type === 'refer' ? 'public_hospital' : 'camp_hospital';
 
                 $englishFromDischarge = $this->cleanEnglishDx($latestMews->discharge_details);
@@ -804,17 +870,17 @@ class RecruitMorbidityReportController extends Controller
         }
 
         // ---------------------------------------------------------------------
-        // 🧠 สเต็ปที่ 4 (ใหม่!): ซิงค์ข้อมูล "เคสสุขภาพจิต (mental)" อัตโนมัติ
-        // (ดึงจากผู้ป่วยที่มีรายการยาจิตเวชใน e-MAR และผู้ป่วยใน other_ipd ที่มี Dx. ทางจิตเวช)
+        // 🧠 สเต็ปที่ 4: ซิงค์ข้อมูล "เคสสุขภาพจิต (mental)" อัตโนมัติ
         // ---------------------------------------------------------------------
-        // 4.1 ซิงค์จากผู้ป่วยใน (other_ipd) ที่มี Dx. ทางจิตเวช (เช่น Psychotic, Depression)
         $ipdRowsForMental = RecruitMorbidity::with('patient')
             ->where('category', 'other_ipd')
-            ->when($selectedBatch !== 'all', fn($q) => $q->where('intake_batch', $selectedBatch))
+            ->when($selectedBatch !== 'all', fn ($q) => $q->where('intake_batch', $selectedBatch))
             ->get();
 
         foreach ($ipdRowsForMental as $ipdRow) {
-            if (!$ipdRow->patient) continue;
+            if (!$ipdRow->patient) {
+                continue;
+            }
             if ($this->isPsychiatricDiagnosis($ipdRow->diagnosis_text)) {
                 $existingMental = RecruitMorbidity::where('patient_id', $ipdRow->patient_id)
                     ->where('category', 'mental')
@@ -826,7 +892,7 @@ class RecruitMorbidityReportController extends Controller
                     RecruitMorbidity::create([
                         'patient_id'         => $ipdRow->patient_id,
                         'military_unit_id'   => $ipdRow->military_unit_id ?? $ipdRow->patient->military_unit_id ?? $defaultUnitId,
-                        'intake_batch'       => $ipdRow->intake_batch ?: '2/69',
+                        'intake_batch'       => $ipdRow->intake_batch ?: $defaultActiveBatch,
                         'category'           => 'mental',
                         'sub_type'           => 'mental_ipd',
                         'treatment_location' => $targetLoc,
@@ -844,9 +910,8 @@ class RecruitMorbidityReportController extends Controller
             }
         }
 
-        // 4.2 ซิงค์จากตารางรับประทานยาต่อเนื่อง (PatientMedication ที่ care_group = 'psychiatric')
-        if (class_exists('\App\Models\PatientMedication') && Schema::hasTable('patient_medications')) {
-            $psychMeds = \App\Models\PatientMedication::with('patient')
+        if (class_exists(PatientMedication::class) && Schema::hasTable('patient_medications')) {
+            $psychMeds = PatientMedication::with('patient')
                 ->where('care_group', 'psychiatric')
                 ->where('is_active', true)
                 ->get()
@@ -855,8 +920,12 @@ class RecruitMorbidityReportController extends Controller
             foreach ($psychMeds as $ptId => $medGroup) {
                 $firstMed = $medGroup->first();
                 $pt = $firstMed->patient;
-                if (!$pt) continue;
-                if ($selectedBatch !== 'all' && $pt->intake_batch !== $selectedBatch) continue;
+                if (!$pt) {
+                    continue;
+                }
+                if ($selectedBatch !== 'all' && $pt->intake_batch !== $selectedBatch) {
+                    continue;
+                }
 
                 $existingMental = RecruitMorbidity::where('patient_id', $pt->id)
                     ->where('category', 'mental')
@@ -869,7 +938,7 @@ class RecruitMorbidityReportController extends Controller
                     RecruitMorbidity::create([
                         'patient_id'         => $pt->id,
                         'military_unit_id'   => $pt->military_unit_id ?? $defaultUnitId,
-                        'intake_batch'       => $pt->intake_batch ?: '2/69',
+                        'intake_batch'       => $pt->intake_batch ?: $defaultActiveBatch,
                         'category'           => 'mental',
                         'sub_type'           => 'mental_opd',
                         'treatment_location' => 'ci',
@@ -912,7 +981,7 @@ class RecruitMorbidityReportController extends Controller
             }
 
             if ($row->status === 'treating') {
-                if (in_array($row->patient_id, $seenActivePatientIds)) {
+                if (in_array($row->patient_id, $seenActivePatientIds, true)) {
                     $row->delete();
                     continue;
                 }
@@ -921,7 +990,7 @@ class RecruitMorbidityReportController extends Controller
         }
     }
 
-    // 🌟 บันทึกเคสอาการเจ็บป่วยใหม่ (รองรับทั้ง 4 หมวดเจ็บป่วย + หมวดที่ 5 ขึ้นทะเบียนนำปลดทหารด่วน)
+    // 🌟 บันทึกเคสอาการเจ็บป่วยใหม่ (รองรับ 4 หมวดเจ็บป่วย + หมวดที่ 5 ขึ้นทะเบียนนำปลดทหารด่วน)
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -941,9 +1010,10 @@ class RecruitMorbidityReportController extends Controller
 
         $patient = Patient::findOrFail($data['patient_id']);
         $defaultUnitId = MilitaryUnit::where('is_active', true)->orderBy('id')->value('id');
+        $defaultActiveBatch = $this->getDefaultActiveBatch();
 
         // 🎖️ กรณีเลือกหมวดที่ 5: บันทึกขึ้นทะเบียนนำปลดทหาร (แยกปลดทางกาย / ปลดทางสุขภาพจิต)
-        if ($data['category'] === 'discharge' && class_exists('\App\Models\MilitaryDischarge')) {
+        if ($data['category'] === 'discharge' && class_exists(MilitaryDischarge::class)) {
             $prefixTag = $data['sub_type'] === 'discharge_mental' ? '[ปลดทางสุขภาพจิต] ' : '[ปลดทางกาย] ';
             $cleanDxInput = trim(str_replace(['[ปลดทางสุขภาพจิต]', '[ปลดทางกาย]'], '', $data['diagnosis_text']));
 
@@ -951,20 +1021,19 @@ class RecruitMorbidityReportController extends Controller
                 ['patient_id' => $patient->id],
                 [
                     'military_unit_id' => $patient->military_unit_id ?? $defaultUnitId,
-                    'intake_batch'     => $patient->intake_batch ?: '2/69',
+                    'intake_batch'     => $patient->intake_batch ?: $defaultActiveBatch,
                     'diagnosis_text'   => $prefixTag . $cleanDxInput,
                     'process_status'   => 'preparing',
                     'recorded_by'      => auth()->id(),
                 ]
             );
 
-            // หากเป็นปลดทางสุขภาพจิต ให้ซิงค์เข้าตารางเคสสุขภาพจิตควบคู่กันด้วย
             if ($data['sub_type'] === 'discharge_mental') {
                 RecruitMorbidity::updateOrCreate(
                     ['patient_id' => $patient->id, 'category' => 'mental'],
                     [
                         'military_unit_id'   => $patient->military_unit_id ?? $defaultUnitId,
-                        'intake_batch'       => $patient->intake_batch ?: '2/69',
+                        'intake_batch'       => $patient->intake_batch ?: $defaultActiveBatch,
                         'sub_type'           => 'mental_opd',
                         'treatment_location' => $data['treatment_location'] ?? 'ci',
                         'diagnosis_text'     => $cleanDxInput,
@@ -981,7 +1050,7 @@ class RecruitMorbidityReportController extends Controller
         $severeHeatTypes = ['severe_rhabdo', 'heat_exhaustion', 'heat_stroke'];
         $severity = null;
         if ($data['category'] === 'heat') {
-            $severity = in_array($data['sub_type'], $severeHeatTypes) ? 'severe' : 'mild';
+            $severity = in_array($data['sub_type'], $severeHeatTypes, true) ? 'severe' : 'mild';
         }
 
         $dxToSave = $data['diagnosis_text'];
@@ -993,12 +1062,11 @@ class RecruitMorbidityReportController extends Controller
         }
 
         $resolvedLocation = null;
-        if (in_array($data['category'], ['respiratory', 'mental'])) {
+        if (in_array($data['category'], ['respiratory', 'mental'], true)) {
             $resolvedLocation = $data['treatment_location'] ?? ($data['sub_type'] === 'mental_ipd' ? 'hospital' : 'ci');
         }
 
-        // หากเป็นหมวดทางเดินหายใจ หรือ เคสสุขภาพจิต และเคยมีชื่อแล้ว ให้อัปเดตแถวเดิมแทนการสร้างซ้ำ
-        if (in_array($data['category'], ['respiratory', 'mental'])) {
+        if (in_array($data['category'], ['respiratory', 'mental'], true)) {
             $existingQuery = RecruitMorbidity::where('patient_id', $patient->id)
                 ->where('category', $data['category']);
             if ($data['category'] === 'respiratory') {
@@ -1025,7 +1093,7 @@ class RecruitMorbidityReportController extends Controller
         RecruitMorbidity::create([
             'patient_id'         => $patient->id,
             'military_unit_id'   => $patient->military_unit_id ?? $defaultUnitId,
-            'intake_batch'       => $patient->intake_batch ?: '2/69',
+            'intake_batch'       => $patient->intake_batch ?: $defaultActiveBatch,
             'category'           => $data['category'],
             'sub_type'           => $data['sub_type'],
             'severity'           => $severity,
@@ -1045,7 +1113,7 @@ class RecruitMorbidityReportController extends Controller
         $record = RecruitMorbidity::findOrFail($id);
 
         if ($request->has('update_dx_only')) {
-            $rawInputDx = trim((string)$request->input('diagnosis_text'));
+            $rawInputDx = trim((string) $request->input('diagnosis_text'));
             $cleanDx = $record->category === 'other_ipd'
                 ? ($this->cleanEnglishDx($rawInputDx) ?: $rawInputDx)
                 : $rawInputDx;
@@ -1055,6 +1123,14 @@ class RecruitMorbidityReportController extends Controller
                 ->update([
                     'diagnosis_text' => $cleanDx,
                 ]);
+
+            if (class_exists(AuditLog::class)) {
+                AuditLog::record('update_morbidity_dx', $record, [
+                    'patient_id'     => $record->patient_id,
+                    'diagnosis_text' => $cleanDx,
+                ]);
+            }
+
             return back()->with('success', 'อัปเดตข้อความการวินิจฉัยโรค (Dx.) เรียบร้อยแล้ว');
         }
 
@@ -1067,10 +1143,10 @@ class RecruitMorbidityReportController extends Controller
                 ->update([
                     'status'         => 'recovered',
                     'recovered_date' => $recoveredDate,
-                    'severity'       => in_array($record->category, ['respiratory', 'mental']) ? 'manual_recovered' : $record->severity,
+                    'severity'       => in_array($record->category, ['respiratory', 'mental'], true) ? 'manual_recovered' : $record->severity,
                 ]);
 
-            if (class_exists('\App\Models\RecruitInfirmaryStay') && Schema::hasTable('recruit_infirmary_stays')) {
+            if (class_exists(RecruitInfirmaryStay::class) && Schema::hasTable('recruit_infirmary_stays')) {
                 RecruitInfirmaryStay::where('patient_id', $record->patient_id)
                     ->where('status', 'staying')
                     ->update([
@@ -1090,6 +1166,14 @@ class RecruitMorbidityReportController extends Controller
                 ]);
         });
 
+        if (class_exists(AuditLog::class)) {
+            AuditLog::record('mark_morbidity_recovered', $record, [
+                'patient_id'     => $record->patient_id,
+                'category'       => $record->category,
+                'recovered_date' => $recoveredDate,
+            ]);
+        }
+
         return back()->with('success', 'อัปเดตสถานะเป็น "หายป่วย / กลับหน่วยฝึกแล้ว" ซิงค์ครบทั้งหน้ารายงาน ห้องพยาบาลหน่วยฝึก และหน้า MEWS เรียบร้อยแล้ว!');
     }
 
@@ -1097,50 +1181,86 @@ class RecruitMorbidityReportController extends Controller
     public function destroy($id)
     {
         $record = RecruitMorbidity::findOrFail($id);
-        RecruitMorbidity::where('patient_id', $record->patient_id)
-            ->where('category', $record->category)
+        $patientId = $record->patient_id;
+        $category = $record->category;
+
+        RecruitMorbidity::where('patient_id', $patientId)
+            ->where('category', $category)
             ->delete();
+
+        if (class_exists(AuditLog::class)) {
+            AuditLog::record('delete_morbidity', null, [
+                'patient_id' => $patientId,
+                'category'   => $category,
+            ]);
+        }
+
         return back()->with('success', 'ลบรายการของผู้ป่วยรายนี้เรียบร้อยแล้ว');
     }
 
-    // 🌟 ดึงการวินิจฉัยโรค (Dx.) ภาษาอังกฤษล่าสุดจาก HosXP อัตโนมัติด้วย HN
+    // 🌟 ดึงการวินิจฉัยโรค (Dx.) ภาษาอังกฤษล่าสุดจาก HosXP (2-Step Index Lookup ป้องกัน Filesort บน HIS)
     public function fetchHosxpDiagnosis(Request $request)
     {
+        // 🛡️ เช็กสวิตช์พักการซิงค์ HosXP ชั่วคราวก่อนยิง Query
+        if ($this->isHosxpSyncPaused()) {
+            return response()->json([
+                'status'  => 'error',
+                'paused'  => true,
+                'message' => 'ขณะนี้ผู้ดูแลระบบพักการเชื่อมต่อฐานข้อมูล HosXP ชั่วคราว กรุณาลองใหม่ภายหลังครับ',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
+        }
+
         $patient = Patient::findOrFail($request->get('patient_id'));
         if (empty($patient->hn)) {
             return response()->json(['status' => 'error', 'message' => 'พลทหารนายนี้ยังไม่ได้ซิงค์รหัส HN กับระบบ HosXP ครับ']);
         }
 
         try {
+            $this->applyHosxpTimeout();
+
             $cleanUTF8 = function ($str) {
-                if (empty($str)) return '';
-                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string)$str);
-                return trim(mb_convert_encoding($utf8 ?: (string)$str, 'UTF-8', 'UTF-8'));
+                if (empty($str)) {
+                    return '';
+                }
+                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string) $str);
+                return trim(mb_convert_encoding($utf8 ?: (string) $str, 'UTF-8', 'UTF-8'));
             };
 
+            // ขั้นที่ 1: หา Visit (vn) ล่าสุดจากตาราง ovst ด้วย Index hn + vstdate (ไม่ Join ข้ามตารางตอน Sort)
             $latestVisit = DB::connection('hosxp')
                 ->table('ovst')
-                ->leftJoin('ovstdiag', 'ovst.vn', '=', 'ovstdiag.vn')
-                ->leftJoin('icd101', 'ovstdiag.icd10', '=', 'icd101.code')
-                ->where('ovst.hn', $patient->hn)
-                ->orderBy('ovst.vstdate', 'desc')
-                ->orderBy('ovstdiag.diagtype', 'asc')
-                ->select('ovst.vstdate', 'ovstdiag.icd10', 'icd101.name as icd_name')
-                ->first();
+                ->where('hn', trim((string) $patient->hn))
+                ->orderBy('vstdate', 'desc')
+                ->orderBy('vsttime', 'desc')
+                ->first(['vn', 'vstdate']);
 
-            if (!$latestVisit || empty($latestVisit->icd10)) {
-                return response()->json(['status' => 'not_found', 'message' => 'ยังไม่พบรหัสการวินิจฉัยโรค (ICD-10) ล่าสุดใน HosXP ครับ']);
+            if (!$latestVisit || empty($latestVisit->vn)) {
+                return response()->json(['status' => 'not_found', 'message' => 'ยังไม่พบประวัติการมารับบริการ (Visit) ใน HosXP ครับ']);
             }
 
-            $icdEnglishName = $cleanUTF8($latestVisit->icd_name);
+            // ขั้นที่ 2: ดึง Principal Diagnosis (diagtype น้อยสุด) ของ vn นั้นโดยตรงผ่าน Index vn
+            $diag = DB::connection('hosxp')
+                ->table('ovstdiag')
+                ->leftJoin('icd101', 'ovstdiag.icd10', '=', 'icd101.code')
+                ->where('ovstdiag.vn', $latestVisit->vn)
+                ->orderBy('ovstdiag.diagtype', 'asc')
+                ->select('ovstdiag.icd10', 'icd101.name as icd_name')
+                ->first();
+
+            if (!$diag || empty($diag->icd10)) {
+                return response()->json(['status' => 'not_found', 'message' => 'ยังไม่พบรหัสการวินิจฉัยโรค (ICD-10) ใน Visit ล่าสุดของ HosXP ครับ']);
+            }
+
+            $icdEnglishName = $cleanUTF8($diag->icd_name);
 
             return response()->json([
                 'status'     => 'success',
-                'dx_text'    => $icdEnglishName ?: $cleanUTF8($latestVisit->icd10),
+                'dx_text'    => $icdEnglishName ?: $cleanUTF8($diag->icd10),
                 'visit_date' => $latestVisit->vstdate,
             ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Throwable $e) {
+            Log::warning('HosXP Diagnosis Fetch Error: ' . $e->getMessage());
             return response()->json(['status' => 'error', 'message' => 'ไม่สามารถดึง Dx. จาก HosXP ได้ในขณะนี้']);
         }
     }
