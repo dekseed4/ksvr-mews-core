@@ -7,16 +7,25 @@
 @php
     $activeTab = $activeTab ?? request('role', 'all');
 
-    // พจนานุกรมแปลสิทธิ์ (ประกาศครั้งเดียวด้านบน ไม่ต้องสร้างซ้ำทุกรอบในลูป)
+    // รองรับทั้ง Paginator, SimplePaginator และ Collection กัน Error 500 ถาวร
+    $totalUsersCount = method_exists($users, 'total')
+        ? $users->total()
+        : (is_countable($users) ? count($users) : 0);
+    $firstItemNumber = (method_exists($users, 'firstItem') && $users->firstItem())
+        ? $users->firstItem()
+        : 1;
+    $hasPagination = method_exists($users, 'hasPages') && $users->hasPages();
+
+    // พจนานุกรมแปลสิทธิ์การใช้งาน (ประกาศครั้งเดียวด้านบน ลดการทำงานซ้ำในลูป)
     $roleDict = [
-        'admin'         => ['name' => 'ผู้ดูแลระบบ',         'color' => 'bg-purple-50 text-purple-700 border-purple-200',  'icon' => 'fa-shield-halved'],
-        'executive'     => ['name' => 'ผู้บริหาร',           'color' => 'bg-slate-100 text-slate-700 border-slate-200',    'icon' => 'fa-user-tie'],
-        'er_nurse'      => ['name' => 'พยาบาล ER',           'color' => 'bg-emerald-50 text-emerald-700 border-emerald-200','icon' => 'fa-user-nurse'],
-        'opd_nurse'     => ['name' => 'พยาบาล OPD',          'color' => 'bg-teal-50 text-teal-700 border-teal-200',        'icon' => 'fa-stethoscope'],
-        'medic'         => ['name' => 'เสนารักษ์',           'color' => 'bg-blue-50 text-blue-700 border-blue-200',        'icon' => 'fa-walkie-talkie'],
-        'registration'  => ['name' => 'เจ้าหน้าที่ทะเบียน',   'color' => 'bg-indigo-50 text-indigo-700 border-indigo-200',  'icon' => 'fa-id-card-clip'],
-        'medical_staff' => ['name' => 'เจ้าหน้าที่เวชกรรม',  'color' => 'bg-cyan-50 text-cyan-800 border-cyan-200',        'icon' => 'fa-kit-medical'],
-        'screening'     => ['name' => 'จุดคัดกรอง',          'color' => 'bg-amber-50 text-amber-800 border-amber-200',     'icon' => 'fa-clipboard-check'],
+        'admin'         => ['name' => 'ผู้ดูแลระบบ',         'color' => 'bg-purple-50 text-purple-700 border-purple-200',   'icon' => 'fa-shield-halved'],
+        'executive'     => ['name' => 'ผู้บริหาร',           'color' => 'bg-slate-100 text-slate-700 border-slate-200',     'icon' => 'fa-user-tie'],
+        'er_nurse'      => ['name' => 'พยาบาล ER',           'color' => 'bg-emerald-50 text-emerald-700 border-emerald-200', 'icon' => 'fa-user-nurse'],
+        'opd_nurse'     => ['name' => 'พยาบาล OPD',          'color' => 'bg-teal-50 text-teal-700 border-teal-200',         'icon' => 'fa-stethoscope'],
+        'medic'         => ['name' => 'เสนารักษ์',           'color' => 'bg-blue-50 text-blue-700 border-blue-200',         'icon' => 'fa-walkie-talkie'],
+        'registration'  => ['name' => 'เจ้าหน้าที่ทะเบียน',   'color' => 'bg-indigo-50 text-indigo-700 border-indigo-200',   'icon' => 'fa-id-card-clip'],
+        'medical_staff' => ['name' => 'เจ้าหน้าที่เวชกรรม',  'color' => 'bg-cyan-50 text-cyan-800 border-cyan-200',         'icon' => 'fa-kit-medical'],
+        'screening'     => ['name' => 'จุดคัดกรอง',          'color' => 'bg-amber-50 text-amber-800 border-amber-200',      'icon' => 'fa-clipboard-check'],
     ];
 
     $roleTabs = [
@@ -31,10 +40,39 @@
         'screening'     => ['label' => 'จุดคัดกรอง',          'icon' => 'fa-clipboard-check', 'active' => 'bg-amber-100 text-amber-800 border-amber-400 ring-2 ring-amber-500/30',              'hover' => 'hover:bg-amber-50 hover:text-amber-700'],
     ];
 
-    // นับยอดคนกำลังออนไลน์อย่างปลอดภัย (Query เฉพาะตาราง users ฝั่ง KSVR มี Index บน last_seen_at)
-    $onlineUsersCount = \Illuminate\Support\Facades\Schema::hasColumn('users', 'last_seen_at')
-        ? \App\Models\User::where('last_seen_at', '>=', now()->subMinutes(5))->count()
-        : 0;
+    // นับยอดผู้ใช้งานที่กำลังออนไลน์อย่างปลอดภัย (Query เฉพาะตาราง users ฝั่ง KSVR)
+    $onlineUsersCount = 0;
+    try {
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'last_seen_at')) {
+            $onlineUsersCount = \App\Models\User::where('last_seen_at', '>=', now()->subMinutes(5))->count();
+        }
+    } catch (\Throwable $e) {
+        $onlineUsersCount = 0;
+    }
+
+    // ตัวช่วยคำนวณสถานะออนไลน์แบบปลอดภัย (ป้องกัน Error 500 กรณี last_seen_at เป็น string)
+    $resolveUserOnline = function ($u): array {
+        $isOnline = false;
+        $label = 'ยังไม่เคยเข้าใช้งาน';
+        try {
+            if (\Illuminate\Support\Facades\Cache::has("user-is-online-{$u->id}")) {
+                $isOnline = true;
+            } elseif (!empty($u->last_seen_at)) {
+                $dt = \Carbon\Carbon::parse($u->last_seen_at);
+                $isOnline = $dt->gt(now()->subMinutes(5));
+                $label = 'ใช้งานเมื่อ ' . $dt->locale('th')->diffForHumans();
+            }
+
+            if ($isOnline) {
+                $label = 'กำลังออนไลน์';
+            }
+        } catch (\Throwable $e) {
+            $isOnline = false;
+            $label = '-';
+        }
+
+        return [$isOnline, $label];
+    };
 @endphp
 
 <style>
@@ -47,7 +85,7 @@
     <!-- 🟢 1. กรอบหลักจัดการผู้ใช้งาน -->
     <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
 
-        <!-- แถบหัวเรื่อง + ยอดออนไลน์ + ปุ่มเพิ่มผู้ใช้งาน -->
+        <!-- แถบหัวเรื่อง + ยอดบัญชี & ยอดออนไลน์ + ปุ่มเพิ่มผู้ใช้งาน -->
         <div class="px-4 sm:px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="flex flex-wrap items-center gap-2.5">
                 <h3 class="font-black text-slate-800 dark:text-white text-base sm:text-lg flex items-center gap-2">
@@ -57,7 +95,7 @@
                     <span>ผู้ใช้งานในระบบ</span>
                 </h3>
                 <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                    พบ {{ number_format($users->total()) }} บัญชี
+                    พบ {{ number_format($totalUsersCount) }} บัญชี
                 </span>
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
@@ -115,39 +153,67 @@
             </div>
         @endif
 
-        <!-- 🌟 แถบ Tab กรองตามสิทธิ์ (ปัดซ้าย-ขวาได้บนมือถือ / วางเต็มแนวบนคอมพิวเตอร์) -->
-        <div class="px-4 sm:px-6 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
-            <div class="flex items-center justify-between md:hidden text-[11px] font-bold text-slate-400 mb-2">
-                <span><i class="fa-solid fa-filter text-emerald-500 mr-1"></i>กรองตามบทบาทสิทธิ์</span>
-                <span>ปัดเลื่อนได้ →</span>
+        <!-- 🌟 แถบ Tab กรองตามสิทธิ์ (ปัดซ้าย-ขวาได้บนมือถือ / วางเต็มแนวบนคอมพิวเตอร์) + ช่องค้นหาด่วน -->
+        <div class="px-4 sm:px-6 pt-4 pb-3.5 border-b border-slate-100 dark:border-slate-700 space-y-3">
+            <div>
+                <div class="flex items-center justify-between md:hidden text-[11px] font-bold text-slate-400 mb-2">
+                    <span><i class="fa-solid fa-filter text-emerald-500 mr-1"></i>กรองตามบทบาทสิทธิ์</span>
+                    <span>ปัดเลื่อนได้ →</span>
+                </div>
+
+                <div id="user-role-tabs" class="ksvr-no-scrollbar flex flex-nowrap md:flex-wrap items-center gap-2 overflow-x-auto pb-1 md:pb-0 scroll-smooth">
+                    @foreach($roleTabs as $tabKey => $tab)
+                        @php $isCurrent = ($activeTab === $tabKey); @endphp
+                        <a href="{{ route('backend.users.index', ['role' => $tabKey]) }}"
+                           data-role-tab="{{ $tabKey }}"
+                           class="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap border transition-all inline-flex items-center gap-1.5 shrink-0 {{ $isCurrent ? $tab['active'] : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 ' . $tab['hover'] }}">
+                            <i class="fa-solid {{ $tab['icon'] }} text-xs"></i>
+                            <span>{{ $tab['label'] }}</span>
+                        </a>
+                    @endforeach
+                </div>
             </div>
 
-            <div id="user-role-tabs" class="ksvr-no-scrollbar flex flex-nowrap md:flex-wrap items-center gap-2 overflow-x-auto pb-1 md:pb-0 scroll-smooth">
-                @foreach($roleTabs as $tabKey => $tab)
-                    @php $isCurrent = ($activeTab === $tabKey); @endphp
-                    <a href="{{ route('backend.users.index', ['role' => $tabKey]) }}"
-                       data-role-tab="{{ $tabKey }}"
-                       class="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap border transition-all inline-flex items-center gap-1.5 shrink-0 {{ $isCurrent ? $tab['active'] : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 ' . $tab['hover'] }}">
-                        <i class="fa-solid {{ $tab['icon'] }} text-xs"></i>
-                        <span>{{ $tab['label'] }}</span>
-                    </a>
-                @endforeach
+            <!-- 🔍 ช่องค้นหาด่วนในหน้าปัจจุบัน + ปุ่มกรองเฉพาะออนไลน์ -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div class="relative flex-1">
+                    <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                        <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                    </span>
+                    <input type="text" id="user-quick-search" oninput="applyUserQuickFilter()" autocomplete="off"
+                           placeholder="พิมพ์ค้นหาด่วนในหน้านี้ (ชื่อ-สกุล, Username, หน่วยฝึก, เบอร์โทร)..."
+                           class="w-full pl-9 pr-9 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:bg-white dark:focus:bg-slate-800 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 outline-none focus:border-emerald-500 transition-colors">
+                    <button type="button" id="user-search-clear" onclick="clearUserQuickFilter()"
+                            class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-rose-500">
+                        <i class="fa-solid fa-circle-xmark text-sm"></i>
+                    </button>
+                </div>
+
+                <button type="button" id="btn-filter-online-only" onclick="toggleOnlineOnlyFilter()"
+                        class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 hover:border-emerald-400 text-slate-600 dark:text-slate-300 text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all shrink-0">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>เฉพาะกำลังออนไลน์</span>
+                </button>
             </div>
         </div>
 
         <!-- =========================================================== -->
         <!-- 📱 โหมดมือถือ: การ์ดรายชื่อผู้ใช้งาน (อ่านง่ายเต็มจอ ปุ่มกดพอดีนิ้ว) -->
         <!-- =========================================================== -->
-        <div class="md:hidden divide-y divide-slate-100 dark:divide-slate-700">
+        <div class="md:hidden divide-y divide-slate-100 dark:divide-slate-700" id="mobile-users-list">
             @forelse($users as $index => $user)
                 @php
-                    $isOnline = method_exists($user, 'isOnline') ? $user->isOnline() : false;
+                    [$isOnline, $lastSeenLabel] = $resolveUserOnline($user);
                     $rawRoles = $user->roles ?? $user->role ?? [];
                     $rolesList = is_string($rawRoles) ? (json_decode($rawRoles, true) ?: []) : (array) $rawRoles;
                     $safeDisplayName = trim(($user->rank ?? '') . ' ' . ($user->name ?? ''));
+                    $unitLabel = $user->militaryUnit ? ($user->militaryUnit->short_name ?? $user->militaryUnit->name ?? '') : '';
+                    $searchHaystack = mb_strtolower(trim("{$safeDisplayName} {$user->username} {$user->email} {$user->phone} {$unitLabel} {$user->intake_batch}"));
                 @endphp
 
-                <div class="p-4 border-l-4 {{ $isOnline ? 'border-l-emerald-500 bg-emerald-50/15 dark:bg-emerald-950/10' : 'border-l-slate-200 dark:border-l-slate-700 bg-white dark:bg-slate-800' }} space-y-3">
+                <div class="js-user-card p-4 border-l-4 {{ $isOnline ? 'border-l-emerald-500 bg-emerald-50/15 dark:bg-emerald-950/10' : 'border-l-slate-200 dark:border-l-slate-700 bg-white dark:bg-slate-800' }} space-y-3"
+                     data-search="{{ $searchHaystack }}"
+                     data-online="{{ $isOnline ? '1' : '0' }}">
                     
                     <!-- แถว 1: Avatar + ชื่อ + สถานะออนไลน์ -->
                     <div class="flex items-start justify-between gap-2.5">
@@ -161,13 +227,13 @@
 
                             <div class="min-w-0">
                                 <div class="font-black text-slate-900 dark:text-white text-sm sm:text-base leading-snug truncate">
-                                    {{ $safeDisplayName }}
+                                    {{ $safeDisplayName ?: 'ไม่ระบุชื่อ' }}
                                 </div>
                                 <div class="mt-0.5 flex flex-wrap items-center gap-1.5">
                                     <span class="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold">
-                                        @ {{ $user->username }}
+                                        &#64;{{ $user->username }}
                                     </span>
-                                    <span class="text-[10px] font-bold text-slate-400">#{{ $users->firstItem() + $index }}</span>
+                                    <span class="text-[10px] font-bold text-slate-400">#{{ $firstItemNumber + $index }}</span>
                                 </div>
                             </div>
                         </div>
@@ -201,7 +267,7 @@
                         @if($user->militaryUnit)
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
                                 <i class="fa-solid fa-tent text-[10px] opacity-80"></i>
-                                {{ $user->militaryUnit->short_name ?? $user->militaryUnit->name }}
+                                {{ $unitLabel }}
                                 @if($user->intake_batch)
                                     <span class="text-indigo-400">|</span> ผลัด {{ $user->intake_batch }}
                                 @endif
@@ -222,8 +288,8 @@
                             </div>
                         @endif
                         <div class="flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px] text-slate-400">
-                            <span><i class="fa-regular fa-clock mr-1"></i>{{ $user->last_seen_label ?? '-' }}</span>
-                            <span>เพิ่มเมื่อ {{ $user->created_at->format('d/m/Y') }}</span>
+                            <span><i class="fa-regular fa-clock mr-1"></i>{{ $lastSeenLabel }}</span>
+                            <span>เพิ่มเมื่อ {{ $user->created_at?->format('d/m/Y') ?? '-' }}</span>
                         </div>
                     </div>
 
@@ -232,7 +298,7 @@
                         <form id="reset-form-mobile-{{ $user->id }}" action="{{ route('backend.users.reset_password', $user->id) }}" method="POST">
                             @csrf
                             <button type="button"
-                                    onclick="confirmAction(event, 'รีเซ็ตรหัสผ่าน?', 'ระบบจะสุ่มรหัสผ่านใหม่ให้คุณ {{ addslashes($user->name) }}', 'warning', 'reset-form-mobile-{{ $user->id }}')"
+                                    onclick="confirmAction(event, 'รีเซ็ตรหัสผ่าน?', 'ระบบจะสุ่มรหัสผ่านใหม่ให้คุณ {{ addslashes($user->name ?? '') }}', 'warning', 'reset-form-mobile-{{ $user->id }}')"
                                     class="w-full py-2 px-2 rounded-xl bg-amber-50 hover:bg-amber-500 text-amber-700 hover:text-white border border-amber-200 text-xs font-bold inline-flex items-center justify-center gap-1 transition-colors">
                                 <i class="fa-solid fa-key text-[11px]"></i> รีเซ็ต
                             </button>
@@ -247,7 +313,7 @@
                             @csrf
                             @method('DELETE')
                             <button type="button"
-                                    onclick="confirmAction(event, 'ยืนยันการลบข้อมูล', 'คุณต้องการลบบัญชี {{ addslashes($user->name) }} ใช่หรือไม่? ข้อมูลจะไม่สามารถกู้คืนได้!', 'error', 'delete-form-mobile-{{ $user->id }}')"
+                                    onclick="confirmAction(event, 'ยืนยันการลบข้อมูล', 'คุณต้องการลบบัญชี {{ addslashes($user->name ?? '') }} ใช่หรือไม่? ข้อมูลจะไม่สามารถกู้คืนได้!', 'error', 'delete-form-mobile-{{ $user->id }}')"
                                     class="w-full py-2 px-2 rounded-xl bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-200 text-xs font-bold inline-flex items-center justify-center gap-1 transition-colors">
                                 <i class="fa-solid fa-trash-can text-[11px]"></i> ลบ
                             </button>
@@ -261,6 +327,12 @@
                     <p class="font-bold text-slate-600 dark:text-slate-300 text-sm">ยังไม่มีข้อมูลผู้ใช้งานในหมวดที่เลือก</p>
                 </div>
             @endforelse
+
+            <!-- ข้อความแจ้งเมื่อค้นหาด่วนบนมือถือแล้วไม่พบรายการ -->
+            <div id="mobile-filter-empty" class="hidden px-6 py-12 text-center text-slate-400">
+                <i class="fa-solid fa-magnifying-glass text-3xl mb-2 block opacity-40"></i>
+                <p class="font-bold text-slate-600 dark:text-slate-300 text-sm">ไม่พบรายชื่อที่ตรงกับคำค้นหาในหน้านี้</p>
+            </div>
         </div>
 
         <!-- =========================================================== -->
@@ -281,12 +353,17 @@
                 <tbody class="text-sm divide-y divide-slate-100 dark:divide-slate-700">
                     @forelse($users as $index => $user)
                         @php
-                            $isOnline = method_exists($user, 'isOnline') ? $user->isOnline() : false;
+                            [$isOnline, $lastSeenLabel] = $resolveUserOnline($user);
                             $rawRoles = $user->roles ?? $user->role ?? [];
                             $rolesList = is_string($rawRoles) ? (json_decode($rawRoles, true) ?: []) : (array) $rawRoles;
+                            $safeDisplayName = trim(($user->rank ?? '') . ' ' . ($user->name ?? ''));
+                            $unitLabel = $user->militaryUnit ? ($user->militaryUnit->short_name ?? $user->militaryUnit->name ?? '') : '';
+                            $searchHaystack = mb_strtolower(trim("{$safeDisplayName} {$user->username} {$user->email} {$user->phone} {$unitLabel} {$user->intake_batch}"));
                         @endphp
-                        <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
-                            <td class="px-5 py-4 text-slate-400 font-semibold text-center">{{ $users->firstItem() + $index }}</td>
+                        <tr class="js-user-row hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors"
+                            data-search="{{ $searchHaystack }}"
+                            data-online="{{ $isOnline ? '1' : '0' }}">
+                            <td class="px-5 py-4 text-slate-400 font-semibold text-center">{{ $firstItemNumber + $index }}</td>
 
                             <td class="px-5 py-4">
                                 <div class="flex items-start gap-3.5">
@@ -301,7 +378,7 @@
                                     <!-- ชื่อ + ป้ายสถานะออนไลน์ + ป้ายสิทธิ์ -->
                                     <div>
                                         <div class="text-slate-800 dark:text-white font-bold text-base flex flex-wrap items-center gap-2 mb-1.5">
-                                            <span>{{ $user->rank }} {{ $user->name }}</span>
+                                            <span>{{ $safeDisplayName ?: 'ไม่ระบุชื่อ' }}</span>
                                             @if($isOnline)
                                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
@@ -310,7 +387,7 @@
                                             @else
                                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600">
                                                     <span class="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-500"></span>
-                                                    {{ $user->last_seen_label }}
+                                                    {{ $lastSeenLabel }}
                                                 </span>
                                             @endif
                                         </div>
@@ -329,7 +406,7 @@
 
                                             @if($user->militaryUnit)
                                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-bold border shadow-sm bg-indigo-50 text-indigo-700 border-indigo-200">
-                                                    <i class="fa-solid fa-tent opacity-75"></i> {{ $user->militaryUnit->short_name ?? $user->militaryUnit->name }}
+                                                    <i class="fa-solid fa-tent opacity-75"></i> {{ $unitLabel }}
                                                     @if($user->intake_batch)
                                                         <span class="text-indigo-400">|</span> ผลัด {{ $user->intake_batch }}
                                                     @endif
@@ -347,7 +424,7 @@
                             </td>
 
                             <td class="px-5 py-4">
-                                <div class="text-slate-700 dark:text-slate-200 font-medium">{{ $user->email }}</div>
+                                <div class="text-slate-700 dark:text-slate-200 font-medium">{{ $user->email ?: '-' }}</div>
                                 @if($user->phone)
                                     <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5 font-mono">
                                         <i class="fa-solid fa-phone text-emerald-500 text-[10px]"></i> {{ $user->phone }}
@@ -356,7 +433,7 @@
                             </td>
 
                             <td class="px-5 py-4 text-slate-500 dark:text-slate-400 whitespace-nowrap font-mono text-xs">
-                                {{ $user->created_at->format('d/m/Y H:i') }}
+                                {{ $user->created_at?->format('d/m/Y H:i') ?? '-' }}
                             </td>
 
                             <td class="px-5 py-4 text-center whitespace-nowrap">
@@ -364,7 +441,7 @@
                                     <form id="reset-form-desktop-{{ $user->id }}" action="{{ route('backend.users.reset_password', $user->id) }}" method="POST" class="inline-block">
                                         @csrf
                                         <button type="button"
-                                                onclick="confirmAction(event, 'รีเซ็ตรหัสผ่าน?', 'ระบบจะสุ่มรหัสผ่านใหม่ให้คุณ {{ addslashes($user->name) }}', 'warning', 'reset-form-desktop-{{ $user->id }}')"
+                                                onclick="confirmAction(event, 'รีเซ็ตรหัสผ่าน?', 'ระบบจะสุ่มรหัสผ่านใหม่ให้คุณ {{ addslashes($user->name ?? '') }}', 'warning', 'reset-form-desktop-{{ $user->id }}')"
                                                 class="w-8 h-8 rounded-xl bg-amber-50 hover:bg-amber-500 text-amber-600 hover:text-white border border-amber-200 flex items-center justify-center transition-colors shadow-sm"
                                                 title="รีเซ็ตรหัสผ่านชั่วคราว">
                                             <i class="fa-solid fa-key text-xs"></i>
@@ -381,7 +458,7 @@
                                         @csrf
                                         @method('DELETE')
                                         <button type="button"
-                                                onclick="confirmAction(event, 'ยืนยันการลบข้อมูล', 'คุณต้องการลบบัญชี {{ addslashes($user->name) }} ใช่หรือไม่? ข้อมูลจะไม่สามารถกู้คืนได้!', 'error', 'delete-form-desktop-{{ $user->id }}')"
+                                                onclick="confirmAction(event, 'ยืนยันการลบข้อมูล', 'คุณต้องการลบบัญชี {{ addslashes($user->name ?? '') }} ใช่หรือไม่? ข้อมูลจะไม่สามารถกู้คืนได้!', 'error', 'delete-form-desktop-{{ $user->id }}')"
                                                 class="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-200 flex items-center justify-center transition-colors shadow-sm"
                                                 title="ลบ">
                                             <i class="fa-solid fa-trash-can text-xs"></i>
@@ -398,11 +475,19 @@
                             </td>
                         </tr>
                     @endforelse
+
+                    <!-- แถวแจ้งเตือนเมื่อค้นหาด่วนบนคอมพิวเตอร์แล้วไม่พบรายการ -->
+                    <tr id="desktop-filter-empty" class="hidden">
+                        <td colspan="6" class="px-6 py-12 text-center text-slate-400">
+                            <i class="fa-solid fa-magnifying-glass text-3xl mb-2 block opacity-40"></i>
+                            <p class="font-bold text-slate-600 dark:text-slate-300">ไม่พบรายชื่อที่ตรงกับคำค้นหาในหน้านี้</p>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
 
-        @if($users->hasPages())
+        @if($hasPagination)
             <div class="px-4 sm:px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/40">
                 {{ $users->links() }}
             </div>
@@ -414,6 +499,8 @@
 
 @section('scripts')
 <script>
+    let filterOnlineOnly = false;
+
     // เลื่อนแท็บสิทธิ์ที่กำลังเลือกมาอยู่ตรงกลางอัตโนมัติบนจอมือถือ
     document.addEventListener('DOMContentLoaded', function () {
         if (window.innerWidth < 768) {
@@ -424,7 +511,64 @@
         }
     });
 
-    // ก๊อปปี้ Username และรหัสผ่านชั่วคราว 1 คลิก (รองรับทั้ง HTTPS และ HTTP วงแลน รพ.)
+    // 🔍 กรองรายชื่อด่วนในหน้าปัจจุบัน (รองรับทั้งการ์ดมือถือและตารางคอมพิวเตอร์)
+    function applyUserQuickFilter() {
+        const input = document.getElementById('user-quick-search');
+        const clearBtn = document.getElementById('user-search-clear');
+        const kw = (input?.value || '').trim().toLowerCase();
+
+        if (clearBtn) {
+            clearBtn.classList.toggle('hidden', kw === '');
+        }
+
+        let visibleCards = 0;
+        document.querySelectorAll('.js-user-card').forEach(el => {
+            const hay = el.getAttribute('data-search') || '';
+            const isOnline = el.getAttribute('data-online') === '1';
+            const show = (kw === '' || hay.includes(kw)) && (!filterOnlineOnly || isOnline);
+            el.classList.toggle('hidden', !show);
+            if (show) visibleCards++;
+        });
+
+        let visibleRows = 0;
+        document.querySelectorAll('.js-user-row').forEach(el => {
+            const hay = el.getAttribute('data-search') || '';
+            const isOnline = el.getAttribute('data-online') === '1';
+            const show = (kw === '' || hay.includes(kw)) && (!filterOnlineOnly || isOnline);
+            el.classList.toggle('hidden', !show);
+            if (show) visibleRows++;
+        });
+
+        const hasItems = document.querySelectorAll('.js-user-row').length > 0;
+        document.getElementById('mobile-filter-empty')?.classList.toggle('hidden', !hasItems || visibleCards > 0);
+        document.getElementById('desktop-filter-empty')?.classList.toggle('hidden', !hasItems || visibleRows > 0);
+    }
+
+    function clearUserQuickFilter() {
+        const input = document.getElementById('user-quick-search');
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+        applyUserQuickFilter();
+    }
+
+    function toggleOnlineOnlyFilter() {
+        filterOnlineOnly = !filterOnlineOnly;
+        const btn = document.getElementById('btn-filter-online-only');
+        if (btn) {
+            if (filterOnlineOnly) {
+                btn.className = 'px-3.5 py-2 rounded-xl border border-emerald-500 bg-emerald-600 text-white text-xs font-black inline-flex items-center justify-center gap-1.5 shadow-sm transition-all shrink-0';
+                btn.innerHTML = '<span class="w-2 h-2 rounded-full bg-white animate-ping"></span><span>แสดงเฉพาะออนไลน์</span>';
+            } else {
+                btn.className = 'px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 hover:border-emerald-400 text-slate-600 dark:text-slate-300 text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all shrink-0';
+                btn.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>เฉพาะกำลังออนไลน์</span>';
+            }
+        }
+        applyUserQuickFilter();
+    }
+
+    // 🔑 ก๊อปปี้ Username และรหัสผ่านชั่วคราว 1 คลิก (รองรับทั้ง HTTPS และ HTTP วงแลน รพ.)
     function copyTempCredentials(btn) {
         const u = btn.getAttribute('data-username') || '';
         const p = btn.getAttribute('data-password') || '';
@@ -443,16 +587,26 @@
         };
 
         if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(onDone);
+            navigator.clipboard.writeText(text).then(onDone).catch(() => fallbackCopyCreds(text, onDone));
         } else {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
-            document.body.appendChild(ta);
-            ta.select();
-            try { document.execCommand('copy'); onDone(); } catch (e) {}
-            document.body.removeChild(ta);
+            fallbackCopyCreds(text, onDone);
         }
+    }
+
+    function fallbackCopyCreds(text, callback) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+            document.execCommand('copy');
+            callback();
+        } catch (e) {
+            console.warn('Copy failed:', e);
+        }
+        document.body.removeChild(ta);
     }
 </script>
 @endsection
