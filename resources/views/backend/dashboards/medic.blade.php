@@ -16,7 +16,7 @@
 
     @include('backend.dashboards.partials.view_tabs')
 
-    <!-- 🟢 1. Header ทักทายเสนารักษ์ (Modern Compact + Dark Mode) -->
+    <!-- 🟢 1. Header ทักทายเสนารักษ์ -->
     <div class="bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-950 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg text-white relative overflow-hidden border border-slate-700/80">
         <div class="absolute -right-8 -top-8 text-white/5 text-9xl pointer-events-none select-none">
             <i class="fa-solid fa-truck-medical"></i>
@@ -53,7 +53,7 @@
         </div>
     </div>
 
-    <!-- 🔍 2. ศูนย์ค้นหาผู้ป่วย & เริ่มประเมิน MEWS ภาคสนาม (อัปเกรดเทียบเท่าหน้าประเมิน MEWS) -->
+    <!-- 🔍 2. ศูนย์ค้นหาผู้ป่วย & เริ่มประเมิน MEWS ภาคสนาม (พิมพ์ / เสียง / QR / สแกนบัตร ปชช. OCR) -->
     <div id="medic-search-card" class="bg-white dark:bg-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-700 space-y-4 transition-all">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
@@ -64,16 +64,19 @@
                     <span>ค้นหาประวัติ / เริ่มประเมิน MEWS ใหม่</span>
                 </h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    พิมพ์ชื่อ-นามสกุล, รหัส HN, เลข ปชช. 13 หลัก หรือใช้เสียง/สแกน QR เพื่อดึงประวัติทันที
+                    พิมพ์ชื่อ-สกุล, HN, เลข ปชช. 13 หลัก หรือถ่ายรูปบัตรประชาชนด้วย OCR เพื่อดึงประวัติทันที
                 </p>
             </div>
 
-            <a href="{{ route('backend.patients.search') }}"
-               class="self-start sm:self-center text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 px-3 py-1.5 rounded-xl border border-indigo-100 dark:border-indigo-800 transition-colors inline-flex items-center gap-1.5 shrink-0">
-                <i class="fa-solid fa-id-card"></i>
-                <span>หน้าสแกนบัตรเต็มรูปแบบ</span>
+            <a href="{{ route('backend.patients.create') }}"
+               class="self-start sm:self-center text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-colors inline-flex items-center gap-1.5 shrink-0">
+                <i class="fa-solid fa-user-plus"></i>
+                <span>ลงทะเบียนทหารใหม่</span>
             </a>
         </div>
+
+        <!-- Input กล้องซ่อนสำหรับถ่ายรูปบัตรประชาชน (OCR) -->
+        <input type="file" id="medic-ocr-file-input" accept="image/*" capture="environment" class="hidden" onchange="handleMedicIdCardOcr(event)">
 
         <form id="medic-search-form" action="{{ route('backend.patients.processSearch') }}" method="POST" class="space-y-3">
             @csrf
@@ -117,41 +120,43 @@
                 <!-- ผลตรวจสูตรเลขบัตร 13 หลัก (Mod-11) แบบเรียลไทม์ -->
                 <div id="medic-cid-status-hint" class="hidden mt-2 text-xs font-bold px-3 py-1.5 rounded-xl border flex items-center gap-2"></div>
 
-                <!-- 📋 กล่องรายชื่อ Autocomplete อัจฉริยะ (แสดงหน่วยฝึก, HN, CID และสถานะล็อกกำลังพล) -->
+                <!-- 📋 กล่องรายชื่อ Autocomplete อัจฉริยะ -->
                 <div id="medic-autocomplete-results"
                      class="hidden absolute left-0 right-0 top-full mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-[0_18px_45px_-12px_rgba(15,23,42,0.28)] rounded-2xl z-50 max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/70">
                 </div>
             </div>
 
-            <!-- แถบปุ่มเครื่องมือภาคสนาม (มือถือเรียงสวยงาม แตะง่าย) -->
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-0.5">
+            <!-- แถบปุ่มเครื่องมือภาคสนาม 3 โหมด (พูด / QR / ถ่ายรูปบัตร ปชช. OCR) -->
+            <div class="grid grid-cols-3 gap-2 pt-0.5">
                 <button type="button"
-                        id="medic-voice-btn"
-                        onclick="startMedicVoiceSearch()"
-                        class="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-700/70 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 text-slate-700 dark:text-slate-200 hover:text-indigo-700 dark:hover:text-indigo-300 border border-slate-200 dark:border-slate-600 text-xs sm:text-sm font-bold inline-flex items-center justify-center gap-2 transition-all">
-                    <i id="medic-voice-icon" class="fa-solid fa-microphone text-indigo-500"></i>
-                    <span id="medic-voice-label">พูดชื่อ / เลข</span>
+                        onclick="triggerMedicIdCardOcr()"
+                        class="py-2.5 px-2 sm:px-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-700/80 text-xs sm:text-sm font-black inline-flex items-center justify-center gap-1.5 transition-all shadow-sm">
+                    <i class="fa-solid fa-id-card text-amber-600 dark:text-amber-400"></i>
+                    <span class="truncate">สแกนบัตร (OCR)</span>
                 </button>
 
                 <button type="button"
                         onclick="openMedicQrScanner()"
-                        class="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-700/70 hover:bg-teal-50 dark:hover:bg-teal-900/40 text-slate-700 dark:text-slate-200 hover:text-teal-700 dark:hover:text-teal-300 border border-slate-200 dark:border-slate-600 text-xs sm:text-sm font-bold inline-flex items-center justify-center gap-2 transition-all">
+                        class="py-2.5 px-2 sm:px-3 rounded-xl bg-slate-100 dark:bg-slate-700/70 hover:bg-teal-50 dark:hover:bg-teal-900/40 text-slate-700 dark:text-slate-200 hover:text-teal-700 dark:hover:text-teal-300 border border-slate-200 dark:border-slate-600 text-xs sm:text-sm font-bold inline-flex items-center justify-center gap-1.5 transition-all">
                     <i class="fa-solid fa-qrcode text-teal-500"></i>
-                    <span>สแกน QR / บาร์โค้ด</span>
+                    <span class="truncate">สแกน QR</span>
                 </button>
 
-                <button type="submit"
-                        class="col-span-2 sm:col-span-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs sm:text-sm font-black shadow-sm inline-flex items-center justify-center gap-2 transition-all sm:hidden">
-                    <i class="fa-solid fa-magnifying-glass"></i>
-                    <span>ค้นหาและเริ่มประเมิน MEWS</span>
+                <button type="button"
+                        id="medic-voice-btn"
+                        onclick="startMedicVoiceSearch()"
+                        class="py-2.5 px-2 sm:px-3 rounded-xl bg-slate-100 dark:bg-slate-700/70 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 text-slate-700 dark:text-slate-200 hover:text-indigo-700 dark:hover:text-indigo-300 border border-slate-200 dark:border-slate-600 text-xs sm:text-sm font-bold inline-flex items-center justify-center gap-1.5 transition-all">
+                    <i id="medic-voice-icon" class="fa-solid fa-microphone text-indigo-500"></i>
+                    <span id="medic-voice-label" class="truncate">พูดชื่อ / เลข</span>
                 </button>
-
-                <a href="{{ route('backend.patients.create') }}"
-                   class="hidden sm:inline-flex py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 text-slate-600 dark:text-slate-300 hover:text-emerald-700 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-bold items-center justify-center gap-2 transition-all">
-                    <i class="fa-solid fa-user-plus text-emerald-500"></i>
-                    <span>ลงทะเบียนทหารใหม่</span>
-                </a>
             </div>
+
+            <!-- ปุ่มค้นหาขนาดใหญ่เฉพาะบนมือถือ -->
+            <button type="submit"
+                    class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-sm font-black shadow-sm inline-flex items-center justify-center gap-2 transition-all sm:hidden">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <span>ค้นหาและเริ่มประเมิน MEWS</span>
+            </button>
 
             @error('search_term')
                 <div class="text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 px-3.5 py-2 rounded-xl flex items-center gap-2">
@@ -161,7 +166,7 @@
             @enderror
         </form>
 
-        <!-- ⚠️ กล่องแสดงผลกรณีค้นหาไม่พบ (รองรับ session('not_found_detail') จาก PatientController::processSearch ครบ 100%) -->
+        <!-- ⚠️ กล่องแสดงผลกรณีค้นหาไม่พบ (รองรับ session('not_found_detail') ครบ 100%) -->
         @if(is_array($notFoundDetail))
             @php
                 $nfCid = $notFoundDetail['cid'] ?? null;
@@ -174,19 +179,17 @@
                 $nfSearched = $notFoundDetail['searched_term'] ?? '';
             @endphp
             <div class="mt-3 p-4 sm:p-5 rounded-2xl bg-amber-50/90 dark:bg-amber-950/30 border-2 border-amber-300 dark:border-amber-700/80 space-y-3 animate-fade-in-up">
-                <div class="flex items-start justify-between gap-3">
-                    <div class="flex items-start gap-2.5">
-                        <div class="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 mt-0.5">
-                            <i class="fa-solid fa-user-magnifying-glass text-base"></i>
-                        </div>
-                        <div>
-                            <h4 class="text-sm sm:text-base font-black text-amber-900 dark:text-amber-200">
-                                ไม่พบรายชื่อในขอบเขตหน่วย/ผลัดที่ดูแล
-                            </h4>
-                            <p class="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5">
-                                คำค้นหา: <span class="font-mono font-bold bg-white/80 dark:bg-slate-900 px-2 py-0.5 rounded">{{ $nfSearched }}</span>
-                            </p>
-                        </div>
+                <div class="flex items-start gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 mt-0.5">
+                        <i class="fa-solid fa-user-magnifying-glass text-base"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-sm sm:text-base font-black text-amber-900 dark:text-amber-200">
+                            ไม่พบรายชื่อในขอบเขตหน่วย/ผลัดที่ดูแล
+                        </h4>
+                        <p class="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                            คำค้นหา: <span class="font-mono font-bold bg-white/80 dark:bg-slate-900 px-2 py-0.5 rounded">{{ $nfSearched }}</span>
+                        </p>
                     </div>
                 </div>
 
@@ -227,6 +230,10 @@
                                     <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
                                         มีประวัติใน KSVR ต่างสังกัด
                                     </span>
+                                @elseif($nfSource === 'ocr')
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                        อ่านจากภาพบัตร (OCR)
+                                    </span>
                                 @endif
                             </div>
                         @endif
@@ -255,7 +262,7 @@
         @endif
     </div>
 
-    <!-- 🌟 ปุ่มลอยเสริมเฉพาะหน้า Medic: กดเพื่อเลื่อนกลับมาโฟกัสช่องค้นหาได้ทันทีจากทุกจุดของหน้า -->
+    <!-- 🌟 ปุ่มลอยเสริมเฉพาะหน้า Medic -->
     @section('floating_buttons')
         <button type="button" onclick="focusMedicSearch(false)"
                 class="bg-emerald-500 hover:bg-emerald-400 text-white rounded-full w-12 h-12 md:w-14 md:h-14 flex items-center justify-center shadow-[0_10px_20px_rgba(16,185,129,0.4)] hover:shadow-[0_15px_30px_rgba(16,185,129,0.5)] transition-all duration-300 transform hover:-translate-y-1 focus:outline-none ring-4 ring-emerald-500/20 group pointer-events-auto"
@@ -275,7 +282,6 @@
                 </span>
             </h3>
 
-            <!-- แถบกรองสถานะด่วน (ฝั่งหน้าบ้าน ไม่ยิง DB) -->
             @if(count($myPatients) > 0)
                 <div class="flex flex-wrap items-center gap-1.5" id="medic-tracking-filters">
                     <button type="button" data-filter="all" onclick="setMedicTrackingFilter('all')"
@@ -324,7 +330,6 @@
                    class="js-medic-case-card block bg-white dark:bg-slate-800 rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-700 relative overflow-hidden transition-all hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-500/60 group cursor-pointer">
 
                     <div class="flex flex-col sm:flex-row justify-between gap-3.5 sm:gap-4">
-                        <!-- ข้อมูลคนไข้ -->
                         <div class="min-w-0">
                             <div class="flex flex-wrap items-center gap-2 mb-1">
                                 <h4 class="font-black text-slate-800 dark:text-white text-base sm:text-lg group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors truncate">
@@ -352,7 +357,6 @@
                             </div>
                         </div>
 
-                        <!-- 🌟 Tracking Status Badge (ครบทุกสถานะเหมือนเดิม) -->
                         <div class="shrink-0 flex items-center justify-between sm:justify-end gap-3">
                             <div class="w-full sm:w-auto">
                                 @if($case->is_cancelled)
@@ -450,7 +454,7 @@
                         <i class="fa-solid fa-clipboard-check"></i>
                     </div>
                     <h4 class="text-base sm:text-lg font-bold text-slate-700 dark:text-slate-200 mb-1">ยังไม่มีประวัติการประเมินวันนี้</h4>
-                    <p class="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">พิมพ์ค้นหาชื่อพลทหาร หรือแตะปุ่มพูด/สแกน QR ด้านบนเพื่อเริ่มประเมิน MEWS ได้ทันที</p>
+                    <p class="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">พิมพ์ค้นหาชื่อพลทหาร หรือแตะปุ่มสแกนบัตร ปชช. (OCR) ด้านบนเพื่อเริ่มประเมิน MEWS ได้ทันที</p>
                 </div>
             @endforelse
 
@@ -516,7 +520,7 @@
         }
     }
 
-    // 🌟 โฟกัสและเลื่อนขึ้นมายังกล่องค้นหาหลัก (พร้อมคงชื่อ openSearchModal เดิมกันโค้ดอื่นเรียก)
+    // 🌟 โฟกัสและเลื่อนขึ้นมายังกล่องค้นหาหลัก
     function focusMedicSearch(clearFirst = false) {
         const card = document.getElementById('medic-search-card');
         const input = document.getElementById('medic-search-input');
@@ -526,9 +530,7 @@
             setTimeout(() => card.classList.remove('ring-4', 'ring-emerald-400/40'), 1100);
         }
         if (input) {
-            if (clearFirst) {
-                clearMedicSearchInput();
-            }
+            if (clearFirst) clearMedicSearchInput();
             setTimeout(() => input.focus(), 220);
         }
     }
@@ -556,15 +558,256 @@
         medicCurrentItems = [];
     }
 
+    // =========================================================================
+    // 🪪 ระบบสแกนบัตรประชาชนด้วย OCR (Client-Side Tesseract.js v5 — ปลอดภัย PDPA 100%)
+    // =========================================================================
+    function triggerMedicIdCardOcr() {
+        const fileInput = document.getElementById('medic-ocr-file-input');
+        if (fileInput) {
+            fileInput.value = ''; // รีเซ็ตเพื่อให้ถ่ายซ้ำได้เสมอ
+            fileInput.click();
+        }
+    }
+
+    function loadTesseractScript() {
+        return new Promise((resolve, reject) => {
+            if (typeof window.Tesseract !== 'undefined') return resolve();
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error('ไม่สามารถโหลดไลบรารี OCR ได้ กรุณาตรวจสอบอินเทอร์เน็ต'));
+            document.head.appendChild(s);
+        });
+    }
+
+    // ปรับขนาดภาพ + แปลงเป็นขาว-ดำและเพิ่มคอนทราสต์บน Canvas เพื่อให้อ่านเลข 13 หลักและชื่อไทยแม่นยำขึ้น
+    function preprocessIdCardImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const maxWidth = 1400;
+                    const scale = img.width > maxWidth ? (maxWidth / img.width) : 1;
+                    const width = Math.round(img.width * scale);
+                    const height = Math.round(img.height * scale);
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // ปรับ Grayscale + Boost Contrast เล็กน้อย
+                    const imgData = ctx.getImageData(0, 0, width, height);
+                    const data = imgData.data;
+                    const contrast = 1.25;
+                    const intercept = 128 * (1 - contrast);
+
+                    for (let i = 0; i < data.length; i += 4) {
+                        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                        const adjusted = Math.max(0, Math.min(255, gray * contrast + intercept));
+                        data[i] = data[i + 1] = data[i + 2] = adjusted;
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                    resolve(canvas.toDataURL('image/jpeg', 0.9));
+                };
+                img.onerror = () => reject(new Error('ไม่สามารถอ่านไฟล์รูปภาพนี้ได้'));
+                img.src = e.target.result;
+            };
+            reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการเปิดไฟล์รูปภาพ'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // แปลงเลขไทย (๐-๙) เป็นเลขอารบิก (0-9) และสกัดเลข ปชช. 13 หลัก + ชื่อ-นามสกุลภาษาไทย
+    function parseThaiIdCardOcrText(rawText) {
+        const thaiDigits = { '๐':'0','๑':'1','๒':'2','๓':'3','๔':'4','๕':'5','๖':'6','๗':'7','๘':'8','๙':'9' };
+        const normalized = String(rawText || '').replace(/[๐-๙]/g, ch => thaiDigits[ch] || ch);
+
+        // 1. ค้นหาเลข 13 หลัก (รองรับทั้งแบบมีเว้นวรรค "1 4702 01184 41 3" และติดกัน)
+        let bestCid = null;
+        let isMod11Valid = false;
+
+        const spacedMatches = normalized.match(/\b[1-8](?:[\s\-]*\d){12}\b/g) || [];
+        for (const m of spacedMatches) {
+            const digits = m.replace(/[^0-9]/g, '');
+            if (digits.length === 13) {
+                if (checkThaiCidMod11(digits)) {
+                    bestCid = digits;
+                    isMod11Valid = true;
+                    break;
+                }
+                if (!bestCid) bestCid = digits;
+            }
+        }
+
+        // สำรอง: ลองกวาดเลขติดกันทั้งหมดหากยังไม่เจอแบบเว้นวรรค
+        if (!bestCid) {
+            const allDigits = normalized.replace(/[^0-9]/g, '');
+            for (let i = 0; i <= allDigits.length - 13; i++) {
+                const sub = allDigits.substring(i, i + 13);
+                if (checkThaiCidMod11(sub)) {
+                    bestCid = sub;
+                    isMod11Valid = true;
+                    break;
+                }
+            }
+        }
+
+        // 2. สกัดชื่อ-นามสกุลภาษาไทยจากบรรทัดที่มีคำนำหน้าหรือคำว่า "ชื่อตัวและชื่อสกุล"
+        let detectedName = '';
+        const lines = normalized.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+        for (const line of lines) {
+            const nameMatch = line.match(/(?:ชื่อตัวและชื่อสกุล\s*)?(นาย|นางสาว|นาง|น\.ส\.|พลฯ|พลทหาร|ว่าที่\s*ร\.ต\.|ส\.ต\.|ส\.ท\.|ส\.อ\.)\s*([ก-์]{2,})\s+([ก-์]{2,})/);
+            if (nameMatch) {
+                const prefix = nameMatch[1].replace(/\s+/g, '');
+                const fname = nameMatch[2].trim();
+                const lname = nameMatch[3].trim();
+                detectedName = `${prefix}${fname} ${lname}`;
+                break;
+            }
+        }
+
+        return { cid: bestCid, isMod11Valid, fullName: detectedName };
+    }
+
+    async function handleMedicIdCardOcr(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        Swal.fire({
+            title: '<div class="text-lg font-black text-slate-800 flex items-center justify-center gap-2"><i class="fa-solid fa-id-card text-amber-500"></i> กำลังอ่านบัตรประชาชน (OCR)</div>',
+            html: `
+                <div class="space-y-3 mt-3">
+                    <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                        <div id="medic-ocr-progress-bar" class="bg-amber-500 h-full rounded-full transition-all duration-300" style="width: 15%"></div>
+                    </div>
+                    <p id="medic-ocr-status-text" class="text-xs font-bold text-slate-500">กำลังเตรียมภาพและโหลดตัวอ่านภาษาไทย...</p>
+                </div>
+            `,
+            showConfirmButton: false,
+            allowOutsideClick: false,
+            customClass: { popup: 'rounded-3xl p-6' }
+        });
+
+        try {
+            const updateProgress = (pct, text) => {
+                const bar = document.getElementById('medic-ocr-progress-bar');
+                const txt = document.getElementById('medic-ocr-status-text');
+                if (bar) bar.style.width = `${Math.min(100, Math.max(10, pct))}%`;
+                if (txt && text) txt.textContent = text;
+            };
+
+            const [processedDataUrl] = await Promise.all([
+                preprocessIdCardImage(file),
+                loadTesseractScript()
+            ]);
+
+            updateProgress(35, 'กำลังวิเคราะห์ตัวเลข 13 หลักและชื่อ-สกุลภาษาไทย...');
+
+            const worker = await window.Tesseract.createWorker('tha+eng', 1, {
+                logger: (m) => {
+                    if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+                        updateProgress(40 + Math.round(m.progress * 55), `กำลังอ่านข้อความบนบัตร... (${Math.round(m.progress * 100)}%)`);
+                    }
+                }
+            });
+
+            const { data: { text } } = await worker.recognize(processedDataUrl);
+            await worker.terminate();
+
+            const parsed = parseThaiIdCardOcrText(text);
+            Swal.close();
+
+            const input = document.getElementById('medic-search-input');
+            const scannedNameEl = document.getElementById('medic-scanned-name');
+            const isScannedEl = document.getElementById('medic-is-scanned');
+            const form = document.getElementById('medic-search-form');
+
+            // กรณีที่ 1: อ่านเลข 13 หลักได้และผ่านสูตร Mod-11 -> ส่งค้นหาอัตโนมัติทันที!
+            if (parsed.cid && parsed.isMod11Valid) {
+                if (input) input.value = parsed.cid;
+                if (scannedNameEl) scannedNameEl.value = parsed.fullName || '';
+                if (isScannedEl) isScannedEl.value = '1';
+                updateCidValidationHint(parsed.cid);
+
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'success',
+                    title: `อ่านบัตรสำเร็จ: ${parsed.fullName || parsed.cid}`,
+                    showConfirmButton: false,
+                    timer: 1800
+                });
+
+                form?.submit();
+                return;
+            }
+
+            // กรณีที่ 2: อ่านเลขได้แต่ไม่ผ่าน Mod-11 หรืออ่านได้เฉพาะชื่อ -> ใส่ลงช่องให้เสนารักษ์ตรวจทาน/กดค้นหาเอง
+            if (parsed.cid || parsed.fullName) {
+                const fallbackTerm = parsed.cid || parsed.fullName;
+                if (input) {
+                    input.value = fallbackTerm;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.focus();
+                }
+                if (scannedNameEl) scannedNameEl.value = parsed.fullName || '';
+                if (isScannedEl) isScannedEl.value = '1';
+
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'กรุณาตรวจสอบข้อมูลที่อ่านได้',
+                    html: `
+                        <div class="text-sm text-slate-600 space-y-1.5 mt-1">
+                            ${parsed.cid ? `<p>เลขบัตร: <b class="font-mono text-rose-600">${escapeMedicHtml(parsed.cid)}</b> (อาจมีบางหลักไม่ชัด)</p>` : ''}
+                            ${parsed.fullName ? `<p>ชื่อที่อ่านได้: <b class="text-indigo-700">${escapeMedicHtml(parsed.fullName)}</b></p>` : ''}
+                            <p class="text-xs text-slate-400">ระบบกรอกลงช่องค้นหาให้แล้ว สามารถแก้ตัวเลขที่คลาดเคลื่อนแล้วกด "ค้นหา" ได้เลยครับ</p>
+                        </div>
+                    `,
+                    confirmButtonText: 'ตกลง',
+                    confirmButtonColor: '#059669',
+                    customClass: { popup: 'rounded-3xl p-6' }
+                });
+                return;
+            }
+
+            // กรณีที่ 3: ภาพเบลอหรือแสงสะท้อนจนอ่านไม่ออก
+            Swal.fire({
+                icon: 'error',
+                title: 'ไม่สามารถอ่านข้อมูลจากภาพได้',
+                text: 'กรุณาถ่ายภาพบัตรในที่สว่าง วางบัตรตรงแนวนอน และหลีกเลี่ยงแสงสะท้อนบนตัวเลข 13 หลักครับ',
+                showCancelButton: true,
+                confirmButtonText: '<i class="fa-solid fa-camera mr-1"></i> ถ่ายใหม่อีกครั้ง',
+                cancelButtonText: 'พิมพ์ค้นหาเอง',
+                confirmButtonColor: '#d97706',
+                customClass: { popup: 'rounded-3xl p-6' }
+            }).then(res => {
+                if (res.isConfirmed) triggerMedicIdCardOcr();
+                else focusMedicSearch(false);
+            });
+
+        } catch (err) {
+            console.error('OCR Error:', err);
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาดในการสแกนบัตร',
+                text: err.message || 'กรุณาลองใหม่อีกครั้ง หรือพิมพ์ค้นหาโดยตรงครับ',
+                confirmButtonText: 'เข้าใจแล้ว',
+                customClass: { popup: 'rounded-3xl p-6' }
+            });
+        }
+    }
+
     // 🔍 ดึงรายชื่อ Autocomplete จากฝั่ง KSVR (ไม่แตะ HosXP)
     function fetchMedicAutocomplete(term) {
         const resultsEl = document.getElementById('medic-autocomplete-results');
         const iconEl = document.getElementById('medic-search-icon');
         if (!resultsEl) return;
 
-        if (medicAbortController) {
-            medicAbortController.abort();
-        }
+        if (medicAbortController) medicAbortController.abort();
         medicAbortController = new AbortController();
 
         if (iconEl) iconEl.className = 'fa-solid fa-spinner fa-spin text-emerald-500 text-base sm:text-lg';
@@ -586,9 +829,7 @@
             renderMedicAutocompleteList(medicCurrentItems);
         })
         .catch(err => {
-            if (err.name !== 'AbortError') {
-                console.warn('Medic Autocomplete Warning:', err);
-            }
+            if (err.name !== 'AbortError') console.warn('Medic Autocomplete Warning:', err);
         })
         .finally(() => {
             if (iconEl) iconEl.className = 'fa-solid fa-magnifying-glass text-base sm:text-lg';
@@ -655,7 +896,6 @@
         const resultsEl = document.getElementById('medic-autocomplete-results');
         if (resultsEl) resultsEl.classList.add('hidden');
 
-        // 🛡️ หากพลทหารอยู่ในสถานะปลดทหาร/ขาดหนี/ต้องโทษ/เสียชีวิต แจ้งเตือนชัดเจนและพาไปดูแฟ้มประวัติแทน
         if (pt.is_locked) {
             const fullName = `${pt.rank || ''}${pt.first_name || ''} ${pt.last_name || ''}`.trim();
             const profileUrl = medicPatientShowTemplate.replace('__ID__', pt.id);
@@ -699,13 +939,11 @@
         nodes.forEach((el, i) => {
             el.classList.toggle('bg-emerald-50', i === medicActiveIndex);
             el.classList.toggle('dark:bg-slate-700', i === medicActiveIndex);
-            if (i === medicActiveIndex) {
-                el.scrollIntoView({ block: 'nearest' });
-            }
+            if (i === medicActiveIndex) el.scrollIntoView({ block: 'nearest' });
         });
     }
 
-    // 🎙️ ค้นหาด้วยเสียงภาษาไทย (Web Speech API — เหมาะกับเสนารักษ์หน้างานบนมือถือ)
+    // 🎙️ ค้นหาด้วยเสียงภาษาไทย
     function startMedicVoiceSearch() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -733,13 +971,12 @@
         recognition.onstart = () => {
             if (btn) btn.classList.add('bg-rose-50', 'border-rose-300', 'text-rose-700');
             if (icon) icon.className = 'fa-solid fa-microphone-lines text-rose-500 animate-pulse';
-            if (label) label.textContent = 'กำลังฟัง... พูดชื่อได้เลย';
+            if (label) label.textContent = 'กำลังฟัง...';
         };
 
         recognition.onresult = (event) => {
             const spoken = (event.results[0][0].transcript || '').trim();
             if (spoken && input) {
-                // ลบคำนำหน้าทั่วไปที่มักเผลอพูดออกเล็กน้อยเพื่อให้ค้นเจอแม่นขึ้น
                 const cleaned = spoken.replace(/^(พลทหาร|พลฯ|นาย)\s*/u, '').trim();
                 input.value = cleaned || spoken;
                 input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -764,12 +1001,10 @@
             if (label) label.textContent = 'พูดชื่อ / เลข';
         };
 
-        try {
-            recognition.start();
-        } catch (e) {}
+        try { recognition.start(); } catch (e) {}
     }
 
-    // 📷 สแกน QR Code / บาร์โค้ดด้วยกล้องมือถือ (โหลดไลบรารีเฉพาะตอนกดใช้ ไม่หนักหน้าแดชบอร์ด)
+    // 📷 สแกน QR Code / บาร์โค้ดด้วยกล้องมือถือ
     function loadHtml5QrScript() {
         return new Promise((resolve, reject) => {
             if (typeof window.Html5Qrcode !== 'undefined') return resolve();
@@ -853,13 +1088,11 @@
                     }
                 }
             },
-            willClose: () => {
-                stopMedicQrScanner();
-            }
+            willClose: () => stopMedicQrScanner()
         });
     }
 
-    // 📋 ตัวกรองสถานะรายการติดตามผู้ป่วยของฉัน (Client-side Instant Filter)
+    // 📋 ตัวกรองสถานะรายการติดตามผู้ป่วยของฉัน
     function setMedicTrackingFilter(filterKey) {
         medicCurrentTrackFilter = filterKey;
 
@@ -882,12 +1115,10 @@
         });
 
         const emptyNotice = document.getElementById('medic-tracking-filter-empty');
-        if (emptyNotice) {
-            emptyNotice.classList.toggle('hidden', cards.length === 0 || visibleCount > 0);
-        }
+        if (emptyNotice) emptyNotice.classList.toggle('hidden', cards.length === 0 || visibleCount > 0);
     }
 
-    // 📋 ก๊อปปี้ข้อความรองรับทั้ง HTTPS และ HTTP วงแลนโรงพยาบาล
+    // 📋 ก๊อปปี้ข้อความรองรับทั้ง HTTPS และ HTTP
     function copyMedicText(text, btnEl) {
         const done = () => {
             if (!btnEl) return;
@@ -935,11 +1166,8 @@
                 medicSearchTimer = setTimeout(() => fetchMedicAutocomplete(term), 250);
             });
 
-            // รองรับคีย์บอร์ด ↑ ↓ Enter Escape
             input.addEventListener('keydown', function (e) {
-                if (!resultsEl || resultsEl.classList.contains('hidden') || !medicCurrentItems.length) {
-                    return;
-                }
+                if (!resultsEl || resultsEl.classList.contains('hidden') || !medicCurrentItems.length) return;
                 if (e.key === 'ArrowDown') {
                     e.preventDefault();
                     medicActiveIndex = (medicActiveIndex + 1) % medicCurrentItems.length;
@@ -958,7 +1186,6 @@
             });
         }
 
-        // ปิด Dropdown Autocomplete เมื่อคลิกพื้นที่ว่าง
         document.addEventListener('click', function (e) {
             const card = document.getElementById('medic-search-card');
             if (resultsEl && card && !card.contains(e.target)) {
@@ -966,12 +1193,10 @@
             }
         });
 
-        // 🔔 Laravel Echo Real-time Refresh (อัปเดตเฉพาะยอดวันนี้และรายการติดตาม ไม่แตะกล่องค้นหา!)
+        // 🔔 Laravel Echo Real-time Refresh (อัปเดตเฉพาะยอดวันนี้และรายการติดตาม ไม่แตะกล่องค้นหา)
         if (window.Echo) {
             window.Echo.channel('mews-channel')
-                .listen('.mews.updated', () => {
-                    refreshMedicTrackingOnly();
-                });
+                .listen('.mews.updated', () => refreshMedicTrackingOnly());
         }
 
         function refreshMedicTrackingOnly() {
