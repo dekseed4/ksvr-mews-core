@@ -23,7 +23,7 @@
                     คู่มือและภาพรวมการใช้งานระบบ
                 </h2>
                 <p class="text-slate-300 text-xs sm:text-sm md:text-base leading-relaxed">
-                    สรุปขั้นตอนการทำงานตั้งแต่การสแกนบัตร ปชช. คัดกรองทหารใหม่ การประเมินสัญญาณชีพ MEWS การรับเคสห้องฉุกเฉิน (ER) ไปจนถึงการดูแลตารางยา e-MAR และออกรายงานผู้บริหาร
+                    สรุปขั้นตอนการทำงานตั้งแต่การสแกนบัตร ปชช. คัดกรองทหารใหม่ การประเมิน MEWS ภาคสนาม คิวจุดคัดกรอง (Triage) การรับเคสห้องฉุกเฉิน (ER/OPD) ไปจนถึงตารางยา e-MAR และรายงานผู้บริหาร
                 </p>
             </div>
 
@@ -43,95 +43,113 @@
         </div>
     </div>
 
-    <!-- 🗺️ 2. ภาพรวมกระบวนการทำงานแบบครบวงจร 4 ขั้นตอน (End-to-End Workflow) -->
+    <!-- 🗺️ 2. ภาพรวมกระบวนการทำงานแบบครบวงจร 5 ขั้นตอน (End-to-End Workflow รวมจุดคัดกรอง Triage) -->
     <div class="space-y-4">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
             <h3 class="text-lg sm:text-xl font-black text-slate-800 dark:text-white flex items-center gap-2.5">
                 <span class="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-base">
                     <i class="fa-solid fa-route"></i>
                 </span>
-                <span>ภาพรวมกระบวนการทำงาน (4 ขั้นตอนหลัก)</span>
+                <span>ภาพรวมกระบวนการทำงาน (5 ขั้นตอนหลัก)</span>
             </h3>
             <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                เชื่อมต่อข้อมูลแบบ Real-time ระหว่างหน่วยฝึก • ห้อง ER • ฐานข้อมูล HosXP
+                เชื่อมต่อข้อมูลแบบ Real-time ระหว่างหน่วยฝึก • จุดคัดกรอง • ห้อง ER/OPD • ฐานข้อมูล HosXP
             </span>
         </div>
 
         <div class="bg-white dark:bg-slate-800 rounded-3xl p-5 sm:p-7 shadow-sm border border-slate-200/80 dark:border-slate-700 space-y-6">
             <div class="relative">
                 <!-- เส้นเชื่อมขั้นตอนแนวนอน (Desktop) -->
-                <div class="hidden lg:block absolute top-14 left-12 right-12 h-0.5 bg-gradient-to-r from-teal-300 via-emerald-300 via-rose-300 to-indigo-300 dark:from-teal-800 dark:via-emerald-800 dark:via-rose-800 dark:to-indigo-800 z-0"></div>
+                <div class="hidden xl:block absolute top-14 left-10 right-10 h-0.5 bg-gradient-to-r from-teal-300 via-emerald-300 via-amber-300 via-rose-300 to-indigo-300 dark:from-teal-800 dark:via-emerald-800 dark:via-amber-800 dark:via-rose-800 dark:to-indigo-800 z-0"></div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 relative z-10">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 relative z-10">
 
                     <!-- STEP 1 -->
                     <div class="relative pt-3">
-                        <span class="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3.5 py-0.5 rounded-full bg-teal-600 text-white text-[11px] font-black shadow-sm">
+                        <span class="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3 py-0.5 rounded-full bg-teal-600 text-white text-[11px] font-black shadow-sm">
                             STEP 1
                         </span>
-                        <div class="h-full bg-teal-50/40 dark:bg-teal-900/15 rounded-2xl border-2 border-teal-200 dark:border-teal-800/70 p-5 pt-7 flex flex-col text-center hover:shadow-md hover:-translate-y-0.5 transition-all">
-                            <div class="w-14 h-14 mx-auto rounded-2xl bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 border border-teal-100 dark:border-teal-800 flex items-center justify-center text-2xl shadow-sm mb-3">
+                        <div class="h-full bg-teal-50/40 dark:bg-teal-900/15 rounded-2xl border-2 border-teal-200 dark:border-teal-800/70 p-4 pt-6 flex flex-col text-center hover:shadow-md hover:-translate-y-0.5 transition-all">
+                            <div class="w-12 h-12 mx-auto rounded-2xl bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 border border-teal-100 dark:border-teal-800 flex items-center justify-center text-xl shadow-sm mb-3">
                                 <i class="fa-solid fa-id-card"></i>
                             </div>
-                            <h4 class="font-black text-base text-slate-800 dark:text-white mb-2">คัดกรองแรกรับ &amp; ทะเบียน</h4>
-                            <ul class="text-xs text-slate-600 dark:text-slate-300 space-y-2 text-left mt-1 font-medium">
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-teal-500 mt-0.5 shrink-0"></i> สแกนหน้าบัตร ปชช. กล้องสด (OCR + Mod-11)</li>
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-teal-500 mt-0.5 shrink-0"></i> คัดแยกกลุ่มสี เขียว / เหลือง / แดง พร้อมซักโรคประจำตัว</li>
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-teal-500 mt-0.5 shrink-0"></i> ซิงค์รหัส HN และสิทธิการรักษาจาก HosXP ทั้งผลัด</li>
+                            <h4 class="font-black text-sm sm:text-base text-slate-800 dark:text-white mb-2">คัดกรองแรกรับ &amp; ทะเบียน</h4>
+                            <ul class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 text-left mt-1 font-medium">
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-teal-500 mt-0.5 shrink-0"></i> สแกนบัตร ปชช. กล้องสด (OCR + Mod-11)</li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-teal-500 mt-0.5 shrink-0"></i> คัดแยกสีเขียว/เหลือง/แดง &amp; โรคประจำตัว</li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-teal-500 mt-0.5 shrink-0"></i> ซิงค์ HN และสิทธิการรักษาจาก HosXP</li>
                             </ul>
                         </div>
                     </div>
 
                     <!-- STEP 2 -->
                     <div class="relative pt-3">
-                        <span class="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-black shadow-sm">
+                        <span class="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-black shadow-sm">
                             STEP 2
                         </span>
-                        <div class="h-full bg-emerald-50/40 dark:bg-emerald-900/15 rounded-2xl border-2 border-emerald-200 dark:border-emerald-800/70 p-5 pt-7 flex flex-col text-center hover:shadow-md hover:-translate-y-0.5 transition-all">
-                            <div class="w-14 h-14 mx-auto rounded-2xl bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800 flex items-center justify-center text-2xl shadow-sm mb-3">
+                        <div class="h-full bg-emerald-50/40 dark:bg-emerald-900/15 rounded-2xl border-2 border-emerald-200 dark:border-emerald-800/70 p-4 pt-6 flex flex-col text-center hover:shadow-md hover:-translate-y-0.5 transition-all">
+                            <div class="w-12 h-12 mx-auto rounded-2xl bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800 flex items-center justify-center text-xl shadow-sm mb-3">
                                 <i class="fa-solid fa-walkie-talkie"></i>
                             </div>
-                            <h4 class="font-black text-base text-slate-800 dark:text-white mb-2">เสนารักษ์ (ภาคสนาม)</h4>
-                            <ul class="text-xs text-slate-600 dark:text-slate-300 space-y-2 text-left mt-1 font-medium">
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-emerald-500 mt-0.5 shrink-0"></i> สแกนบัตรค้นหาประวัติเข้าหน้าประเมิน MEWS ทันที</li>
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-emerald-500 mt-0.5 shrink-0"></i> บันทึกสัญญาณชีพ (V/S) และอาการฉุกเฉินเฉพาะโรค</li>
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-emerald-500 mt-0.5 shrink-0"></i> แจ้งเตือน ER, Discord และเฝ้าระวังการระบาดอัตโนมัติ</li>
+                            <h4 class="font-black text-sm sm:text-base text-slate-800 dark:text-white mb-2">เสนารักษ์ (ภาคสนาม)</h4>
+                            <ul class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 text-left mt-1 font-medium">
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-emerald-500 mt-0.5 shrink-0"></i> สแกนบัตรค้นหาประวัติเข้าประเมิน MEWS ทันที</li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-emerald-500 mt-0.5 shrink-0"></i> บันทึก V/S และอาการฉุกเฉินเฉพาะโรค</li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-emerald-500 mt-0.5 shrink-0"></i> แจ้งเตือนรอบแรกทุกเคส (รอบถัดไปไม่เด้งซ้ำ)</li>
                             </ul>
                         </div>
                     </div>
 
-                    <!-- STEP 3 -->
+                    <!-- STEP 3 (เพิ่มใหม่): จุดคัดกรอง (Triage) -->
                     <div class="relative pt-3">
-                        <span class="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3.5 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-black shadow-sm">
+                        <span class="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3 py-0.5 rounded-full bg-amber-500 text-white text-[11px] font-black shadow-sm">
                             STEP 3
                         </span>
-                        <div class="h-full bg-rose-50/40 dark:bg-rose-900/15 rounded-2xl border-2 border-rose-200 dark:border-rose-800/70 p-5 pt-7 flex flex-col text-center hover:shadow-md hover:-translate-y-0.5 transition-all">
-                            <div class="w-14 h-14 mx-auto rounded-2xl bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-800 flex items-center justify-center text-2xl shadow-sm mb-3">
-                                <i class="fa-solid fa-truck-medical"></i>
+                        <div class="h-full bg-amber-50/50 dark:bg-amber-900/15 rounded-2xl border-2 border-amber-300 dark:border-amber-800/70 p-4 pt-6 flex flex-col text-center hover:shadow-md hover:-translate-y-0.5 transition-all">
+                            <div class="w-12 h-12 mx-auto rounded-2xl bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-xl shadow-sm mb-3">
+                                <i class="fa-solid fa-clipboard-check"></i>
                             </div>
-                            <h4 class="font-black text-base text-slate-800 dark:text-white mb-2">ห้องฉุกเฉิน (ER) &amp; แพทย์</h4>
-                            <ul class="text-xs text-slate-600 dark:text-slate-300 space-y-2 text-left mt-1 font-medium">
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-rose-500 mt-0.5 shrink-0"></i> รับแจ้งเตือน Real-time + Web Push ปลุกหน้าจอมือถือ</li>
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-rose-500 mt-0.5 shrink-0"></i> เปิดแฟ้มประเมินสัญญาณชีพซ้ำเมื่อผู้ป่วยมาถึง ER</li>
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-rose-500 mt-0.5 shrink-0"></i> สั่งจำหน่าย (กลับหน่วย / Admit / Refer) แจ้งกลับหน่วยฝึก</li>
+                            <h4 class="font-black text-sm sm:text-base text-slate-800 dark:text-white mb-2">จุดคัดกรอง (Triage)</h4>
+                            <ul class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 text-left mt-1 font-medium">
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-amber-500 mt-0.5 shrink-0"></i> จัดคิวเรียงคะแนน <b>MEWS สูงสุดขึ้นอันดับ 1</b></li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-amber-500 mt-0.5 shrink-0"></i> ตรวจสอบอาการและคัดแยกส่งต่อ ER / OPD</li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-amber-500 mt-0.5 shrink-0"></i> พิมพ์ใบ MEWS พร้อมช่องเขียนรับรองจุดคัดกรอง</li>
                             </ul>
                         </div>
                     </div>
 
                     <!-- STEP 4 -->
                     <div class="relative pt-3">
-                        <span class="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3.5 py-0.5 rounded-full bg-indigo-600 text-white text-[11px] font-black shadow-sm">
+                        <span class="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-black shadow-sm">
                             STEP 4
                         </span>
-                        <div class="h-full bg-indigo-50/40 dark:bg-indigo-900/15 rounded-2xl border-2 border-indigo-200 dark:border-indigo-800/70 p-5 pt-7 flex flex-col text-center hover:shadow-md hover:-translate-y-0.5 transition-all">
-                            <div class="w-14 h-14 mx-auto rounded-2xl bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center text-2xl shadow-sm mb-3">
+                        <div class="h-full bg-rose-50/40 dark:bg-rose-900/15 rounded-2xl border-2 border-rose-200 dark:border-rose-800/70 p-4 pt-6 flex flex-col text-center hover:shadow-md hover:-translate-y-0.5 transition-all">
+                            <div class="w-12 h-12 mx-auto rounded-2xl bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-800 flex items-center justify-center text-xl shadow-sm mb-3">
+                                <i class="fa-solid fa-truck-medical"></i>
+                            </div>
+                            <h4 class="font-black text-sm sm:text-base text-slate-800 dark:text-white mb-2">ห้องฉุกเฉิน (ER) &amp; แพทย์</h4>
+                            <ul class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 text-left mt-1 font-medium">
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-rose-500 mt-0.5 shrink-0"></i> รับแจ้งเตือน Real-time + Web Push ปลุกมือถือ</li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-rose-500 mt-0.5 shrink-0"></i> เปิดแฟ้มประเมินสัญญาณชีพซ้ำเมื่อถึง ER</li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-rose-500 mt-0.5 shrink-0"></i> สั่งจำหน่าย (กลับหน่วย / Admit / Refer)</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- STEP 5 -->
+                    <div class="relative pt-3 sm:col-span-2 lg:col-span-1">
+                        <span class="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3 py-0.5 rounded-full bg-indigo-600 text-white text-[11px] font-black shadow-sm">
+                            STEP 5
+                        </span>
+                        <div class="h-full bg-indigo-50/40 dark:bg-indigo-900/15 rounded-2xl border-2 border-indigo-200 dark:border-indigo-800/70 p-4 pt-6 flex flex-col text-center hover:shadow-md hover:-translate-y-0.5 transition-all">
+                            <div class="w-12 h-12 mx-auto rounded-2xl bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center text-xl shadow-sm mb-3">
                                 <i class="fa-solid fa-pills"></i>
                             </div>
-                            <h4 class="font-black text-base text-slate-800 dark:text-white mb-2">ดูแลต่อเนื่อง &amp; นำปลด</h4>
-                            <ul class="text-xs text-slate-600 dark:text-slate-300 space-y-2 text-left mt-1 font-medium">
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-indigo-500 mt-0.5 shrink-0"></i> ดูแลผู้ป่วยแยกกัก CI / ห้องพยาบาลหน่วย &amp; ตารางยา e-MAR</li>
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-indigo-500 mt-0.5 shrink-0"></i> แจ้งเตือนคิวนัดพบแพทย์ล่วงหน้า 1 วัน และวันนัดจริง</li>
-                                <li class="flex items-start gap-2"><i class="fa-solid fa-check text-indigo-500 mt-0.5 shrink-0"></i> บันทึกและติดตามเอกสารนำปลด (ทางกาย / สุขภาพจิต)</li>
+                            <h4 class="font-black text-sm sm:text-base text-slate-800 dark:text-white mb-2">ดูแลต่อเนื่อง &amp; นำปลด</h4>
+                            <ul class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 text-left mt-1 font-medium">
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-indigo-500 mt-0.5 shrink-0"></i> ห้องพยาบาลหน่วย / แยกกัก CI &amp; ตารางยา e-MAR</li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-indigo-500 mt-0.5 shrink-0"></i> แจ้งเตือนคิวนัดพบแพทย์ล่วงหน้า 1 วัน</li>
+                                <li class="flex items-start gap-1.5"><i class="fa-solid fa-check text-indigo-500 mt-0.5 shrink-0"></i> ติดตามเอกสารนำปลด (กาย / สุขภาพจิต)</li>
                             </ul>
                         </div>
                     </div>
@@ -162,7 +180,7 @@
         </div>
     </div>
 
-    <!-- 📚 3. คู่มือการใช้งานแยกตามฟีเจอร์ (เลือกกรองตามบทบาทได้) -->
+    <!-- 📚 3. คู่มือการใช้งานแยกตามฟีเจอร์ (เลือกกรองตามบทบาท รวมแท็บจุดคัดกรอง) -->
     <div class="space-y-5">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 px-1">
             <h3 class="text-lg sm:text-xl font-black text-slate-800 dark:text-white flex items-center gap-2.5">
@@ -174,7 +192,8 @@
 
             <!-- ปุ่มกรองตามบทบาท -->
             <div class="flex flex-wrap gap-1.5" id="help-role-filters">
-                <button type="button" onclick="filterHelpCards('all', this)" class="help-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-black bg-slate-800 text-white shadow-sm transition-all">ทั้งหมด (6)</button>
+                <button type="button" onclick="filterHelpCards('all', this)" class="help-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-black bg-slate-800 text-white shadow-sm transition-all">ทั้งหมด (7)</button>
+                <button type="button" onclick="filterHelpCards('screening', this)" class="help-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-amber-400 transition-all">จุดคัดกรอง</button>
                 <button type="button" onclick="filterHelpCards('medic', this)" class="help-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-emerald-400 transition-all">เสนารักษ์</button>
                 <button type="button" onclick="filterHelpCards('er', this)" class="help-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-rose-400 transition-all">พยาบาล ER / OPD</button>
                 <button type="button" onclick="filterHelpCards('admin', this)" class="help-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition-all">ทะเบียน / ผู้บริหาร</button>
@@ -184,7 +203,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
 
             <!-- การ์ด 1: สแกนบัตร ปชช. กล้องสด (OCR) -->
-            <div data-roles="medic er admin" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
+            <div data-roles="screening medic er admin" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between gap-2 mb-4">
                         <div class="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xl">
@@ -209,7 +228,7 @@
             </div>
 
             <!-- การ์ด 2: คัดกรองทหารใหม่แรกรับ -->
-            <div data-roles="er admin" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
+            <div data-roles="screening er admin" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between gap-2 mb-4">
                         <div class="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 flex items-center justify-center text-xl">
@@ -233,8 +252,33 @@
                 </div>
             </div>
 
-            <!-- การ์ด 3: ประเมิน MEWS & รับเคสห้องฉุกเฉิน -->
-            <div data-roles="medic er" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
+            <!-- การ์ด 3 (เพิ่มใหม่): จุดคัดกรองผู้ป่วย (Triage Queue) & พิมพ์ใบรับรอง MEWS -->
+            <div data-roles="screening er admin" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border-2 border-amber-200/90 dark:border-amber-800/70 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between gap-2 mb-4">
+                        <div class="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xl">
+                            <i class="fa-solid fa-clipboard-check"></i>
+                        </div>
+                        <span class="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">จุดคัดกรอง (Triage)</span>
+                    </div>
+                    <h4 class="font-black text-slate-800 dark:text-white text-base mb-2">3. จุดคัดกรองผู้ป่วย &amp; พิมพ์ใบรับรอง MEWS</h4>
+                    <ol class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 list-decimal list-inside leading-relaxed">
+                        <li>เข้าเมนู <b>จุดคัดกรอง (Triage)</b> คิวจะเรียงผู้ป่วยคะแนน <b>MEWS สูงสุดขึ้นอันดับ 1</b></li>
+                        <li>ระบบเด้งแจ้งเตือนทันทีสำหรับ <b>ประเมิน MEWS รอบแรกทุกเคส</b> (รอบถัดไปไม่เด้งซ้ำ)</li>
+                        <li>แตะการ์ดสีเพื่อคัดแยกดูเคสฉุกเฉิน, เฝ้าระวัง หรือปกติ (ส่ง OPD) และกดประเมินซ้ำได้</li>
+                        <li>กด <b>พิมพ์ใบ MEWS</b> จะมีช่องจุดไข่ปลาและคอลัมน์ <b>"จุดคัดกรอง"</b> สำหรับเขียนรับรองด้วยมือ</li>
+                    </ol>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                    <span class="text-[11px] text-slate-400 font-semibold"><i class="fa-solid fa-print text-amber-500 mr-1"></i>รองรับช่องเขียนมือ A4</span>
+                    <a href="{{ route('backend.dashboard', ['view' => 'screening']) }}" class="text-xs font-black text-amber-600 hover:text-amber-700 inline-flex items-center gap-1">
+                        เปิดหน้าจุดคัดกรอง <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- การ์ด 4: ประเมิน MEWS & รับเคสห้องฉุกเฉิน -->
+            <div data-roles="screening medic er" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between gap-2 mb-4">
                         <div class="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center text-xl">
@@ -242,10 +286,10 @@
                         </div>
                         <span class="px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-50 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">เสนารักษ์ &amp; ห้อง ER</span>
                     </div>
-                    <h4 class="font-black text-slate-800 dark:text-white text-base mb-2">3. ประเมิน MEWS, รับแจ้งเตือน &amp; จบเคส</h4>
+                    <h4 class="font-black text-slate-800 dark:text-white text-base mb-2">4. ประเมิน MEWS, รับแจ้งเตือน &amp; จบเคส</h4>
                     <ol class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 list-decimal list-inside leading-relaxed">
-                        <li><b>เสนารักษ์:</b> คีย์ V/S และอาการฉุกเฉิน ระบบคำนวณสีและส่งเข้า ER ทันที</li>
-                        <li><b>ห้อง ER:</b> รับเสียงเตือน + Web Push กดเปิดแฟ้มเพื่อ <b>ประเมินซ้ำ</b></li>
+                        <li><b>เสนารักษ์:</b> คีย์ V/S และอาการฉุกเฉิน ระบบคำนวณสีและแจ้งเตือนรอบแรกทันที</li>
+                        <li><b>ห้อง ER / OPD:</b> รับเสียงเตือน + Web Push กดเปิดแฟ้มเพื่อ <b>ประเมินซ้ำ</b></li>
                         <li><b>จบเคส:</b> เลือกจำหน่ายกลับหน่วย / Admit / Refer พร้อมระบุเตียงหรือ รพ.</li>
                         <li>เมื่อผู้ป่วยออกจาก รพ. ให้กดบันทึก <b>กลับหน่วยฝึกแล้ว</b> เพื่ออัปเดตยอด</li>
                     </ol>
@@ -258,7 +302,7 @@
                 </div>
             </div>
 
-            <!-- การ์ด 4: ห้องพยาบาลหน่วยฝึก & ตารางยา e-MAR -->
+            <!-- การ์ด 5: ห้องพยาบาลหน่วยฝึก & ตารางยา e-MAR -->
             <div data-roles="medic er admin" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between gap-2 mb-4">
@@ -267,12 +311,12 @@
                         </div>
                         <span class="px-2.5 py-1 rounded-full text-[11px] font-black bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">เสนารักษ์ &amp; พยาบาล</span>
                     </div>
-                    <h4 class="font-black text-slate-800 dark:text-white text-base mb-2">4. ห้องพยาบาลแยกนอน (CI) &amp; ระบบยา e-MAR</h4>
+                    <h4 class="font-black text-slate-800 dark:text-white text-base mb-2">5. ห้องพยาบาลแยกนอน (CI) &amp; ระบบยา e-MAR</h4>
                     <ol class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 list-decimal list-inside leading-relaxed">
                         <li>ลงทะเบียนพลทหารที่แยกนอนห้องพยาบาลหน่วยฝึก หรือฝากนอน รพ.ค่ายฯ</li>
                         <li>เพิ่มรายการยาในตาราง <b>e-MAR</b> รองรับมื้อปกติ, เวลามีอาการ (PRN) และยาทา</li>
-                        <li>ติ๊กเช็กการกินยาแต่ละมื้อ และบันทึกสัญญาณชีพรายวันของเคสแยกกัก</li>
-                        <li>บันทึกคำสั่ง <b>งดฝึก / ลดปริมาณการฝึก</b> เพื่อซิงค์ยอดสถานะกำลังพล</li>
+                        <li>ติ๊กเช็กการกินยาแต่ละมื้อ และบันทึกสัญญาณชีพรายวัน (06:00 / 18:00)</li>
+                        <li>ใช้งานได้สะดวกทั้งโหมดการ์ดมือถือและสั่งพิมพ์ใบตาราง A4</li>
                     </ol>
                 </div>
                 <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
@@ -283,16 +327,16 @@
                 </div>
             </div>
 
-            <!-- การ์ด 5: รายงานเจ็บป่วยประจำวัน & เอกสารนำปลด -->
+            <!-- การ์ด 6: รายงานเจ็บป่วยประจำวัน & เอกสารนำปลด -->
             <div data-roles="er admin" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between gap-2 mb-4">
-                        <div class="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xl">
+                        <div class="w-12 h-12 rounded-2xl bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center text-xl">
                             <i class="fa-solid fa-file-waveform"></i>
                         </div>
-                        <span class="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">พยาบาล / ผู้บริหาร</span>
+                        <span class="px-2.5 py-1 rounded-full text-[11px] font-black bg-purple-50 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">พยาบาล / ผู้บริหาร</span>
                     </div>
-                    <h4 class="font-black text-slate-800 dark:text-white text-base mb-2">5. รายงานเจ็บป่วยประจำวัน (JPG) &amp; นำปลด</h4>
+                    <h4 class="font-black text-slate-800 dark:text-white text-base mb-2">6. รายงานเจ็บป่วยประจำวัน (JPG) &amp; นำปลด</h4>
                     <ol class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 list-decimal list-inside leading-relaxed">
                         <li>สรุปครบ 5 หมวด: ทางเดินหายใจ, ความร้อน, สุขภาพจิต, นอน รพ., นำปลด</li>
                         <li>กดปุ่ม <b>ดึง Dx. ล่าสุดจาก HosXP</b> เพื่อลดการพิมพ์ชื่อโรคผิดพลาด</li>
@@ -301,15 +345,15 @@
                     </ol>
                 </div>
                 <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
-                    <span class="text-[11px] text-slate-400 font-semibold"><i class="fa-solid fa-image text-amber-500 mr-1"></i>ส่งออกสไลด์คมชัดสูง</span>
-                    <a href="{{ route('backend.morbidity_reports.index') }}" class="text-xs font-black text-amber-600 hover:text-amber-700 inline-flex items-center gap-1">
+                    <span class="text-[11px] text-slate-400 font-semibold"><i class="fa-solid fa-image text-purple-500 mr-1"></i>ส่งออกสไลด์คมชัดสูง</span>
+                    <a href="{{ route('backend.morbidity_reports.index') }}" class="text-xs font-black text-purple-600 hover:text-purple-700 inline-flex items-center gap-1">
                         เปิดรายงานประจำวัน <i class="fa-solid fa-arrow-right text-[10px]"></i>
                     </a>
                 </div>
             </div>
 
-            <!-- การ์ด 6: นัดพบแพทย์, KSVR AI & การติดตั้งแอป PWA -->
-            <div data-roles="medic er admin" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
+            <!-- การ์ด 7: นัดพบแพทย์, KSVR AI & การติดตั้งแอป PWA -->
+            <div data-roles="screening medic er admin" class="help-guide-card bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between gap-2 mb-4">
                         <div class="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 flex items-center justify-center text-xl">
@@ -317,7 +361,7 @@
                         </div>
                         <span class="px-2.5 py-1 rounded-full text-[11px] font-black bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">ทุกตำแหน่ง</span>
                     </div>
-                    <h4 class="font-black text-slate-800 dark:text-white text-base mb-2">6. คิวนัดพบแพทย์, AI วิเคราะห์ &amp; แอปมือถือ</h4>
+                    <h4 class="font-black text-slate-800 dark:text-white text-base mb-2">7. คิวนัดพบแพทย์, AI วิเคราะห์ &amp; แอปมือถือ</h4>
                     <ol class="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 list-decimal list-inside leading-relaxed">
                         <li>ระบบแจ้งเตือนคิวนัดพบแพทย์ล่วงหน้า 1 วัน และวันนัดจริงทันทีที่เข้าระบบ</li>
                         <li>กดปุ่ม <b>หุ่นยนต์ AI มุมขวาล่าง</b> เพื่อถามสรุปยอด Admit, คัดกรอง, ยา e-MAR</li>

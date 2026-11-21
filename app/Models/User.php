@@ -67,4 +67,29 @@ class User extends Authenticatable
     {
         return $this->belongsTo(\App\Models\MilitaryUnit::class, 'military_unit_id');
     }
+
+    public function isOnline(): bool
+    {
+        if (\Illuminate\Support\Facades\Cache::has("user-is-online-{$this->id}")) {
+            return true;
+        }
+
+        return $this->last_seen_at !== null && $this->last_seen_at->gt(now()->subMinutes(5));
+    }
+
+    public function getLastSeenLabelAttribute(): string
+    {
+        if ($this->isOnline()) {
+            return 'กำลังออนไลน์';
+        }
+
+        return $this->last_seen_at
+            ? 'ใช้งานเมื่อ ' . $this->last_seen_at->locale('th')->diffForHumans()
+            : 'ยังไม่เคยเข้าใช้งาน';
+    }
+
+    public function scopeOnline($query)
+    {
+        return $query->where('last_seen_at', '>=', now()->subMinutes(5));
+    }
 }

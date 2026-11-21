@@ -66,23 +66,18 @@ return [
 
         // การเชื่อมต่อสำหรับฐานข้อมูล HosXP
         'hosxp' => [
-            'driver' => env('DB_HOSXP_CONNECTION', 'mysql'),
-            'host' => env('DB_HOSXP_HOST', '127.0.0.1'),
-            'port' => env('DB_HOSXP_PORT', '3306'),
-            'database' => env('DB_HOSXP_DATABASE', 'hos'),
-            'username' => env('DB_HOSXP_USERNAME', 'root'),
-            'password' => env('DB_HOSXP_PASSWORD', ''),
-            'unix_socket' => env('DB_SOCKET', ''),
-            'charset' => 'tis620', // สำคัญมาก! HosXP ส่วนใหญ่มักใช้ TIS620
-            'collation' => 'tis620_thai_ci',
-            'prefix' => '',
-            'prefix_indexes' => true,
-            'strict' => false,
-            'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-                PDO::ATTR_EMULATE_PREPARES => true, // เพิ่มเพื่อความเข้ากันได้กับฐานข้อมูลเก่า
-            ]) : [],
+            'driver'   => 'mysql',
+            'host'     => env('HOSXP_DB_HOST', '192.168.x.x'),
+            'port'     => env('HOSXP_DB_PORT', '3306'),
+            'database' => env('HOSXP_DB_DATABASE', 'hos'),
+            'username' => env('HOSXP_DB_USERNAME', ''),
+            'password' => env('HOSXP_DB_PASSWORD', ''),
+            'charset'  => 'utf8mb4',
+            'collation'=> 'utf8mb4_unicode_ci',
+            'strict'   => false,
+            'options'  => extension_loaded('pdo_mysql') ? [
+                \PDO::ATTR_TIMEOUT => 5, // ตัดการรอทันทีหาก HosXP ไม่ตอบสนองใน 5 วินาที
+            ] : [],
         ],
 
         'mariadb' => [
