@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
 use Illuminate\Database\Eloquent\Model;
 
 class RecruitInfirmaryStay extends Model
 {
+    use RecordsSystemLog;
+    
     protected $fillable = [
         'patient_id',
         'military_unit_id',

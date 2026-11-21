@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class RecruitScreening extends Model
 {
-    use HasFactory;
+    use HasFactory, RecordsSystemLog;
 
     protected $fillable = [
         'patient_id',

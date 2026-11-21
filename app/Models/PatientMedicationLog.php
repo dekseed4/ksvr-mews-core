@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
 use Illuminate\Database\Eloquent\Model;
 
 class PatientMedicationLog extends Model
 {
+    use RecordsSystemLog;
+    
     protected $fillable = [
         'patient_medication_id',
         'patient_id',

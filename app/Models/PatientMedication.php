@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
 use Illuminate\Database\Eloquent\Model;
 
 class PatientMedication extends Model
 {
+    use RecordsSystemLog;
     protected $table = 'patient_medications';
 
     protected $fillable = [

@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Patient extends Model
 {
-    use HasFactory;
+    use HasFactory, RecordsSystemLog;
 
     protected $fillable = [
         'cid', 'hn', 'rank', 'first_name', 'last_name', 'dob', 'blood_group',

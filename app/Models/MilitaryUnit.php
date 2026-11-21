@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
 use Illuminate\Database\Eloquent\Model;
 
 class MilitaryUnit extends Model
 {
+    use RecordsSystemLog;
     protected $fillable = ['name', 'short_name', 'battalion', 'is_active'];
 
     // 1 หน่วยทหาร มีเสนารักษ์ (Users) ได้หลายคน

@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
+
 use Illuminate\Database\Eloquent\Model;
 
 class CovidVitalLog extends Model
 {
+    use RecordsSystemLog;
+    
     protected $fillable = [
         'patient_id',
         'morbidity_id',

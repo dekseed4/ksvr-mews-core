@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
 use Illuminate\Database\Eloquent\Model;
 
 class MewsAssessment extends Model
 {
+    use RecordsSystemLog;
+    
     protected $fillable = [
         'patient_id', 'evaluator_id', 'symptoms', 'temperature', 
         'heart_rate', 'respiratory_rate', 'systolic_bp', 'o2sat',

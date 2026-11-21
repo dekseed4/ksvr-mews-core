@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
 use Illuminate\Database\Eloquent\Model;
 
 class MewsTemplate extends Model
 {
+    use RecordsSystemLog;
     protected $fillable = [
         'name', 
         'description', 

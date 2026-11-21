@@ -9,13 +9,14 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use App\Traits\RecordsSystemLog;
 
 #[Fillable(['rank', 'name', 'username', 'email', 'password', 'phone', 'roles', 'must_change_password', 'military_unit_id', 'intake_batch'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, RecordsSystemLog;
 
     /**
      * 🌟 กำหนด $fillable แบบ Property มาตรฐานควบคู่กัน เพื่อป้องกันปัญหา Attribute Cache บน PHP-FPM

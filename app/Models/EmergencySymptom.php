@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Traits\RecordsSystemLog;
 use Illuminate\Database\Eloquent\Model;
 
 class EmergencySymptom extends Model
 {
+    use RecordsSystemLog;
     // 🌟 1. ประกาศรายชื่อคอลัมน์ที่อนุญาตให้บันทึกข้อมูลผ่านคำสั่ง create() หรือ update()
     protected $fillable = [
         'category',
