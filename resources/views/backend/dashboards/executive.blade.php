@@ -204,16 +204,25 @@
                 </div>
             </div>
 
-            <!-- ส่งต่อ / แอดมิต -->
-            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col justify-between hover:-translate-y-1 hover:shadow-md transition-all border-b-4 border-b-amber-500 group">
+            <!-- ส่งต่อ / แอดมิต (คลิกดูรายชื่อทั้งหมดได้) -->
+            <div onclick="showAdmitReferModal()"
+                 class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:border-amber-400 flex flex-col justify-between hover:-translate-y-1 hover:shadow-md transition-all border-b-4 border-b-amber-500 group cursor-pointer">
                 <div class="flex justify-between items-start mb-4">
                     <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
                         <i class="fa-solid fa-bed-pulse"></i>
                     </div>
+                    <span class="px-2.5 py-1 bg-amber-50 text-amber-700 text-[11px] font-bold rounded-lg border border-amber-200">
+                        คลิกดูรายชื่อ <i class="fa-solid fa-magnifying-glass-plus ml-0.5"></i>
+                    </span>
                 </div>
                 <div>
                     <h3 class="text-3xl font-black text-amber-600">{{ $stats['admit_refer'] ?? 0 }} <span class="text-sm font-medium text-slate-500">นาย</span></h3>
-                    <p class="text-sm font-bold text-slate-400 mt-1">Admit รพ. หรือ ส่งต่อ</p>
+                    <p class="text-sm font-bold text-slate-400 mt-1">
+                        Admit รพ. หรือ ส่งต่อ
+                        @if(($stats['admit_refer_cases'] ?? 0) > ($stats['admit_refer'] ?? 0))
+                            <span class="text-xs text-amber-600">({{ $stats['admit_refer_cases'] }} ครั้ง)</span>
+                        @endif
+                    </p>
                 </div>
             </div>
         </div>
@@ -638,5 +647,78 @@ function toggleFilterMode() {
             }
         });
     }
+
+    const admitReferListData = @json($admitReferDetails ?? []);
+    const patientShowUrlTemplate = "{{ route('backend.patients.show', '__ID__') }}";
+
+    function showAdmitReferModal() {
+        if (!admitReferListData || admitReferListData.length === 0) {
+            Swal.fire({
+                icon: 'info',
+                title: 'รายชื่อผู้ป่วย Admit รพ. / ส่งต่อ',
+                text: 'ไม่มีรายการผู้ป่วย Admit หรือส่งต่อในช่วงเวลาที่เลือกครับ',
+                confirmButtonText: 'ปิดหน้าต่าง',
+                customClass: { popup: 'rounded-3xl' }
+            });
+            return;
+        }
+
+        let html = `<div class="space-y-2.5 mt-3 text-left max-h-[62vh] overflow-y-auto pr-1">`;
+        admitReferListData.forEach((item, idx) => {
+            const targetUrl = item.mews_id
+                ? mewsShowUrlTemplate.replace('__ID__', item.mews_id)
+                : patientShowUrlTemplate.replace('__ID__', item.patient_id);
+
+            const hospBadge = item.is_public
+                ? 'bg-blue-100 text-blue-800 border-blue-200'
+                : 'bg-amber-100 text-amber-800 border-amber-200';
+
+            const statusBadge = item.is_active
+                ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200">กำลังนอน รพ.</span>'
+                : '<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">กลับหน่วยแล้ว</span>';
+
+            const multiTag = item.admit_count > 1
+                ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-black bg-purple-100 text-purple-700 border border-purple-200">Admit ${item.admit_count} ครั้ง</span>`
+                : '';
+
+            html += `
+                <div class="p-3.5 bg-slate-50 hover:bg-white rounded-2xl border border-slate-200 space-y-1.5 transition-colors">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="font-black text-slate-800 text-sm">
+                            ${idx + 1}. ${item.full_name}
+                            <span class="text-xs font-bold text-indigo-600 ml-1">(${item.unit})</span>
+                            ${multiTag}
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="px-2 py-0.5 rounded-md text-[11px] font-bold border ${hospBadge}">${item.hosp_label}</span>
+                            ${statusBadge}
+                        </div>
+                    </div>
+                    <div class="text-xs text-slate-600">
+                        <b>Dx.:</b> <span class="text-indigo-700 font-bold">${item.dx}</span>
+                        <span class="text-slate-400 ml-1">| วันที่: ${item.date_text}</span>
+                    </div>
+                    <div class="flex items-center justify-between pt-1 border-t border-slate-200/70 text-[11px]">
+                        <span class="text-slate-400">HN: ${item.hn} • ${item.source}</span>
+                        <a href="${targetUrl}" class="font-bold text-indigo-600 hover:underline">เปิดดูรายละเอียด →</a>
+                    </div>
+                </div>
+            `;
+        });
+        html += `</div>`;
+
+        Swal.fire({
+            title: `<div class="text-lg md:text-xl font-black text-amber-700 flex items-center justify-center gap-2"><i class="fa-solid fa-bed-pulse"></i> รายชื่อผู้ป่วย Admit รพ. / ส่งต่อ (${admitReferListData.length} นาย)</div>`,
+            html: html,
+            width: '42rem',
+            showCloseButton: true,
+            confirmButtonText: 'ปิดหน้าต่าง',
+            customClass: {
+                popup: 'rounded-3xl p-5',
+                confirmButton: 'bg-slate-800 text-white font-bold rounded-xl px-6 py-2.5'
+            }
+        });
+    }
+    
 </script>
 @endsection

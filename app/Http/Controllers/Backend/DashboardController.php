@@ -424,6 +424,7 @@ class DashboardController extends Controller
 
     // =================================================================
     // 👔 4. แดชบอร์ดผู้บริหาร (Executive Dashboard) - Full Enterprise Edition
+    // คำนวณทุกมิติจากฐานข้อมูล KSVR 100% (ไม่รบกวนฐานข้อมูล HosXP)
     // =================================================================
     private function executiveDashboard(Request $request)
     {
@@ -434,12 +435,19 @@ class DashboardController extends Controller
         $startDateInput = $request->query('start_date', date('Y-m-d'));
         $endDateInput   = $request->query('end_date', date('Y-m-d'));
 
-        $thaiMonthsShort = [1 => 'ม.ค.', 2 => 'ก.พ.', 3 => 'มี.ค.', 4 => 'เม.ย.', 5 => 'พ.ค.', 6 => 'มิ.ย.', 7 => 'ก.ค.', 8 => 'ส.ค.', 9 => 'ก.ย.', 10 => 'ต.ค.', 11 => 'พ.ย.', 12 => 'ธ.ค.'];
+        $thaiMonthsShort = [
+            1 => 'ม.ค.', 2 => 'ก.พ.', 3 => 'มี.ค.', 4 => 'เม.ย.',
+            5 => 'พ.ค.', 6 => 'มิ.ย.', 7 => 'ก.ค.', 8 => 'ส.ค.',
+            9 => 'ก.ย.', 10 => 'ต.ค.', 11 => 'พ.ย.', 12 => 'ธ.ค.',
+        ];
 
+        // -----------------------------------------------------------------
+        // 1. คำนวณช่วงเวลาปัจจุบันและช่วงก่อนหน้า (สำหรับ % เปรียบเทียบแนวโน้ม)
+        // -----------------------------------------------------------------
         if ($filterMode === 'custom') {
             $startDate = Carbon::parse($startDateInput)->startOfDay();
             $endDate   = Carbon::parse($endDateInput)->endOfDay();
-            
+
             if ($endDate->lt($startDate)) {
                 $endDate = $startDate->copy()->endOfDay();
                 $endDateInput = $startDateInput;
@@ -452,17 +460,16 @@ class DashboardController extends Controller
             $startThai = $startDate->day . ' ' . $thaiMonthsShort[$startDate->month] . ' ' . ($startDate->year + 543);
             $endThai   = $endDate->day . ' ' . $thaiMonthsShort[$endDate->month] . ' ' . ($endDate->year + 543);
 
-            $periodText = ($startDateInput === $endDateInput) 
-                ? '(วันที่ ' . $startThai . ')' 
+            $periodText = ($startDateInput === $endDateInput)
+                ? '(วันที่ ' . $startThai . ')'
                 : '(ช่วงวันที่ ' . $startThai . ' - ' . $endThai . ')';
             $trendText  = 'ตามช่วงเวลาที่กำหนด';
-            $badgeText  = ($startDateInput === $endDateInput) 
-                ? 'ประจำวันที่ ' . $startThai 
+            $badgeText  = ($startDateInput === $endDateInput)
+                ? 'ประจำวันที่ ' . $startThai
                 : 'ช่วงวันที่ ' . $startThai . ' - ' . $endThai;
-
         } elseif ($filterMode === 'year') {
-            $startDate = Carbon::createFromDate($filterYear, 1, 1)->startOfDay();
-            $endDate   = Carbon::createFromDate($filterYear, 12, 31)->endOfDay();
+            $startDate     = Carbon::createFromDate($filterYear, 1, 1)->startOfDay();
+            $endDate       = Carbon::createFromDate($filterYear, 12, 31)->endOfDay();
             $prevStartDate = $startDate->copy()->subYear();
             $prevEndDate   = $endDate->copy()->subYear();
 
@@ -470,17 +477,18 @@ class DashboardController extends Controller
             $trendText  = 'ตลอดทั้งปี ' . ($filterYear + 543);
             $badgeText  = 'ตลอดทั้งปี ' . ($filterYear + 543);
         } else {
-            $startDate = Carbon::createFromDate($filterYear, $filterMonth, 1)->startOfMonth();
-            $endDate   = $startDate->copy()->endOfMonth();
+            $startDate     = Carbon::createFromDate($filterYear, $filterMonth, 1)->startOfMonth();
+            $endDate       = $startDate->copy()->endOfMonth();
             $prevStartDate = $startDate->copy()->subMonth()->startOfMonth();
             $prevEndDate   = $startDate->copy()->subMonth()->endOfMonth();
 
-            $monthName  = $startDate->locale('th')->translatedFormat('F');
+            $monthName  = $startDate->copy()->locale('th')->translatedFormat('F');
             $periodText = '(ในรอบเดือน' . $monthName . ')';
             $trendText  = 'ตลอดทั้งเดือน' . $monthName;
             $badgeText  = 'ประจำเดือน ' . $monthName . ' ' . ($filterYear + 543);
         }
 
+        // Closure ตัวกรองฐานข้อมูลกลางสำหรับตาราง mews_assessments
         $applyBaseFilters = function ($query) use ($startDate, $endDate, $filterBatch) {
             $query->whereBetween('created_at', [$startDate, $endDate])
                   ->where('status', '!=', 'cancelled');
@@ -503,51 +511,167 @@ class DashboardController extends Controller
             }
         };
 
-        $patientsPeriod     = \App\Models\MewsAssessment::where($applyBaseFilters)->distinct('patient_id')->count('patient_id');
-        $patientsPrevPeriod = \App\Models\MewsAssessment::where($applyPrevFilters)->distinct('patient_id')->count('patient_id');
-        $growthPercent      = $patientsPrevPeriod > 0 ? round((($patientsPeriod - $patientsPrevPeriod) / $patientsPrevPeriod) * 100, 1) : ($patientsPeriod > 0 ? 100 : 0);
+        // -----------------------------------------------------------------
+        // 2. สรุปยอดปฏิบัติการ + ยอด Admit / Refer แบบซิงค์ตรงกับรายงานประจำวัน
+        // -----------------------------------------------------------------
+        $patientsPeriod     = MewsAssessment::where($applyBaseFilters)->distinct('patient_id')->count('patient_id');
+        $patientsPrevPeriod = MewsAssessment::where($applyPrevFilters)->distinct('patient_id')->count('patient_id');
+        $growthPercent      = $patientsPrevPeriod > 0
+            ? round((($patientsPeriod - $patientsPrevPeriod) / $patientsPrevPeriod) * 100, 1)
+            : ($patientsPeriod > 0 ? 100 : 0);
+
+        // 2.1 ดึง patient_id ที่ Admit/Refer จาก MEWS ในช่วงเวลาที่เลือก
+        $mewsAdmitIds = MewsAssessment::where($applyBaseFilters)
+            ->whereIn('discharge_type', ['admitted', 'refer'])
+            ->distinct()
+            ->pluck('patient_id')
+            ->all();
+
+        // 2.2 ดึงรายการนอน รพ. (other_ipd) จากรายงานประจำวันในช่วงเวลาเดียวกัน (รวมเคสที่บันทึกมือ)
+        $morbAdmitRows = collect();
+        if (class_exists(\App\Models\RecruitMorbidity::class) && Schema::hasTable('recruit_morbidities')) {
+            $morbAdmitQuery = \App\Models\RecruitMorbidity::with(['patient.militaryUnit', 'militaryUnit'])
+                ->where('category', 'other_ipd')
+                ->whereBetween('onset_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+
+            if ($filterBatch !== 'all') {
+                $morbAdmitQuery->where(function ($q) use ($filterBatch) {
+                    $q->where('intake_batch', $filterBatch)
+                      ->orWhereHas('patient', fn ($pq) => $pq->where('intake_batch', $filterBatch));
+                });
+            }
+
+            $morbAdmitRows = $morbAdmitQuery->orderByDesc('onset_date')->get();
+        }
+
+        // รวมรายชื่อแบบไม่ซ้ำคน (Unique Patients) และนับจำนวนครั้ง (Cases)
+        $allAdmitPatientIds = collect($mewsAdmitIds)
+            ->merge($morbAdmitRows->pluck('patient_id'))
+            ->filter()
+            ->unique()
+            ->values();
 
         $stats = [
             'patients_today'    => $patientsPeriod,
             'growth_percent'    => $growthPercent,
-            'assessments_today' => \App\Models\MewsAssessment::where($applyBaseFilters)->count(),
-            'critical_today'    => \App\Models\MewsAssessment::where($applyBaseFilters)->where('risk_level', 'emergency')->distinct('patient_id')->count('patient_id'),
-            'admit_refer'       => \App\Models\MewsAssessment::where($applyBaseFilters)->whereIn('discharge_type', ['admitted', 'refer'])->distinct('patient_id')->count('patient_id'),
+            'assessments_today' => MewsAssessment::where($applyBaseFilters)->count(),
+            'critical_today'    => MewsAssessment::where($applyBaseFilters)->where('risk_level', 'emergency')->distinct('patient_id')->count('patient_id'),
+            'admit_refer'       => $allAdmitPatientIds->count(),
+            'admit_refer_cases' => max($allAdmitPatientIds->count(), $morbAdmitRows->count()),
         ];
 
-        $dischargeStats = \App\Models\MewsAssessment::where($applyBaseFilters)
-                                ->where('status', 'completed')
-                                ->select('discharge_type', \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
-                                ->groupBy('discharge_type')
-                                ->pluck('total', 'discharge_type')
-                                ->toArray();
+        // 2.3 รายละเอียดรายชื่อสำหรับ Modal เมื่อผู้บริหารคลิกการ์ด "Admit รพ. หรือ ส่งต่อ"
+        $admitReferDetails = [];
+        if ($allAdmitPatientIds->isNotEmpty()) {
+            $latestAdmitMewsByPt = MewsAssessment::where($applyBaseFilters)
+                ->whereIn('patient_id', $allAdmitPatientIds)
+                ->whereIn('discharge_type', ['admitted', 'refer'])
+                ->orderByDesc('id')
+                ->get()
+                ->unique('patient_id')
+                ->keyBy('patient_id');
+
+            $morbByPt = $morbAdmitRows->groupBy('patient_id');
+            $admitPatientsMap = Patient::with('militaryUnit')
+                ->whereIn('id', $allAdmitPatientIds)
+                ->get()
+                ->keyBy('id');
+
+            foreach ($allAdmitPatientIds as $pid) {
+                $p = $admitPatientsMap->get($pid);
+                if (!$p) {
+                    continue;
+                }
+
+                $mRec       = $latestAdmitMewsByPt->get($pid);
+                $rGroup     = $morbByPt->get($pid, collect());
+                $latestMorb = $rGroup->firstWhere('status', 'treating') ?? $rGroup->first();
+
+                $isPublic = ($latestMorb && $latestMorb->sub_type === 'public_hospital')
+                    || ($mRec && $mRec->discharge_type === 'refer');
+
+                $isActiveNow = ($latestMorb && $latestMorb->status === 'treating')
+                    || ($mRec && $mRec->status === 'completed' && empty($mRec->returned_to_unit_at) && !$latestMorb);
+
+                $morbOnset = !empty($latestMorb?->onset_date) ? Carbon::parse($latestMorb->onset_date) : null;
+                $sortDate  = $morbOnset
+                    ? $morbOnset->format('Y-m-d')
+                    : ($mRec?->created_at?->format('Y-m-d') ?? '0000-00-00');
+
+                $admitReferDetails[] = [
+                    'patient_id'  => $p->id,
+                    'mews_id'     => $mRec?->id,
+                    'full_name'   => trim(($p->rank ?? '') . ($p->first_name ?? '') . ' ' . ($p->last_name ?? '')),
+                    'hn'          => $p->hn ?: 'ยังไม่มี HN',
+                    'unit'        => $p->militaryUnit->short_name ?? $p->militaryUnit->name ?? $p->company ?? 'ไม่ระบุหน่วย',
+                    'batch'       => $p->intake_batch ?: '-',
+                    'hosp_label'  => $isPublic ? 'ส่งต่อ รพ.สาธารณสุข' : 'Admit รพ.ค่ายฯ',
+                    'is_public'   => $isPublic,
+                    'is_active'   => $isActiveNow,
+                    'dx'          => $latestMorb?->diagnosis_text ?: ($mRec?->discharge_details ?: 'รอระบุ Dx.'),
+                    'admit_count' => max(1, $rGroup->count()),
+                    'source'      => ($mRec && $latestMorb)
+                        ? 'MEWS + รายงานประจำวัน'
+                        : ($mRec ? 'ใบประเมิน MEWS' : 'บันทึกตรงในรายงานประจำวัน'),
+                    'date_text'   => $morbOnset
+                        ? $morbOnset->copy()->addYears(543)->format('d/m/Y')
+                        : ($mRec?->created_at?->copy()->addYears(543)->format('d/m/Y') ?? '-'),
+                    '_sort_date'  => $sortDate,
+                ];
+            }
+
+            // เรียงเคสที่ "กำลังนอน รพ." ขึ้นด้านบน ตามด้วยวันที่ล่าสุด
+            usort($admitReferDetails, function ($a, $b) {
+                if ($a['is_active'] !== $b['is_active']) {
+                    return $b['is_active'] <=> $a['is_active'];
+                }
+                return strcmp($b['_sort_date'], $a['_sort_date']);
+            });
+        }
+
+        // -----------------------------------------------------------------
+        // 3. สถิติการจำหน่าย & สัดส่วนความเสี่ยง (Donut Chart)
+        // -----------------------------------------------------------------
+        $dischargeStats = MewsAssessment::where($applyBaseFilters)
+            ->where('status', 'completed')
+            ->select('discharge_type', DB::raw('count(DISTINCT patient_id) as total'))
+            ->groupBy('discharge_type')
+            ->pluck('total', 'discharge_type')
+            ->toArray();
 
         $riskLevels = ['normal' => 0, 'observe' => 0, 'emergency' => 0];
-        $latestAssessmentsIds = \App\Models\MewsAssessment::where($applyBaseFilters)
-            ->select(\Illuminate\Support\Facades\DB::raw('MAX(id) as id'))
+        $latestAssessmentsIds = MewsAssessment::where($applyBaseFilters)
+            ->select(DB::raw('MAX(id) as id'))
             ->groupBy('patient_id')
             ->pluck('id');
 
-        $latestAssessments = \App\Models\MewsAssessment::whereIn('id', $latestAssessmentsIds)->get();
+        $latestAssessments = MewsAssessment::whereIn('id', $latestAssessmentsIds)->get();
         foreach ($latestAssessments as $assessment) {
             if (array_key_exists($assessment->risk_level, $riskLevels)) {
                 $riskLevels[$assessment->risk_level]++;
             }
         }
 
-        $allAssessments = \App\Models\MewsAssessment::where($applyBaseFilters)->whereNotNull('symptoms')->get();
-                                
-        $symptomPatients = []; 
+        // -----------------------------------------------------------------
+        // 4. 5 อันดับอาการฉุกเฉินสะสม (Top 5 Symptoms Bar Chart)
+        // -----------------------------------------------------------------
+        $allAssessments = MewsAssessment::where($applyBaseFilters)->whereNotNull('symptoms')->get();
+
+        $symptomPatients = [];
         foreach ($allAssessments as $mews) {
             $syms = is_string($mews->symptoms) ? json_decode($mews->symptoms, true) : $mews->symptoms;
             if (is_array($syms)) {
-                foreach ($syms as $sym) { $symptomPatients[$sym][] = $mews->patient_id; }
+                foreach ($syms as $sym) {
+                    if (!empty(trim((string) $sym))) {
+                        $symptomPatients[$sym][] = $mews->patient_id;
+                    }
+                }
             }
         }
 
         $symptomCounts = [];
         foreach ($symptomPatients as $sym => $patientIds) {
-            $symptomCounts[$sym] = count(array_unique($patientIds)); 
+            $symptomCounts[$sym] = count(array_unique($patientIds));
         }
 
         $top5Raw = [];
@@ -557,57 +681,65 @@ class DashboardController extends Controller
         }
 
         $dict = [
-            'mi_chest_pain'           => 'MI (เจ็บหน้าอก)', 
-            'mi_dyspnea'              => 'MI (เหนื่อยหอบ)', 
+            'mi_chest_pain'           => 'MI (เจ็บหน้าอก)',
+            'mi_dyspnea'              => 'MI (เหนื่อยหอบ)',
             'mi_referred_pain'        => 'MI (เจ็บร้าว)',
-            'stroke_dizzy'            => 'Stroke (เวียนศีรษะ)', 
-            'stroke_vision'           => 'Stroke (ตามัว)', 
-            'stroke_facial_weakness'  => 'Stroke (หน้าเบี้ยว)', 
-            'stroke_arm_leg_weakness' => 'Stroke (แขนขาอ่อนแรง)', 
+            'stroke_dizzy'            => 'Stroke (เวียนศีรษะ)',
+            'stroke_vision'           => 'Stroke (ตามัว)',
+            'stroke_facial_weakness'  => 'Stroke (หน้าเบี้ยว)',
+            'stroke_arm_leg_weakness' => 'Stroke (แขนขาอ่อนแรง)',
             'stroke_speech'           => 'Stroke (พูดไม่ชัด)',
-            'heat_confusion'          => 'Heat (ซึมสับสน)', 
-            'heat_fatigue'            => 'Heat (อ่อนเพลีย)', 
-            'heat_pale'               => 'Heat (หน้าซีด)', 
-            'heat_cramp'              => 'Heat (ตะคริว)', 
-            'heat_numbness'           => 'Heat (ชาปลายมือเท้า)', 
+            'heat_confusion'          => 'Heat (ซึมสับสน)',
+            'heat_fatigue'            => 'Heat (อ่อนเพลีย)',
+            'heat_pale'               => 'Heat (หน้าซีด)',
+            'heat_cramp'              => 'Heat (ตะคริว)',
+            'heat_numbness'           => 'Heat (ชาปลายมือเท้า)',
             'heat_urine'              => 'Heat (ปัสสาวะสีเข้ม)',
-            'ana_rash'                => 'Anaphylaxis (ผื่นลมพิษ)', 
-            'ana_resp'                => 'Anaphylaxis (หอบเหนื่อย)', 
-            'ana_sys'                 => 'Anaphylaxis (ระบบล้มเหลว)', 
-            'ana_gi'                  => 'Anaphylaxis (ปวดท้องอาเจียน)', 
+            'ana_rash'                => 'Anaphylaxis (ผื่นลมพิษ)',
+            'ana_resp'                => 'Anaphylaxis (หอบเหนื่อย)',
+            'ana_sys'                 => 'Anaphylaxis (ระบบล้มเหลว)',
+            'ana_gi'                  => 'Anaphylaxis (ปวดท้องอาเจียน)',
             'ana_chest'               => 'Anaphylaxis (แน่นหน้าอก)',
-            'appendicitis'            => 'Appendicitis', 
-            'sepsis_drowsy'           => 'Sepsis (ซึม)', 
-            'sepsis_tachypnea'        => 'Sepsis (หายใจหอบ)', 
-            'trauma'                  => 'Trauma (อุบัติเหตุ)'
+            'appendicitis'            => 'Appendicitis',
+            'sepsis_drowsy'           => 'Sepsis (ซึม)',
+            'sepsis_tachypnea'        => 'Sepsis (หายใจหอบ)',
+            'trauma'                  => 'Trauma (อุบัติเหตุ)',
         ];
 
-        $top5Labels = []; $top5Data = [];
+        $top5Labels = [];
+        $top5Data   = [];
         foreach ($top5Raw as $key => $count) {
             $top5Labels[] = $dict[$key] ?? $key;
             $top5Data[]   = $count;
         }
 
-        $trendLabels = []; 
+        // -----------------------------------------------------------------
+        // 5. กราฟเส้นแนวโน้มผู้ป่วย (Trend Area Chart)
+        // -----------------------------------------------------------------
+        $trendLabels = [];
         $trendData   = [];
         $diffDays    = $startDate->diffInDays($endDate);
 
         if ($filterMode === 'year' || $diffDays > 60) {
-            $trendRaw = \App\Models\MewsAssessment::where($applyBaseFilters)
-                ->select(\Illuminate\Support\Facades\DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month_year'), \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
-                ->groupBy('month_year')->pluck('total', 'month_year')->toArray();
+            $trendRaw = MewsAssessment::where($applyBaseFilters)
+                ->select(DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month_year'), DB::raw('count(DISTINCT patient_id) as total'))
+                ->groupBy('month_year')
+                ->pluck('total', 'month_year')
+                ->toArray();
 
             $current = $startDate->copy()->startOfMonth();
             while ($current->lte($endDate)) {
                 $key = $current->format('Y-m');
-                $trendLabels[] = $thaiMonthsShort[$current->month] . ' ' . substr(($current->year + 543), 2);
+                $trendLabels[] = $thaiMonthsShort[$current->month] . ' ' . substr((string) ($current->year + 543), 2);
                 $trendData[]   = $trendRaw[$key] ?? 0;
                 $current->addMonth();
             }
         } elseif ($filterMode === 'month') {
-            $trendRaw = \App\Models\MewsAssessment::where($applyBaseFilters)
-                ->select(\Illuminate\Support\Facades\DB::raw('DATE(created_at) as date'), \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
-                ->groupBy('date')->pluck('total', 'date')->toArray();
+            $trendRaw = MewsAssessment::where($applyBaseFilters)
+                ->select(DB::raw('DATE(created_at) as date'), DB::raw('count(DISTINCT patient_id) as total'))
+                ->groupBy('date')
+                ->pluck('total', 'date')
+                ->toArray();
 
             for ($i = 1; $i <= $endDate->daysInMonth; $i++) {
                 $dateStr = $startDate->copy()->day($i)->format('Y-m-d');
@@ -615,34 +747,58 @@ class DashboardController extends Controller
                 $trendData[]   = $trendRaw[$dateStr] ?? 0;
             }
         } else {
-            $trendRaw = \App\Models\MewsAssessment::where($applyBaseFilters)
-                ->select(\Illuminate\Support\Facades\DB::raw('DATE(created_at) as date'), \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
-                ->groupBy('date')->pluck('total', 'date')->toArray();
+            $trendRaw = MewsAssessment::where($applyBaseFilters)
+                ->select(DB::raw('DATE(created_at) as date'), DB::raw('count(DISTINCT patient_id) as total'))
+                ->groupBy('date')
+                ->pluck('total', 'date')
+                ->toArray();
 
             $current = $startDate->copy()->startOfDay();
             while ($current->lte($endDate)) {
                 $key = $current->format('Y-m-d');
-                $trendLabels[] = $current->day . ' ' . $thaiMonthsShort[$current->month]; 
+                $trendLabels[] = $current->day . ' ' . $thaiMonthsShort[$current->month];
                 $trendData[]   = $trendRaw[$key] ?? 0;
                 $current->addDay();
             }
         }
 
-        $topUnitsQuery = \Illuminate\Support\Facades\DB::table('mews_assessments')
+        // -----------------------------------------------------------------
+        // 6. Top 5 กองร้อย/หน่วยฝึกที่มีผู้ป่วยสูงสุด (จับคู่ชื่อหน่วยใน PHP ปลอดปัญหา Collation/GROUP BY 100%)
+        // -----------------------------------------------------------------
+        $unitNameMap = Schema::hasTable('military_units')
+            ? DB::table('military_units')->get(['id', 'short_name', 'name'])->keyBy('id')
+            : collect();
+
+        $topUnitsRaw = DB::table('mews_assessments')
             ->join('patients', 'mews_assessments.patient_id', '=', 'patients.id')
             ->whereBetween('mews_assessments.created_at', [$startDate, $endDate])
-            ->where('mews_assessments.status', '!=', 'cancelled');
+            ->where('mews_assessments.status', '!=', 'cancelled')
+            ->when($filterBatch !== 'all', fn ($q) => $q->where('patients.intake_batch', $filterBatch))
+            ->select('patients.id as patient_id', 'patients.military_unit_id', 'patients.company')
+            ->distinct()
+            ->get();
 
-        if ($filterBatch !== 'all') {
-            $topUnitsQuery->where('patients.intake_batch', $filterBatch);
+        $unitPatientSets = [];
+        foreach ($topUnitsRaw as $row) {
+            $uObj  = $row->military_unit_id ? $unitNameMap->get($row->military_unit_id) : null;
+            $label = trim((string) ($uObj->short_name ?? $uObj->name ?? $row->company ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            $unitPatientSets[$label][$row->patient_id] = true;
         }
 
-        $topUnits = $topUnitsQuery->select('patients.company', \Illuminate\Support\Facades\DB::raw('count(DISTINCT patients.id) as total'))
-            ->whereNotNull('patients.company')->where('patients.company', '!=', '')
-            ->groupBy('patients.company')->orderByDesc('total')->limit(5)->get();
+        $topUnits = collect($unitPatientSets)
+            ->map(fn ($ptSet, $label) => (object) ['company' => $label, 'total' => count($ptSet)])
+            ->sortByDesc('total')
+            ->take(5)
+            ->values();
 
-        $mewsLevelsToday = \App\Models\MewsAssessment::where($applyBaseFilters)
-            ->select('risk_level', \Illuminate\Support\Facades\DB::raw('count(DISTINCT patient_id) as total'))
+        // -----------------------------------------------------------------
+        // 7. จำแนกตามระดับความรุนแรง MEWS (สีเขียว / สีเหลือง / สีแดง) + Modal รายชื่อ
+        // -----------------------------------------------------------------
+        $mewsLevelsToday = MewsAssessment::where($applyBaseFilters)
+            ->select('risk_level', DB::raw('count(DISTINCT patient_id) as total'))
             ->groupBy('risk_level')
             ->pluck('total', 'risk_level')
             ->toArray();
@@ -650,13 +806,13 @@ class DashboardController extends Controller
         $executivePatientDetails = ['normal' => [], 'observe' => [], 'emergency' => []];
 
         foreach (['normal', 'observe', 'emergency'] as $targetLevel) {
-            $levelLatestIds = \App\Models\MewsAssessment::where($applyBaseFilters)
+            $levelLatestIds = MewsAssessment::where($applyBaseFilters)
                 ->where('risk_level', $targetLevel)
-                ->select(\Illuminate\Support\Facades\DB::raw('MAX(id) as id'))
+                ->select(DB::raw('MAX(id) as id'))
                 ->groupBy('patient_id')
                 ->pluck('id');
 
-            $levelCases = \App\Models\MewsAssessment::with(['patient.militaryUnit'])
+            $levelCases = MewsAssessment::with(['patient.militaryUnit'])
                 ->whereIn('id', $levelLatestIds)
                 ->orderByDesc('total_score')
                 ->orderByDesc('updated_at')
@@ -664,17 +820,23 @@ class DashboardController extends Controller
 
             foreach ($levelCases as $c) {
                 $p = $c->patient;
-                if (!$p) continue;
+                if (!$p) {
+                    continue;
+                }
 
-                $unitName = $p->militaryUnit->short_name ?? $p->militaryUnit->name ?? $p->company ?? 'ไม่ระบุหน่วย';
+                $unitName  = $p->militaryUnit->short_name ?? $p->militaryUnit->name ?? $p->company ?? 'ไม่ระบุหน่วย';
                 $battalion = $p->militaryUnit->battalion ?? $p->battalion ?? '';
-                if ($battalion) $unitName .= " ({$battalion})";
+                if ($battalion) {
+                    $unitName .= " ({$battalion})";
+                }
 
-                $rawSyms = is_string($c->symptoms) ? json_decode($c->symptoms, true) : ($c->symptoms ?? []);
+                $rawSyms  = is_string($c->symptoms) ? json_decode($c->symptoms, true) : ($c->symptoms ?? []);
                 $symNames = [];
                 if (is_array($rawSyms)) {
                     foreach ($rawSyms as $sKey) {
-                        $symNames[] = $dict[$sKey] ?? $sKey;
+                        if (!empty(trim((string) $sKey))) {
+                            $symNames[] = $dict[$sKey] ?? $sKey;
+                        }
                     }
                 }
 
@@ -706,12 +868,12 @@ class DashboardController extends Controller
                         $dispositionIcon  = 'fa-house-medical-circle-check';
                     }
                 } else {
-                    $isRoutedToER = ($c->assessment_type === 'er') || in_array($c->risk_level, ['observe', 'emergency']) || !empty($symNames);
-                    $dispositionText  = ($c->assessment_type === 'er') 
-                        ? 'กำลังรักษาและติดตามอาการในห้อง ER' 
+                    $isRoutedToER = ($c->assessment_type === 'er') || in_array($c->risk_level, ['observe', 'emergency'], true) || !empty($symNames);
+                    $dispositionText  = ($c->assessment_type === 'er')
+                        ? 'กำลังรักษาและติดตามอาการในห้อง ER'
                         : ($isRoutedToER ? 'รอรับตัวเข้าห้องฉุกเฉิน (ER)' : 'รอตรวจแผนกผู้ป่วยนอก (OPD)');
-                    $dispositionBadge = !$isRoutedToER 
-                        ? 'bg-teal-100 text-teal-800 border-teal-200' 
+                    $dispositionBadge = !$isRoutedToER
+                        ? 'bg-teal-100 text-teal-800 border-teal-200'
                         : 'bg-rose-100 text-rose-700 border-rose-300 animate-pulse';
                     $dispositionIcon  = !$isRoutedToER ? 'fa-stethoscope' : 'fa-heart-pulse';
                 }
@@ -724,41 +886,98 @@ class DashboardController extends Controller
                     'unit'              => $unitName,
                     'batch'             => $p->intake_batch ?: '-',
                     'score'             => $c->total_score,
-                    'vitals'            => "BP: " . ($c->systolic_bp ?? '-') . " | HR: " . ($c->heart_rate ?? '-') . " | T: " . ($c->temperature ?? '-') . "°C | O2: " . ($c->o2sat ?? '-') . "%",
+                    'vitals'            => 'BP: ' . ($c->systolic_bp ?? '-') . ' | HR: ' . ($c->heart_rate ?? '-') . ' | T: ' . ($c->temperature ?? '-') . '°C | O2: ' . ($c->o2sat ?? '-') . '%',
                     'symptoms'          => $symNames,
                     'disposition_text'  => $dispositionText,
                     'disposition_badge' => $dispositionBadge,
                     'disposition_icon'  => $dispositionIcon,
-                    'updated_time'      => $c->updated_at->addYears(543)->format('d/m/Y H:i น.'),
+                    'updated_time'      => $c->updated_at ? $c->updated_at->copy()->addYears(543)->format('d/m/Y H:i น.') : '-',
                 ];
             }
         }
 
-        $outbreakUnits = \Illuminate\Support\Facades\DB::table('mews_assessments')
+        // -----------------------------------------------------------------
+        // 8. เรดาร์เฝ้าระวังโรคติดต่อและการระบาดในหน่วยฝึก (ในรอบ 48 ชม. — ปลอด Collation Error)
+        // -----------------------------------------------------------------
+        $outbreakRaw = DB::table('mews_assessments')
             ->join('patients', 'mews_assessments.patient_id', '=', 'patients.id')
             ->leftJoin('recruit_screenings', 'patients.id', '=', 'recruit_screenings.patient_id')
             ->where('mews_assessments.created_at', '>=', now()->subHours(48))
             ->where('mews_assessments.status', '!=', 'cancelled')
+            ->when($filterBatch !== 'all', fn ($q) => $q->where('patients.intake_batch', $filterBatch))
             ->where(function ($q) {
                 $q->where('mews_assessments.temperature', '>=', 38.0)
                   ->orWhere('recruit_screenings.color_group', 'red');
             })
             ->select(
+                'patients.id as patient_id',
+                'patients.military_unit_id',
                 'patients.company',
                 'patients.intake_batch',
-                \Illuminate\Support\Facades\DB::raw('COUNT(DISTINCT CASE WHEN mews_assessments.temperature >= 38.0 THEN patients.id END) as high_fever_count'),
-                \Illuminate\Support\Facades\DB::raw('COUNT(DISTINCT CASE WHEN recruit_screenings.color_group = "red" THEN patients.id END) as red_group_count')
+                'mews_assessments.temperature',
+                'recruit_screenings.color_group'
             )
-            ->whereNotNull('patients.company')
-            ->groupBy('patients.company', 'patients.intake_batch')
-            ->havingRaw('high_fever_count >= 2 OR red_group_count >= 1')
-            ->orderByDesc('high_fever_count')
             ->get();
 
+        $outbreakBuckets = [];
+        foreach ($outbreakRaw as $row) {
+            $uObj  = $row->military_unit_id ? $unitNameMap->get($row->military_unit_id) : null;
+            $label = trim((string) ($uObj->short_name ?? $uObj->name ?? $row->company ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            $batchKey  = (string) ($row->intake_batch ?? '-');
+            $bucketKey = $label . '||' . $batchKey;
+
+            if (!isset($outbreakBuckets[$bucketKey])) {
+                $outbreakBuckets[$bucketKey] = [
+                    'company'      => $label,
+                    'intake_batch' => $row->intake_batch,
+                    'fever_pts'    => [],
+                    'red_pts'      => [],
+                ];
+            }
+            if ((float) ($row->temperature ?? 0) >= 38.0) {
+                $outbreakBuckets[$bucketKey]['fever_pts'][$row->patient_id] = true;
+            }
+            if (($row->color_group ?? '') === 'red') {
+                $outbreakBuckets[$bucketKey]['red_pts'][$row->patient_id] = true;
+            }
+        }
+
+        $outbreakUnits = collect($outbreakBuckets)
+            ->map(fn ($b) => (object) [
+                'company'          => $b['company'],
+                'intake_batch'     => $b['intake_batch'],
+                'high_fever_count' => count($b['fever_pts']),
+                'red_group_count'  => count($b['red_pts']),
+            ])
+            ->filter(fn ($item) => $item->high_fever_count >= 2 || $item->red_group_count >= 1)
+            ->sortByDesc('high_fever_count')
+            ->values();
+
         return view('backend.dashboards.executive', compact(
-            'stats', 'dischargeStats', 'riskLevels', 'top5Labels', 'top5Data', 'trendLabels', 'trendData', 'topUnits', 'mewsLevelsToday',
-            'filterMode', 'filterMonth', 'filterYear', 'filterBatch', 'startDateInput', 'endDateInput',
-            'periodText', 'trendText', 'badgeText', 'executivePatientDetails', 'outbreakUnits'
+            'stats',
+            'dischargeStats',
+            'riskLevels',
+            'top5Labels',
+            'top5Data',
+            'trendLabels',
+            'trendData',
+            'topUnits',
+            'mewsLevelsToday',
+            'filterMode',
+            'filterMonth',
+            'filterYear',
+            'filterBatch',
+            'startDateInput',
+            'endDateInput',
+            'periodText',
+            'trendText',
+            'badgeText',
+            'executivePatientDetails',
+            'admitReferDetails',
+            'outbreakUnits'
         ));
     }
 
