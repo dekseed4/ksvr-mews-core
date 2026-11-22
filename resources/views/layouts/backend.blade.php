@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="base-url" content="{{ url('/') }}">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    
 
     @php
         $authUser = auth()->user();
@@ -20,7 +19,7 @@
     <title>@yield('title', 'KSVR Hospital System')</title>
     <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}?v=1.0">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}?v=1.0">
-    <link rel="manifest" href="{{ asset('manifest.json') }}?v=2">
+    <link rel="manifest" href="{{ asset('manifest.json') }}?v=3">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -32,10 +31,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Tailwind CSS -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
-    
+
     <style>
         body { font-family: 'Prompt', sans-serif; }
-        
+
         /* 🌟 ล็อกความสูง ป้องกัน SweetAlert2 ทำลายโครงสร้าง h-screen ของ Tailwind */
         body.swal2-height-auto { height: 100vh !important; }
         html.swal2-height-auto { height: 100vh !important; }
@@ -44,7 +43,7 @@
             z-index: 0 !important;
             pointer-events: none;
         }
-        
+
         /* 🌟 ปรับสี SweetAlert ให้เข้ากับ Dark Mode */
         html.dark body, html.dark main, html.dark aside#sidebar {
             background-color: #0f172a !important;
@@ -66,7 +65,7 @@
         html.dark ::-webkit-scrollbar-thumb { background: #475569; }
         html.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
-    
+
     <script>
         // 1. จัดการ Dark Mode (ทำงานก่อนหน้าเว็บโหลดเสร็จเพื่อกันจอกระพริบ)
         if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -75,8 +74,8 @@
             document.documentElement.classList.remove('dark');
         }
 
-        // 2. จัดการขนาดตัวอักษร 
-        const savedTextSize = localStorage.getItem('textSize') || '16px'; 
+        // 2. จัดการขนาดตัวอักษร
+        const savedTextSize = localStorage.getItem('textSize') || '16px';
         document.documentElement.style.fontSize = savedTextSize;
     </script>
 </head>
@@ -85,12 +84,10 @@
     <div id="pwa-install-banner"
          class="hidden fixed top-3 left-3 right-3 sm:top-auto sm:bottom-5 sm:left-5 sm:right-auto sm:w-[370px] z-[85] bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-[0_12px_40px_-8px_rgba(15,23,42,0.28)] border border-slate-200/90 dark:border-slate-700 p-3.5 transition-all duration-300">
         <div class="flex items-center gap-3">
-            <!-- โลโก้แอป -->
             <div class="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-slate-900 border border-emerald-200/70 dark:border-slate-700 shadow-sm flex items-center justify-center p-1.5 shrink-0">
                 <img src="{{ asset('images/logo5.png') }}" alt="KSVR Logo" class="w-full h-full object-contain">
             </div>
 
-            <!-- ชื่อและคำอธิบายแบบกระชับ -->
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1.5">
                     <h4 class="text-sm font-black text-slate-800 dark:text-white leading-tight truncate">แอป KSVR MEWS</h4>
@@ -99,7 +96,6 @@
                 <p class="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 truncate">เปิดเต็มจอ ไร้แถบ URL ใช้งานไวขึ้น</p>
             </div>
 
-            <!-- ปุ่มติดตั้ง + ปุ่มปิด -->
             <div class="flex items-center gap-1.5 shrink-0">
                 <button type="button" onclick="installPwaApp()"
                         class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black shadow-sm transition-all whitespace-nowrap">
@@ -112,78 +108,82 @@
             </div>
         </div>
     </div>
+
     <!-- 🌟 แถบเมนูด้านข้าง (Sidebar) -->
     <aside id="sidebar" class="w-64 bg-slate-800 text-white flex flex-col fixed lg:relative z-40 h-screen transform -translate-x-full lg:translate-x-0 transition-all duration-300 ease-in-out shadow-xl shrink-0">
-        <!-- 🌟 โลโก้และชื่อระบบ (อัปเกรด UI: บ่งบอกตัวตน KSVR MEWS ชัดเจน) -->
+        <!-- โลโก้และชื่อระบบ -->
         <div class="h-20 flex items-center border-b border-slate-700/80 shrink-0 px-4 transition-all">
-            
             <a href="{{ url('/') }}" class="flex items-center gap-3 w-full group">
-                
-                <!-- 1. กรอบไอคอนโลโก้ (App Icon) -->
                 <div class="w-[72px] h-12 bg-white rounded-xl shadow-sm flex items-center justify-center p-1.5 shrink-0 group-hover:shadow-emerald-500/20 group-hover:ring-2 group-hover:ring-emerald-400 transition-all duration-300 group-hover:-translate-y-0.5">
-                    <img src="{{ asset('images/logo5.png') }}" 
-                         alt="KSVR Logo" 
-                         class="h-full w-full object-contain">
+                    <img src="{{ asset('images/logo5.png') }}" alt="KSVR Logo" class="h-full w-full object-contain">
                 </div>
-                
-                <!-- 2. ชื่อระบบและคำบรรยาย (Typography) -->
                 <div class="flex flex-col overflow-hidden">
                     <h1 class="text-base font-black tracking-wider text-white truncate transition-colors">
                         KSVR <span class="text-emerald-400 group-hover:text-emerald-300 transition-colors">MEWS</span>
                     </h1>
-                    <!-- คำอธิบายระบบภาษาไทย ช่วยย้ำเตือนว่านี่คือระบบอะไร -->
                     <span class="text-[10px] font-medium text-slate-400 truncate mt-0.5 group-hover:text-slate-300 transition-colors">
                         ระบบประเมินสัญญาณชีพ
                     </span>
                 </div>
-
             </a>
-            
         </div>
 
         <!-- รายการเมนู -->
         <nav class="flex-1 overflow-y-auto overflow-x-hidden py-4">
             @php
                 $user = auth()->user();
-                $userRoles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
+                $userRoles = is_string($user->roles) ? (json_decode($user->roles, true) ?: []) : (array)($user->roles ?? $user->role);
 
-                $isAdmin        = in_array('admin', $userRoles);
-                $isExecutive    = $isAdmin || in_array('executive', $userRoles);
-                $isER           = $isAdmin || in_array('er_nurse', $userRoles);
-                $isOPD          = $isAdmin || in_array('opd_nurse', $userRoles);
-                $isMedic        = $isAdmin || in_array('medic', $userRoles);
-                $isRegistration = $isAdmin || in_array('registration', $userRoles);
-                $isMedicalStaff = $isAdmin || in_array('medical_staff', $userRoles);
-                $isScreening    = $isAdmin || in_array('screening', $userRoles);
+                $isAdmin        = in_array('admin', $userRoles, true);
+                $isExecutive    = $isAdmin || in_array('executive', $userRoles, true);
+                $isER           = $isAdmin || in_array('er_nurse', $userRoles, true);
+                $isOPD          = $isAdmin || in_array('opd_nurse', $userRoles, true);
+                $isMedic        = $isAdmin || in_array('medic', $userRoles, true);
+                $isRegistration = $isAdmin || in_array('registration', $userRoles, true);
+                $isMedicalStaff = $isAdmin || in_array('medical_staff', $userRoles, true);
+                $isScreening    = $isAdmin || in_array('screening', $userRoles, true);
 
-                // เช็คว่ากำลังเปิดหน้าใดหน้าหนึ่งในหมวด "ข้อมูลทหารใหม่" อยู่หรือไม่
+                // อ่านค่าตั้งค่าระบบจาก Cache (0 DB Query + ครอบ try-catch ป้องกัน 500 Error)
+                $sysAppAlertDays = 1;
+                $sysPollingSeconds = 30;
+                $sysPdpaChronicRoles = ['admin'];
+                if (class_exists(\App\Services\SettingService::class)) {
+                    try {
+                        $sysAppAlertDays     = max(1, min(7, (int) \App\Services\SettingService::get('appointment_alert_days', 1)));
+                        $sysPollingSeconds   = max(15, min(300, (int) \App\Services\SettingService::get('polling_interval_seconds', 30)));
+                        $sysPdpaChronicRoles = (array) \App\Services\SettingService::get('pdpa_chronic_roles', ['admin']);
+                    } catch (\Throwable $e) {
+                    }
+                }
+                $canViewChronicAi = $isAdmin || !empty(array_intersect($userRoles, $sysPdpaChronicRoles));
+
+                // เช็กว่ากำลังเปิดหน้าใดหน้าหนึ่งในหมวด "ข้อมูลทหารใหม่" อยู่หรือไม่
                 $isRecruitGroupActive = request()->routeIs(
-                    'backend.patients.index', 
-                    'backend.patients.show', 
-                    'backend.patients.edit', 
+                    'backend.patients.index',
+                    'backend.patients.show',
+                    'backend.patients.edit',
                     'backend.patients.create',
                     'backend.patients.import*',
-                    'backend.recruit_screenings.*', 
-                    'backend.morbidity_reports.*', 
+                    'backend.recruit_screenings.*',
+                    'backend.morbidity_reports.*',
                     'backend.military_discharges.*',
                     'backend.recruit_appointments.*',
                     'backend.recruit_infirmary.*',
                     'backend.care_chart.*'
                 );
 
-                // เช็คว่าอยู่โหมด ภาพรวม (overview) หรือ ทะเบียนรายชื่อ (list)
                 $isOverviewMenu = request()->routeIs('backend.patients.index') && request('view') === 'overview';
                 $isListMenu     = request()->routeIs('backend.patients.index', 'backend.patients.show', 'backend.patients.edit', 'backend.patients.create', 'backend.patients.import*') && request('view') !== 'overview';
-            
-                // 🌟 1. ดึงรายการนัดพบแพทย์ล่วงหน้า 1 วัน (พรุ่งนี้) และวันนี้
+
+                // 🌟 1. ดึงรายการนัดพบแพทย์วันนี้ และล่วงหน้าตามค่า appointment_alert_days จากหน้าตั้งค่าระบบ
                 $upcomingAppAlerts = collect();
                 if (\Illuminate\Support\Facades\Schema::hasTable('recruit_appointments')) {
+                    $alertStart = \Carbon\Carbon::today()->format('Y-m-d');
+                    $alertEnd   = \Carbon\Carbon::today()->addDays($sysAppAlertDays)->format('Y-m-d');
+
                     $appAlertQuery = \App\Models\RecruitAppointment::with(['patient.militaryUnit', 'militaryUnit'])
                         ->where('status', 'scheduled')
-                        ->whereIn(\Illuminate\Support\Facades\DB::raw('DATE(appointment_date)'), [
-                            \Carbon\Carbon::today()->format('Y-m-d'),
-                            \Carbon\Carbon::tomorrow()->format('Y-m-d')
-                        ]);
+                        ->whereBetween('appointment_date', [$alertStart, $alertEnd]);
 
                     if (!$isAdmin && !$isER && !$isOPD && !$isExecutive && !$isRegistration && !$isMedicalStaff && !$isScreening) {
                         $appAlertQuery->where('military_unit_id', $user->military_unit_id);
@@ -215,7 +215,6 @@
             @endphp
 
             <ul class="space-y-1.5 px-3 text-[15px]">
-                
                 <!-- 1. แดชบอร์ดหลักของระบบ -->
                 <li>
                     <a href="{{ route('backend.dashboard') }}" class="group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 {{ request()->routeIs('backend.dashboard') ? 'bg-slate-700/80 border-l-4 border-sky-400 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-slate-700/50 border-l-4 border-transparent' }}">
@@ -223,7 +222,7 @@
                         <span class="font-medium">แดชบอร์ด</span>
                     </a>
                 </li>
-                
+
                 <!-- 2. ประเมินผู้ป่วย (MEWS) -->
                 <li>
                     <a href="{{ route('backend.patients.search') }}" class="group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 {{ request()->routeIs('backend.patients.search', 'backend.patients.processSearch', 'backend.mews.*') ? 'bg-slate-700/80 border-l-4 border-emerald-400 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-slate-700/50 border-l-4 border-transparent' }}">
@@ -234,7 +233,7 @@
 
                 <!-- 🎖️ 3. เมนูหลักแบบยุบรวม: M-CARE System (ระบบข้อมูลทหารใหม่) -->
                 <li class="pt-1">
-                    <button type="button" 
+                    <button type="button"
                             onclick="const sub = document.getElementById('recruit-submenu'); const ic = document.getElementById('recruit-submenu-icon'); sub.classList.toggle('hidden'); ic.classList.toggle('rotate-180');"
                             class="w-full group flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl transition-all duration-300 {{ $isRecruitGroupActive ? 'bg-gradient-to-r from-teal-500/20 via-emerald-500/10 to-slate-800 border border-teal-500/40 text-white shadow-lg shadow-teal-950/50' : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent' }}">
                         <div class="flex items-center gap-3 min-w-0">
@@ -254,21 +253,17 @@
                         <i id="recruit-submenu-icon" class="fa-solid fa-chevron-down text-xs text-teal-300 transition-transform duration-300 shrink-0 {{ $isRecruitGroupActive ? 'rotate-180' : '' }}"></i>
                     </button>
 
-                    <!-- รายการเมนูย่อยภายใต้ "M-CARE System" (จัดระยะและฟอนต์ให้เท่ากันทุกบรรทัด + ไม่ล้นกรอบ 100%) -->
                     <ul id="recruit-submenu" class="{{ $isRecruitGroupActive ? '' : 'hidden' }} mt-2 ml-2 pl-2.5 border-l-2 border-teal-500/40 space-y-1 text-[13.5px]">
-
-                        <!-- เมนูย่อย 3.1: ภาพรวมข้อมูลพลทหาร -->
                         <li>
-                            <a href="{{ route('backend.patients.index', ['view' => 'overview']) }}" 
+                            <a href="{{ route('backend.patients.index', ['view' => 'overview']) }}"
                                class="flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all {{ $isOverviewMenu ? 'bg-teal-500/20 text-teal-300 font-bold border border-teal-500/30 shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700/40 border border-transparent' }}">
                                 <i class="fa-solid fa-chart-column w-5 text-center text-teal-400 shrink-0"></i>
                                 <span class="truncate">ภาพรวมข้อมูลพลทหาร</span>
                             </a>
                         </li>
 
-                        <!-- เมนูย่อย 3.2: ทะเบียนรายชื่อพลทหาร -->
                         <li>
-                            <a href="{{ route('backend.patients.index', ['view' => 'list']) }}" 
+                            <a href="{{ route('backend.patients.index', ['view' => 'list']) }}"
                                class="flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all {{ $isListMenu ? 'bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30 shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700/40 border border-transparent' }}">
                                 <i class="fa-solid fa-address-book w-5 text-center text-indigo-400 shrink-0"></i>
                                 <span class="truncate">ทะเบียนรายชื่อพลทหาร</span>
@@ -276,27 +271,24 @@
                         </li>
 
                         @if($isER || $isOPD || $isExecutive || $isRegistration || $isMedicalStaff)
-                            <!-- เมนูย่อย 3.3: คัดกรองทหารใหม่ -->
                             <li>
-                                <a href="{{ route('backend.recruit_screenings.dashboard') }}" 
+                                <a href="{{ route('backend.recruit_screenings.dashboard') }}"
                                    class="flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all {{ request()->routeIs('backend.recruit_screenings.*') ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700/40 border border-transparent' }}">
                                     <i class="fa-solid fa-chart-pie w-5 text-center text-amber-400 shrink-0"></i>
                                     <span class="truncate">คัดกรองทหารใหม่</span>
                                 </a>
                             </li>
 
-                            <!-- เมนูย่อย 3.4: รายงานเจ็บป่วยประจำวัน -->
                             <li>
-                                <a href="{{ route('backend.morbidity_reports.index') }}" 
+                                <a href="{{ route('backend.morbidity_reports.index') }}"
                                    class="flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all {{ request()->routeIs('backend.morbidity_reports.*') ? 'bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30 shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700/40 border border-transparent' }}">
                                     <i class="fa-solid fa-file-waveform w-5 text-center text-rose-400 shrink-0"></i>
                                     <span class="truncate">รายงานเจ็บป่วยประจำวัน</span>
                                 </a>
                             </li>
 
-                            <!-- เมนูย่อย 3.5: เอกสารนำปลดทหาร -->
                             <li>
-                                <a href="{{ route('backend.military_discharges.index') }}" 
+                                <a href="{{ route('backend.military_discharges.index') }}"
                                    class="flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all {{ request()->routeIs('backend.military_discharges.*') ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700/40 border border-transparent' }}">
                                     <i class="fa-solid fa-folder-open w-5 text-center text-emerald-400 shrink-0"></i>
                                     <span class="truncate">เอกสารนำปลดทหาร</span>
@@ -304,9 +296,8 @@
                             </li>
                         @endif
 
-                        <!-- 📅 เมนูย่อย 3.6: นัดพบแพทย์ -->
                         <li>
-                            <a href="{{ route('backend.recruit_appointments.index') }}" 
+                            <a href="{{ route('backend.recruit_appointments.index') }}"
                                class="group flex items-center justify-between gap-1.5 px-2.5 py-2 rounded-xl transition-all duration-200 {{ request()->routeIs('backend.recruit_appointments.*') ? 'bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30 shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700/40 border border-transparent' }}">
                                 <div class="flex items-center gap-2.5 min-w-0 flex-1">
                                     <i class="fa-solid fa-calendar-check w-5 text-center text-sky-400 shrink-0"></i>
@@ -322,9 +313,8 @@
                             </a>
                         </li>
 
-                        <!-- 🛌 เมนูย่อย 3.7: ห้องพยาบาล / แยกนอน (ป้ายตัวเลขอยู่ด้านในกรอบ 100% ไม่ล้นออกด้านขวา) -->
                         <li>
-                            <a href="{{ route('backend.recruit_infirmary.index') }}" 
+                            <a href="{{ route('backend.recruit_infirmary.index') }}"
                                class="group flex items-center justify-between gap-1.5 px-2.5 py-2 rounded-xl transition-all duration-200 {{ request()->routeIs('backend.recruit_infirmary.*', 'backend.care_chart.*') ? 'bg-teal-500/20 text-teal-300 font-bold border border-teal-500/30 shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700/40 border border-transparent' }}">
                                 <div class="flex items-center gap-2.5 min-w-0 flex-1">
                                     <i class="fa-solid fa-bed-pulse w-5 text-center text-teal-400 shrink-0"></i>
@@ -342,11 +332,10 @@
                 </li>
 
                 @if($isAdmin)
-                <!-- หมวดหมู่การจัดการระบบ -->
                 <li class="pt-5 pb-2">
                     <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-4">การจัดการระบบ</span>
                 </li>
-                
+
                 <li>
                     <a href="{{ route('backend.users.index') }}" class="group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 {{ request()->routeIs('backend.users.*') ? 'bg-slate-700/80 border-l-4 border-indigo-400 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-slate-700/50 border-l-4 border-transparent' }}">
                         <i class="fa-solid fa-user-nurse w-6 text-center text-indigo-400 drop-shadow-sm group-hover:scale-110 transition-transform duration-300"></i>
@@ -360,15 +349,14 @@
                         <span class="font-medium">จัดการหน่วยทหาร</span>
                     </a>
                 </li>
-                
+
                 <li>
                     <a href="{{ route('backend.system_logs.index') }}" class="group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 {{ request()->routeIs('backend.system_logs.*') ? 'bg-slate-700/80 border-l-4 border-slate-300 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-slate-700/50 border-l-4 border-transparent' }}">
                         <i class="fa-solid fa-list-check w-6 text-center text-slate-400 drop-shadow-sm group-hover:scale-110 transition-transform duration-300"></i>
                         <span class="font-medium">ประวัติการใช้งาน (Log)</span>
                     </a>
                 </li>
-                
-                <!-- หมวดหมู่ตั้งค่าระบบ -->
+
                 <li class="pt-5 pb-2">
                     <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-4">ตั้งค่าระบบ</span>
                 </li>
@@ -386,9 +374,15 @@
                         <span class="font-medium text-sm">ตั้งค่าเกณฑ์ประเมิน MEWS</span>
                     </a>
                 </li>
+
+                <li>
+                    <a href="{{ \Illuminate\Support\Facades\Route::has('backend.settings.general.index') ? route('backend.settings.general.index') : url('/settings/general') }}" class="group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 {{ request()->routeIs('backend.settings.general.*') ? 'bg-slate-700/80 border-l-4 border-emerald-400 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-slate-700/50 border-l-4 border-transparent' }}">
+                        <i class="fa-solid fa-sliders w-6 text-center text-emerald-400 drop-shadow-sm group-hover:scale-110 transition-transform duration-300"></i>
+                        <span class="font-medium">ตั้งค่าระบบทั่วไป</span>
+                    </a>
+                </li>
                 @endif
-                
-                <!-- หมวดหมู่ช่วยเหลือ & คู่มือ (แสดงทุกตำแหน่ง) -->
+
                 <li class="pt-5 pb-2">
                     <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-4">ช่วยเหลือ &amp; คู่มือ</span>
                 </li>
@@ -414,18 +408,17 @@
                         <p class="text-sm font-bold text-white truncate">{{ auth()->user()->name }}</p>
                         <p class="text-xs text-slate-400 truncate mt-0.5">{{ auth()->user()->email }}</p>
                     </div>
-                </a>    
+                </a>
             </div>
         </div>
     </aside>
 
     <!-- 🌟 พื้นที่เนื้อหาหลัก (Main Content) -->
     <div class="flex-1 flex flex-col relative overflow-hidden h-screen">
-        
+
         <!-- แถบด้านบน (Topbar) -->
         <header class="h-16 shrink-0 bg-white dark:bg-slate-800 shadow-sm flex items-center justify-between px-4 md:px-6 z-30 transition-colors duration-300 relative">
-            
-            <!-- 🌟 โซนด้านซ้าย: ปุ่มพับเมนู + ป้ายสัญลักษณ์ M-CARE คู่กับชื่อหน้าปัจจุบัน -->
+
             <div class="flex items-center gap-3 md:gap-4 min-w-0">
                 <button id="sidebar-toggle-btn" class="text-slate-500 hover:text-emerald-500 dark:text-slate-400 dark:hover:text-emerald-400 focus:outline-none z-50 transition-colors shrink-0">
                     <i class="fa-solid fa-bars text-xl"></i>
@@ -444,29 +437,19 @@
                     </h2>
                 </div>
             </div>
-            
-            <!-- 🌟 โซนเครื่องมือด้านขวาทั้งหมด (อัปเกรด Mobile Responsive 100%) -->
+
             <div class="flex items-center gap-1.5 md:gap-4 ml-auto">
-                
-                <!-- 🌟 1. โซนตั้งค่าฟอนต์ & ธีม -->
+                <!-- 1. ตั้งค่าฟอนต์ & ธีม -->
                 <div class="flex items-center gap-1.5 md:gap-3 pr-2 md:pr-4 border-r border-slate-200 dark:border-slate-700">
-                    
-                    <!-- สไลเดอร์เปลี่ยนฟอนต์ (แก้บั๊กปุ่มหาย + แม่นยำ 100% ทุกหน้าจอ) -->
                     <div class="relative flex items-center bg-slate-200/70 dark:bg-slate-700 rounded-full p-1 shadow-inner w-[84px] md:w-[96px] h-7 md:h-8">
-                        
-                        <!-- 🌟 ลู่สไลด์ที่ซ่อนอยู่ (ใช้ inset-1 เพื่อหลบขอบ และซ้อนอยู่ใต้ปุ่มด้วย z-0) -->
                         <div class="absolute inset-1 z-0">
-                            <!-- กล่องขาว กว้าง 33.33% เลื่อนด้วยเปอร์เซ็นต์ ไม่ต้องง้อ JS คำนวณพิกเซล -->
                             <div id="font-slider-bg" class="h-full w-[33.33%] bg-white dark:bg-slate-800 rounded-full shadow-sm transition-transform duration-300 ease-in-out"></div>
                         </div>
-                        
-                        <!-- ปุ่มกด (z-10 เพื่อให้อยู่เหนือกล่องขาว) -->
                         <button onclick="changeTextSize('14px')" id="text-btn-sm" type="button" class="relative z-10 flex-1 flex items-center justify-center text-[10px] md:text-[11px] font-bold text-slate-500 dark:text-slate-400 transition-colors duration-300">A-</button>
                         <button onclick="changeTextSize('16px')" id="text-btn-md" type="button" class="relative z-10 flex-1 flex items-center justify-center text-[12px] md:text-[13px] font-black text-indigo-600 dark:text-indigo-400 transition-colors duration-300">A</button>
                         <button onclick="changeTextSize('18px')" id="text-btn-lg" type="button" class="relative z-10 flex-1 flex items-center justify-center text-[14px] md:text-[15px] font-bold text-slate-500 dark:text-slate-400 transition-colors duration-300">A+</button>
                     </div>
 
-                    <!-- สลับโหมดสว่าง/มืด -->
                     <button onclick="toggleDarkMode()" type="button" class="relative inline-flex h-6 md:h-8 w-11 md:w-14 items-center rounded-full bg-slate-200 dark:bg-slate-700 transition-colors duration-300 focus:outline-none shadow-inner shrink-0">
                         <span id="theme-slider" class="inline-flex h-4 md:h-6 w-4 md:w-6 items-center justify-center rounded-full bg-white dark:bg-slate-800 shadow-sm transition-transform duration-300 z-10 translate-x-1 dark:translate-x-6 md:dark:translate-x-7">
                             <i id="theme-icon" class="fa-solid fa-sun text-amber-500 text-[9px] md:text-[11px]"></i>
@@ -474,17 +457,15 @@
                     </button>
                 </div>
 
-                <!-- 🌟 2. ดึงข้อมูลแจ้งเตือน (กรองเคสสีเขียวล้วนออก เอาเฉพาะเหลือง/แดง หรือเขียวที่มีอาการฉุกเฉิน) -->
+                <!-- 2. ดึงข้อมูลแจ้งเตือน MEWS -->
                 @php
-                    $userRoles = is_string(auth()->user()->roles) ? json_decode(auth()->user()->roles, true) : (array)(auth()->user()->roles ?? auth()->user()->role);
-                    $isERorAdmin = in_array('er_nurse', $userRoles) || in_array('admin', $userRoles) || in_array('opd_nurse', $userRoles) || in_array('screening', $userRoles);
-                    
+                    $isERorAdmin = $isAdmin || $isER || $isOPD || $isScreening;
+
                     $bellNotifications = collect();
                     $latestAlertId = 0;
                     $latestAlertPayload = null;
 
                     if ($isERorAdmin) {
-                        // 🌟 ดึงเฉพาะเคสที่เพิ่งประเมิน "รอบแรก" (COUNT(*) = 1 ต่อ case_id) เพื่อไม่ให้รอบถัดไปเด้งซ้ำ!
                         $firstRoundOnlyIds = \App\Models\MewsAssessment::selectRaw('MAX(id) as id')
                             ->groupBy('case_id')
                             ->havingRaw('COUNT(*) = 1')
@@ -495,7 +476,7 @@
                             ->where('status', 'pending')
                             ->orderBy('created_at', 'desc')
                             ->take(5)->get();
-                        
+
                         $firstAlert = $bellNotifications->first();
                         if ($firstAlert && $firstAlert->patient) {
                             $rawFirstSyms = is_string($firstAlert->symptoms) ? json_decode($firstAlert->symptoms, true) : ($firstAlert->symptoms ?? []);
@@ -515,41 +496,36 @@
                     }
                 @endphp
 
-                <!-- 🌟 2.5 ปุ่ม Quick Help คู่มือด่วน -->
+                <!-- 2.5 ปุ่ม Quick Help -->
                 <div class="relative flex items-center shrink-0 mr-1 md:mr-2">
                     <button type="button" onclick="showQuickHelp()" class="relative flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 hover:text-indigo-600 transition-colors border border-indigo-100 dark:border-indigo-800 shadow-sm focus:outline-none" title="คู่มือด่วน (Cheat Sheet)">
                         <i class="fa-solid fa-circle-question text-base md:text-lg"></i>
                     </button>
                 </div>
 
-                <!-- 🌟 3. ปุ่มกระดิ่งแจ้งเตือน (ฝัง data-latest-payload สำหรับเด้งแจ้งเตือนอัตโนมัติ) -->
+                <!-- 3. ปุ่มกระดิ่งแจ้งเตือน -->
                 <div class="relative flex items-center shrink-0">
-                    <button id="notification-bell-btn" 
-                            data-latest-id="{{ $latestAlertId }}" 
+                    <button id="notification-bell-btn"
+                            data-latest-id="{{ $latestAlertId }}"
                             data-latest-payload='@json($latestAlertPayload)'
-                            type="button" 
+                            type="button"
                             class="relative text-slate-400 hover:text-emerald-500 transition-colors p-1.5 md:p-2 focus:outline-none">
                         <i class="fa-solid fa-bell text-lg md:text-xl"></i>
                         <span id="notification-badge" class="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-white dark:ring-slate-800 hidden"></span>
                     </button>
 
-                    <!-- Dropdown กระดิ่ง -->
                     <div id="notification-dropdown" class="hidden fixed left-4 right-4 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-full mt-2 sm:mt-3 w-auto sm:w-80 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl sm:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 dark:border-slate-700 z-[60] overflow-hidden">
-                        
-                        <!-- ส่วนหัว Dropdown + ปุ่มเปิดแจ้งเตือนเบราว์เซอร์ -->
                         <div class="px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
                             <span class="font-bold text-sm text-slate-800 dark:text-white">
                                 <i class="fa-solid fa-bell text-emerald-500 mr-1.5"></i> แจ้งเตือนล่าสุด
                             </span>
-                            <button type="button" id="btn-enable-browser-notify" onclick="requestBrowserNotificationPermission()" 
+                            <button type="button" id="btn-enable-browser-notify" onclick="requestBrowserNotificationPermission()"
                                     class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 transition-colors flex items-center gap-1 shadow-sm">
                                 <i class="fa-regular fa-bell"></i> เปิดแจ้งเตือนวินโดวส์
                             </button>
                         </div>
 
                         <div id="notification-list" class="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/50 bg-white dark:bg-slate-800">
-                            
-                            <!-- 🚨 โซนที่ 1: แจ้งเตือนเคสประเมิน MEWS (ฉุกเฉิน / เฝ้าระวัง) -->
                             @if($bellNotifications->count() > 0)
                                 <div class="px-4 py-2 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 shadow-sm">
                                     <span class="text-[10px] font-black text-rose-600 uppercase tracking-widest"><i class="fa-solid fa-heart-pulse mr-1"></i> เคสฉุกเฉิน / เฝ้าระวัง (ER)</span>
@@ -578,10 +554,9 @@
                                 @endforeach
                             @endif
 
-                            <!-- 📅 โซนที่ 2: แจ้งเตือนคิวนัดพบแพทย์ (สำหรับเสนารักษ์/พยาบาล) -->
                             @if(isset($upcomingAppAlerts) && $upcomingAppAlerts->count() > 0)
-                                <div class="px-4 py-2 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-100 flex items-center justify-between sticky {{ $bellNotifications->count() > 0 ? 'top-0' : 'top-0' }} z-10 shadow-sm mt-1">
-                                    <span class="text-[10px] font-black text-sky-600 uppercase tracking-widest"><i class="fa-solid fa-calendar-check mr-1"></i> คิวนัดพบแพทย์ (พรุ่งนี้/วันนี้)</span>
+                                <div class="px-4 py-2 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-100 flex items-center justify-between sticky top-0 z-10 shadow-sm mt-1">
+                                    <span class="text-[10px] font-black text-sky-600 uppercase tracking-widest"><i class="fa-solid fa-calendar-check mr-1"></i> คิวนัดพบแพทย์ (ล่วงหน้า {{ $sysAppAlertDays }} วัน)</span>
                                     <span class="text-[10px] font-bold text-slate-500">{{ $upcomingAppAlerts->count() }} ราย</span>
                                 </div>
                                 @foreach($upcomingAppAlerts->take(5) as $appAlert)
@@ -591,21 +566,21 @@
                                         $unitShort = $appAlert->militaryUnit->short_name ?? $ptApp->militaryUnit->short_name ?? '-';
                                         $hospName = $appAlert->hospital_name ?: ($appAlert->hospital_type === 'public_hospital' ? 'รพ.สาธารณสุข' : 'รพ.ค่ายฯ');
                                     @endphp
-                                    <a href="{{ route('backend.recruit_appointments.index', ['patient_id' => $appAlert->patient_id, 'intake_batch' => $appAlert->intake_batch]) }}" 
+                                    <a href="{{ route('backend.recruit_appointments.index', ['patient_id' => $appAlert->patient_id, 'intake_batch' => $appAlert->intake_batch]) }}"
                                        class="block px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors border-l-4 border-l-transparent">
                                         <div class="flex justify-between items-start gap-2 mb-1">
                                             <p class="text-sm font-bold text-slate-800 dark:text-white">
                                                 {{ $ptApp->rank ?? 'พลฯ' }}{{ $ptApp->first_name ?? '' }} {{ $ptApp->last_name ?? '' }}
                                             </p>
                                             <span class="text-[10px] font-black px-2 py-0.5 rounded shrink-0 {{ $isAppToday ? 'bg-rose-100 text-rose-700 animate-pulse' : 'bg-amber-100 text-amber-700' }}">
-                                                {{ $isAppToday ? '🚨 นัดวันนี้' : '⏰ นัดพรุ่งนี้' }}
+                                                {{ $isAppToday ? '🚨 นัดวันนี้' : '⏰ นัดล่วงหน้า' }}
                                             </span>
                                         </div>
                                         <p class="text-[11px] text-slate-600 dark:text-slate-300 font-semibold">
                                             <i class="fa-solid fa-hospital text-indigo-500 mr-1"></i> {{ $hospName }} ({{ $appAlert->clinic_name ?: 'ตรวจตามนัด' }})
                                         </p>
                                         <p class="text-[11px] text-slate-500 mt-0.5">
-                                            <i class="fa-regular fa-clock mr-1"></i> {{ $appAlert->appointment_date->addYears(543)->format('d/m/Y') }} เวลา {{ $appAlert->appointment_time ?: '08:30' }} น. • <b>{{ $unitShort }}</b>
+                                            <i class="fa-regular fa-clock mr-1"></i> {{ $appAlert->appointment_date->copy()->addYears(543)->format('d/m/Y') }} เวลา {{ $appAlert->appointment_time ?: '08:30' }} น. • <b>{{ $unitShort }}</b>
                                         </p>
                                     </a>
                                 @endforeach
@@ -622,8 +597,8 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- 🌟 4. Profile Dropdown (รวมออกจากระบบ) -->
+
+                <!-- 4. Profile Dropdown -->
                 <div class="relative ml-1 shrink-0">
                     <button id="profile-menu-btn" type="button" class="flex items-center gap-2 pl-1.5 md:pl-2 pr-1 md:pr-3 py-1 bg-white hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full md:rounded-xl transition-colors focus:outline-none border border-slate-200 dark:border-slate-700 shadow-sm">
                         <div class="w-7 h-7 md:w-8 md:h-8 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs md:text-sm">
@@ -633,18 +608,13 @@
                         <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 hidden md:block"></i>
                     </button>
 
-                    <!-- Dropdown เมนูโปรไฟล์ (ขยายเป็น w-64 เพื่อให้ข้อความภาษาไทยไม่อึดอัด) -->
                     <div id="profile-dropdown" class="hidden absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200/80 dark:border-slate-700 z-[60] overflow-hidden animate-fade-in-up">
-                        
-                        <!-- ข้อมูลผู้ใช้ (แสดงบนมือถือ) -->
                         <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-700 md:hidden bg-slate-50/80 dark:bg-slate-800/80">
                             <p class="text-sm font-bold text-slate-800 dark:text-white truncate">{{ auth()->user()->name }}</p>
                             <p class="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{{ auth()->user()->email }}</p>
                         </div>
 
-                        <!-- กลุ่มเมนูหลัก -->
                         <div class="p-1.5 space-y-1">
-                            <!-- 1. ตั้งค่าโปรไฟล์ -->
                             <a href="{{ route('backend.profile.edit') }}" class="flex items-center gap-3 px-2.5 py-2 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/70 transition-colors group">
                                 <div class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:bg-white dark:group-hover:bg-slate-600 transition-colors">
                                     <i class="fa-solid fa-user-doctor text-sm"></i>
@@ -652,7 +622,6 @@
                                 <span class="truncate">ตั้งค่าโปรไฟล์</span>
                             </a>
 
-                            <!-- 2. ติดตั้งแอปลงมือถือ (ซ่อนอัตโนมัติเมื่อเปิดผ่านแอปเต็มจอแล้ว) -->
                             <div class="pwa-hide-when-installed">
                                 <button type="button" onclick="window.openPwaInstallModal()"
                                         class="w-full flex items-center gap-3 px-2.5 py-2 rounded-xl bg-emerald-50/80 hover:bg-emerald-100/90 dark:bg-emerald-900/25 dark:hover:bg-emerald-900/45 border border-emerald-200/70 dark:border-emerald-800/70 text-left transition-all group">
@@ -674,10 +643,8 @@
                             </div>
                         </div>
 
-                        <!-- เส้นคั่นบางๆ -->
                         <div class="border-t border-slate-100 dark:border-slate-700"></div>
 
-                        <!-- 3. ออกจากระบบ -->
                         <div class="p-1.5">
                             <form action="{{ route('logout') }}" method="POST" class="block w-full m-0 p-0">
                                 @csrf
@@ -691,23 +658,16 @@
                         </div>
                     </div>
                 </div>
-
             </div>
         </header>
 
-        <!-- เนื้อหาหลัก (Scrollable พร้อมจัด Layout ให้ Footer อยู่ชิดด้านล่างเสมอ) -->
+        <!-- เนื้อหาหลัก -->
         <main class="flex-1 flex flex-col justify-between overflow-x-hidden overflow-y-auto bg-slate-50/50 dark:bg-slate-900 transition-colors duration-300">
-            
-            <!-- กล่องเนื้อหาด้านบน -->
             <div class="p-4 md:p-6 flex-1">
-                <!-- ========================================================================= -->
-                <!-- 🎖️ M-CARE SYSTEM: Modern Hero Identity Banner (แสดงอัตโนมัติทุกหน้าในหมวดทหารใหม่) -->
-                <!-- ========================================================================= -->
+                <!-- 🎖️ M-CARE SYSTEM: แบนเนอร์แสดงเฉพาะหน้าภาพรวมข้อมูลพลทหาร -->
                 @if(request()->routeIs('backend.patients.index') && (request('view') === 'overview' || (isset($viewMode) && $viewMode === 'overview')))
                 <div class="max-w-7xl mx-auto mb-6 print:hidden animate-fade-in-down">
                     <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-[#0b3b36] to-slate-900 p-5 sm:p-6 shadow-xl border border-teal-500/30 text-white">
-                        
-                        <!-- แสง Glow & ลวดลายกราฟิกพื้นหลังสไตล์ Modern Health-Tech -->
                         <div class="absolute -top-24 -left-24 w-64 h-64 bg-teal-500/20 rounded-full blur-3xl pointer-events-none"></div>
                         <div class="absolute -bottom-24 -right-16 w-72 h-72 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none"></div>
                         <div class="absolute right-6 top-1/2 -translate-y-1/2 text-white/[0.04] text-8xl sm:text-9xl pointer-events-none select-none">
@@ -715,8 +675,6 @@
                         </div>
 
                         <div class="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-                            
-                            <!-- ฝั่งซ้าย: โลโก้สัญลักษณ์ + ชื่อระบบ M-CARE ขนาดใหญ่โดดเด่น -->
                             <div class="flex items-start sm:items-center gap-4 sm:gap-5">
                                 <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-teal-400 via-emerald-500 to-teal-700 p-0.5 shadow-lg shadow-teal-500/25 shrink-0">
                                     <div class="w-full h-full bg-slate-950/40 backdrop-blur-sm rounded-[14px] flex flex-col items-center justify-center">
@@ -735,18 +693,15 @@
                                             KSVR HOSPITAL
                                         </span>
                                     </div>
-
                                     <p class="text-xs sm:text-sm font-bold text-teal-300/95 tracking-wide">
                                         Military Conscript Administration &amp; Remote Health Care
                                     </p>
-
                                     <p class="text-xs sm:text-[13px] font-medium text-slate-300">
                                         ระบบสารสนเทศเพื่อการบริหารจัดการสุขภาพทหารใหม่แบบครบวงจร • โรงพยาบาลค่ายกฤษณ์สีวะรา
                                     </p>
                                 </div>
                             </div>
 
-                            <!-- ฝั่งขวา: ป้ายทางลัดการเชื่อมโยงข้อมูล 4 มิติ (คลิกเพื่อไปยังแต่ละโมดูลได้ทันที) -->
                             <div class="hidden xl:grid grid-cols-2 gap-2 shrink-0 bg-slate-950/40 backdrop-blur-md p-2.5 rounded-2xl border border-white/10 text-[11px] font-bold text-slate-200">
                                 <a href="{{ route('backend.patients.index', ['view' => 'list']) }}" class="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-teal-500/20 hover:text-teal-200 border border-transparent hover:border-teal-500/30 transition-all">
                                     <i class="fa-solid fa-qrcode text-teal-400"></i>
@@ -765,19 +720,44 @@
                                     <span>เชื่อมโยงนัดหมาย HosXP</span>
                                 </a>
                             </div>
-
                         </div>
                     </div>
                 </div>
                 @endif
 
+                <!-- 📢 แถบประกาศระบบ (อ่านจาก Cache 0 DB Query + มีเกราะกัน Error 500) -->
+                @php
+                    $sysAnnouncementOn = false;
+                    $sysAnnouncementMsg = '';
+                    $sysAnnouncementType = 'info';
+                    if (class_exists(\App\Services\SettingService::class)) {
+                        try {
+                            $sysAnnouncementOn   = \App\Services\SettingService::get('announcement_enabled', false);
+                            $sysAnnouncementMsg  = \App\Services\SettingService::get('announcement_message', '');
+                            $sysAnnouncementType = \App\Services\SettingService::get('announcement_type', 'info');
+                        } catch (\Throwable $e) {
+                            $sysAnnouncementOn = false;
+                        }
+                    }
+                    $sysAnnCls = match($sysAnnouncementType) {
+                        'danger'  => 'bg-rose-600 text-white border-rose-700',
+                        'warning' => 'bg-amber-500 text-white border-amber-600',
+                        default   => 'bg-indigo-600 text-white border-indigo-700',
+                    };
+                @endphp
+                @if($sysAnnouncementOn && !empty($sysAnnouncementMsg))
+                    <div class="max-w-7xl mx-auto mb-4 px-4 py-2.5 rounded-2xl border shadow-sm text-xs sm:text-sm font-bold flex items-center gap-2.5 print:hidden {{ $sysAnnCls }}">
+                        <i class="fa-solid fa-bullhorn shrink-0"></i>
+                        <span>{{ $sysAnnouncementMsg }}</span>
+                    </div>
+                @endif
+
                 @yield('content')
             </div>
-            
-            <!-- 🌟 ส่วนท้ายหน้าเว็บ (Footer) รองรับทั้งโหมดปกติและโหมด M-CARE System -->
+
+            <!-- Footer -->
             <footer class="py-4 px-4 md:px-6 text-center text-xs sm:text-sm text-slate-500 dark:text-slate-400 border-t border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shrink-0 print:hidden">
                 <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
-                    
                     <div class="flex flex-wrap justify-center md:justify-start items-center gap-2">
                         @if(isset($isRecruitGroupActive) && $isRecruitGroupActive)
                             <span class="px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-black text-[11px]">
@@ -793,45 +773,42 @@
 
                     <div class="flex flex-wrap justify-center items-center gap-2">
                         <span>
-                            Developed with <i class="fa-solid fa-heart text-rose-500 animate-pulse mx-0.5"></i> by 
-                            <span class="font-bold text-indigo-600 dark:text-indigo-400">
-                                Supakit Dangprasert
-                            </span>
+                            Developed with <i class="fa-solid fa-heart text-rose-500 animate-pulse mx-0.5"></i> by
+                            <span class="font-bold text-indigo-600 dark:text-indigo-400">Supakit Dangprasert</span>
                         </span>
                         <span class="hidden sm:inline text-slate-300 dark:text-slate-700">|</span>
                         <span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[11px] text-slate-500 font-mono font-bold">v1.4.2</span>
                     </div>
-
                 </div>
             </footer>
-
         </main>
 
-        <!-- 🌟 โซนปุ่มลอย (Floating Action Buttons) จัดการ Layout ป้องกันการซ้อนทับ 100% -->
-        <div class="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[70] flex flex-col-reverse items-end gap-3 md:gap-4 pointer-events-none">
-            
-            <!-- 🌟 ปุ่มหลัก: AI ผู้บริหาร (หุ่นยนต์) จะโชว์ก็ต่อเมื่อไม่มีการสั่งซ่อนจากหน้าลูก -->
+        <!-- 🌟 โซนปุ่มลอย (Floating Action Buttons) -->
+        <div class="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[70] flex flex-col-reverse items-end gap-3 md:gap-4 pointer-events-none print:hidden">
             @if(!isset($hideExecutiveAiButton) || !$hideExecutiveAiButton)
-                <button onclick="openExecutiveAiModal()" 
-                    class="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full w-14 h-14 md:w-16 md:h-16 flex items-center justify-center shadow-[0_10px_25px_rgba(79,70,229,0.5)] hover:shadow-[0_15px_35px_rgba(79,70,229,0.6)] transition-all duration-300 transform hover:-translate-y-1 focus:outline-none ring-4 ring-indigo-500/20 group pointer-events-auto" title="ถาม AI อัจฉริยะ">
+                <button onclick="openExecutiveAiModal()"
+                    class="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full w-14 h-14 md:w-16 md:h-16 flex items-center justify-center shadow-[0_10px_25px_rgba(79,70,229,0.5)] hover:shadow-[0_15px_35px_rgba(79,70,229,0.6)] transition-all duration-300 transform hover:-translate-y-1 focus:outline-none ring-4 ring-indigo-500/20 group pointer-events-auto" title="ถาม AI อัจฉริยะ (KSVR AI)">
                     <i class="fa-solid fa-robot text-2xl group-hover:scale-110 transition-transform duration-300"></i>
                 </button>
             @endif
 
-            <!-- 🌟 เปิดช่องว่างให้หน้าอื่น (เช่น หน้า Medic หรือหน้า MEWS Form) ยัดปุ่มเสริมเข้ามาได้ -->
+            {{-- @if(request()->routeIs('backend.mews.show') && isset($currentMews) && \Illuminate\Support\Facades\Route::has('backend.ai.sbar_handover'))
+                <button type="button" onclick="openSbarHandoverModal({{ $currentMews->id }})"
+                    class="bg-emerald-600 hover:bg-emerald-500 text-white rounded-full h-12 md:h-13 px-4 flex items-center justify-center gap-2 shadow-[0_10px_25px_rgba(16,185,129,0.45)] transition-all duration-300 transform hover:-translate-y-1 focus:outline-none ring-4 ring-emerald-500/20 pointer-events-auto text-xs md:text-sm font-black" title="สรุปส่งเวร / ส่งต่อ Refer แบบ SBAR ด้วย AI 1 คลิก">
+                    <i class="fa-solid fa-file-medical text-base"></i>
+                    <span class="hidden sm:inline">AI ส่งเวร SBAR</span>
+                </button>
+            @endif --}}
+
             @yield('floating_buttons')
-
         </div>
-    </div> <!-- ปิด div กรอบใหญ่สุดฝั่งขวา -->
+    </div>
 
-    <!-- นำเข้าไลบรารี SweetAlert2 -->
+    <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!-- 🌟 Scripts หลักควบคุมระบบ UI 🌟 -->
     <script>
-        // -----------------------------------------------------
-        // 1. ฟังก์ชันอัปเดต UI ของปุ่มฟอนต์
-        // -----------------------------------------------------
         function updateFontSizeUI(sizePx) {
             const slider = document.getElementById('font-slider-bg');
             const btnSm = document.getElementById('text-btn-sm');
@@ -839,22 +816,21 @@
             const btnLg = document.getElementById('text-btn-lg');
 
             [btnSm, btnMd, btnLg].forEach(btn => {
-                if(btn) {
+                if (btn) {
                     btn.classList.remove('text-indigo-600', 'dark:text-indigo-400', 'font-black');
                     btn.classList.add('text-slate-500', 'dark:text-slate-400', 'font-bold');
                 }
             });
 
-            // 🌟 เลื่อนสไลเดอร์ด้วย 0%, 100%, 200% เป๊ะทุกหน้าจอ
             if (sizePx === '14px') {
-                if(slider) slider.style.transform = 'translateX(0%)'; 
-                if(btnSm) btnSm.classList.add('text-indigo-600', 'dark:text-indigo-400', 'font-black');
+                if (slider) slider.style.transform = 'translateX(0%)';
+                if (btnSm) btnSm.classList.add('text-indigo-600', 'dark:text-indigo-400', 'font-black');
             } else if (sizePx === '16px') {
-                if(slider) slider.style.transform = 'translateX(100%)'; 
-                if(btnMd) btnMd.classList.add('text-indigo-600', 'dark:text-indigo-400', 'font-black');
+                if (slider) slider.style.transform = 'translateX(100%)';
+                if (btnMd) btnMd.classList.add('text-indigo-600', 'dark:text-indigo-400', 'font-black');
             } else if (sizePx === '18px') {
-                if(slider) slider.style.transform = 'translateX(200%)'; 
-                if(btnLg) btnLg.classList.add('text-indigo-600', 'dark:text-indigo-400', 'font-black');
+                if (slider) slider.style.transform = 'translateX(200%)';
+                if (btnLg) btnLg.classList.add('text-indigo-600', 'dark:text-indigo-400', 'font-black');
             }
         }
 
@@ -864,21 +840,18 @@
             updateFontSizeUI(sizePx);
         }
 
-        // -----------------------------------------------------
-        // 2. ฟังก์ชันสลับโหมด Dark/Light (สลับไอคอน + สไลด์)
-        // -----------------------------------------------------
         function updateThemeUI() {
             const htmlTag = document.documentElement;
             const themeIcon = document.getElementById('theme-icon');
             const themeSlider = document.getElementById('theme-slider');
             const isMobile = window.innerWidth < 768;
-            
+
             if (htmlTag.classList.contains('dark')) {
-                if(themeIcon) themeIcon.className = "fa-solid fa-moon text-indigo-500 text-[9px] md:text-[11px] transition-all duration-300";
-                if(themeSlider) themeSlider.style.transform = isMobile ? 'translateX(20px)' : 'translateX(24px)';
+                if (themeIcon) themeIcon.className = "fa-solid fa-moon text-indigo-500 text-[9px] md:text-[11px] transition-all duration-300";
+                if (themeSlider) themeSlider.style.transform = isMobile ? 'translateX(20px)' : 'translateX(24px)';
             } else {
-                if(themeIcon) themeIcon.className = "fa-solid fa-sun text-amber-500 text-[9px] md:text-[11px] transition-all duration-300";
-                if(themeSlider) themeSlider.style.transform = 'translateX(4px)';
+                if (themeIcon) themeIcon.className = "fa-solid fa-sun text-amber-500 text-[9px] md:text-[11px] transition-all duration-300";
+                if (themeSlider) themeSlider.style.transform = 'translateX(4px)';
             }
         }
 
@@ -894,36 +867,31 @@
             updateThemeUI();
         }
 
-        // -----------------------------------------------------
-        // 3. เริ่มต้นการทำงาน (รวมจัดการกระดิ่งและเมนู)
-        // -----------------------------------------------------
         document.addEventListener('DOMContentLoaded', function () {
             const savedTextSize = localStorage.getItem('textSize') || '16px';
             updateFontSizeUI(savedTextSize);
             updateThemeUI();
-            
-            // ชุดคลาสสำหรับตกแต่ง SweetAlert ให้เข้ากับ Tailwind
+
             const modalCustomClass = {
                 popup: 'bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-700 p-6 transition-colors duration-300',
                 title: 'text-xl font-bold text-slate-800 dark:text-white',
                 htmlContainer: 'text-sm text-slate-500 dark:text-slate-400 mt-2',
-                actions: 'flex gap-3 mt-6 w-full justify-center', 
+                actions: 'flex gap-3 mt-6 w-full justify-center',
                 confirmButton: 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl px-6 py-2.5 transition-colors shadow-sm outline-none',
                 cancelButton: 'bg-slate-200 hover:bg-slate-300 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200 font-bold rounded-xl px-6 py-2.5 transition-colors shadow-sm outline-none'
             };
 
-            // แจ้งเตือนแบบ Toast (สำเร็จ)
             @if(session('success'))
                 Swal.fire({
                     toast: true,
                     position: 'top-end',
                     icon: 'success',
-                    title: '{{ session('success') }}',
+                    title: @json(session('success')),
                     showConfirmButton: false,
                     timer: 3000,
                     timerProgressBar: true,
                     scrollbarPadding: false,
-                    heightAuto: false, 
+                    heightAuto: false,
                     customClass: {
                         popup: 'bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700',
                         title: 'text-sm font-bold text-slate-800 dark:text-white mt-1'
@@ -931,24 +899,22 @@
                 });
             @endif
 
-            // แจ้งเตือนแบบ Modal (ผิดพลาด)
             @if(session('error'))
                 Swal.fire({
                     icon: 'error',
                     title: 'เกิดข้อผิดพลาด!',
-                    text: '{{ session('error') }}',
+                    text: @json(session('error')),
                     buttonsStyling: false,
-                    scrollbarPadding: false, 
-                    heightAuto: false, 
+                    scrollbarPadding: false,
+                    heightAuto: false,
                     customClass: modalCustomClass
                 });
             @endif
-            
-            // ระบบ Confirm กลาง (ใช้ลบ/ยืนยัน)
+
             window.confirmAction = function(event, title, text, icon, formId) {
                 event.preventDefault();
                 const sidebar = document.getElementById('sidebar');
-                if(sidebar) sidebar.style.zIndex = '0'; 
+                if (sidebar) sidebar.style.zIndex = '0';
 
                 Swal.fire({
                     title: title,
@@ -961,38 +927,33 @@
                     buttonsStyling: false,
                     scrollbarPadding: false,
                     heightAuto: false,
-                    customClass: modalCustomClass 
+                    customClass: modalCustomClass
                 }).then((result) => {
-                    if(sidebar) sidebar.style.zIndex = '40'; 
+                    if (sidebar) sidebar.style.zIndex = '40';
                     if (result.isConfirmed) {
                         document.getElementById(formId).submit();
                     }
                 });
-            }
+            };
 
-            // 🌟 ระบบเมนู (อัปเกรด Breakpoint เป็น lg และพับอัตโนมัติ 100%)
             const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn') || document.getElementById('mobile-menu-btn');
             const sidebar = document.getElementById('sidebar');
 
             if (sidebarToggleBtn && sidebar) {
                 sidebarToggleBtn.addEventListener('click', function (e) {
                     e.stopPropagation();
-                    // 1. สำหรับมือถือ/แท็บเล็ต: สลับคลาสให้เมนูสไลด์เข้า/ออกจอ
                     sidebar.classList.toggle('-translate-x-full');
-                    // 2. สำหรับ Desktop: สลับคลาส lg:-ml-64 เพื่อดึงเมนูซ่อนไปทางซ้าย
                     sidebar.classList.toggle('lg:-ml-64');
                 });
 
-                // ปิดเมนูอัตโนมัติเมื่อคลิกพื้นที่ว่าง (ทำงานบนหน้าจอที่เล็กกว่า Desktop)
                 document.addEventListener('click', function (e) {
-                    if (window.innerWidth < 1024) { // อัปเกรดจาก 768 เป็น 1024 (lg)
+                    if (window.innerWidth < 1024) {
                         if (!sidebar.classList.contains('-translate-x-full') && !sidebar.contains(e.target) && !sidebarToggleBtn.contains(e.target)) {
                             sidebar.classList.add('-translate-x-full');
                         }
                     }
                 });
 
-                // 🌟 เสริม UX ขั้นสุด: พับเก็บเมนูอัตโนมัติทันทีที่กดเลือกลิงก์ (เฉพาะมือถือ/แท็บเล็ต)
                 const menuLinks = sidebar.querySelectorAll('nav a');
                 menuLinks.forEach(link => {
                     link.addEventListener('click', () => {
@@ -1003,7 +964,6 @@
                 });
             }
 
-            // 🌟 ควบคุม Dropdown โปรไฟล์
             const profileBtn = document.getElementById('profile-menu-btn');
             const profileDropdown = document.getElementById('profile-dropdown');
 
@@ -1014,27 +974,24 @@
                 });
             }
 
-            // 🌟 ควบคุมกระดิ่ง & จุดแดง (แก้บั๊กจุดแดงค้าง 100%)
             const bellBtn = document.getElementById('notification-bell-btn');
             const bellDropdown = document.getElementById('notification-dropdown');
             const badge = document.getElementById('notification-badge');
 
             if (bellBtn && badge) {
-                // บังคับแปลงเป็นเลขฐาน 10 (ป้องกันบั๊ก String เปรียบเทียบกัน)
                 const serverId = parseInt(bellBtn.getAttribute('data-latest-id'), 10) || 0;
                 const localId = parseInt(localStorage.getItem('ksvr_bell_id'), 10) || 0;
 
                 if (serverId > 0 && serverId > localId) {
                     badge.classList.remove('hidden');
                 } else {
-                    badge.classList.add('hidden'); 
+                    badge.classList.add('hidden');
                 }
 
                 bellBtn.addEventListener('click', function (e) {
                     e.stopPropagation();
-                    if(bellDropdown) bellDropdown.classList.toggle('hidden');
-                    
-                    // เมื่อกดเปิดกระดิ่ง ให้บันทึก ID ลงเครื่องทันทีและซ่อนจุดแดง
+                    if (bellDropdown) bellDropdown.classList.toggle('hidden');
+
                     if (bellDropdown && !bellDropdown.classList.contains('hidden')) {
                         badge.classList.add('hidden');
                         if (serverId > 0) {
@@ -1044,7 +1001,6 @@
                 });
             }
 
-            // 🌟 ปิดทุก Dropdown ถ้าคลิกพื้นที่ว่าง
             document.addEventListener('click', function (e) {
                 if (profileDropdown && !profileDropdown.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
                     profileDropdown.classList.add('hidden');
@@ -1054,9 +1010,7 @@
                 }
             });
         });
-        // -----------------------------------------------------
-        // 4. ฟังก์ชันเปิดคู่มือด่วน Quick Help (เรียกใช้ Modal 4 ขั้นตอนฉบับอัปเดต)
-        // -----------------------------------------------------
+
         function showQuickHelp() {
             if (typeof window.openWorkflowOverviewModal === 'function') {
                 window.openWorkflowOverviewModal();
@@ -1064,7 +1018,7 @@
         }
     </script>
 
-    <!-- 🌟 ระบบแจ้งเตือนผ่านเบราว์เซอร์ (Chrome / Edge / Firefox / Safari / Mobile) + Hybrid Real-time Polling 🌟 -->
+    <!-- 🌟 ระบบแจ้งเตือนผ่านเบราว์เซอร์ + Hybrid Real-time Polling (เชื่อมรอบเวลาจาก SettingService) 🌟 -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
@@ -1073,7 +1027,6 @@
             });
         }
 
-        // 🔊 ฟังก์ชันสร้างเสียงแจ้งเตือน
         window.playAlertSound = function(isEmergency = false) {
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1109,7 +1062,6 @@
             return isIos && !isStandalone;
         };
 
-        // 🖥️ อัปเดตสถานะปุ่มเปิดการแจ้งเตือนในกระดิ่ง
         window.updateBrowserNotifyButtonUI = function() {
             const btn = document.getElementById('btn-enable-browser-notify');
             if (!btn) return;
@@ -1149,7 +1101,6 @@
             }
         };
 
-        // 🔔 ขออนุญาตเปิดการแจ้งเตือน
         window.requestBrowserNotificationPermission = async function() {
             if (window.isIosNotInstalled()) {
                 Swal.fire({
@@ -1209,7 +1160,6 @@
             }
         };
 
-        // 🚀 ยิง Native Notification (เรียก new Notification โดยตรงสำหรับ Desktop ก่อนเสมอ และใช้ unique tag เพื่อป้องกัน Windows กลืนป๊อปอัปซ้ำ)
         window.triggerNativeBrowserNotification = async function(title, bodyText, targetUrl, tagId = 'ksvr-mews-alert', isUrgent = false, isManualTest = false) {
             if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
@@ -1227,7 +1177,6 @@
 
             let shownSuccess = false;
 
-            // 1. เรียก new Notification() โดยตรงก่อน (เสถียรที่สุดบน Desktop Chrome, Edge, Firefox, Safari)
             try {
                 const notification = new Notification(title, options);
                 notification.onclick = function(event) {
@@ -1238,7 +1187,6 @@
                 };
                 shownSuccess = true;
             } catch (directErr) {
-                // 2. กรณีเป็นมือถือ Android (ซึ่งบังคับใช้ ServiceWorker) ให้ Fallback มาใช้ reg.showNotification()
                 try {
                     if ('serviceWorker' in navigator) {
                         const reg = await navigator.serviceWorker.getRegistration();
@@ -1252,7 +1200,6 @@
                 }
             }
 
-            // หากกดปุ่มคลิกทดสอบ ให้แสดง Toast ยืนยันว่าส่งคำสั่งไปยังระบบปฏิบัติการแล้ว
             if (isManualTest && shownSuccess) {
                 Swal.fire({
                     toast: true,
@@ -1266,7 +1213,6 @@
             }
         };
 
-        // 🔔 ฟังก์ชันตรวจสอบเคสใหม่จากกระดิ่งแจ้งเตือน (ทำงานทั้งตอนโหลดหน้าเว็บ และตรวจสอบเบื้องหลังทุก 15 วินาที)
         window.checkAndTriggerBellAlert = function(payloadData) {
             if (!payloadData || !payloadData.id) return;
 
@@ -1283,8 +1229,8 @@
                 const isObs  = payloadData.risk_level === 'observe';
 
                 window.playAlertSound(isEmer);
-                const notifyTitle = isEmer 
-                    ? `🚨 ฉุกเฉิน! ส่งตัวเข้า ER (MEWS: ${payloadData.score})` 
+                const notifyTitle = isEmer
+                    ? `🚨 ฉุกเฉิน! ส่งตัวเข้า ER (MEWS: ${payloadData.score})`
                     : (isObs ? `⚠️ เคสเฝ้าระวังใหม่ (MEWS: ${payloadData.score})` : `✅ ข้อมูลประเมินใหม่ (MEWS: ${payloadData.score})`);
 
                 window.triggerNativeBrowserNotification(
@@ -1300,7 +1246,6 @@
         document.addEventListener('DOMContentLoaded', function() {
             window.updateBrowserNotifyButtonUI();
 
-            // ตรวจสอบทันทีเมื่อเปิดหน้าเว็บว่ามีเคสใหม่ที่ยังไม่เคยเด้งแจ้งเตือนหรือไม่
             const bellBtn = document.getElementById('notification-bell-btn');
             if (bellBtn) {
                 try {
@@ -1308,7 +1253,6 @@
                     if (initialPayload && initialPayload.id) {
                         const lastNotified = parseInt(localStorage.getItem('ksvr_notified_alert_id'), 10) || 0;
                         if (lastNotified === 0) {
-                            // ครั้งแรกสุดที่เข้าใช้งาน ให้จำค่า ID ปัจจุบันไว้เป็นฐานก่อน
                             localStorage.setItem('ksvr_notified_alert_id', String(initialPayload.id));
                         } else if (initialPayload.id > lastNotified) {
                             window.checkAndTriggerBellAlert(initialPayload);
@@ -1317,7 +1261,8 @@
                 } catch (e) {}
             }
 
-            // 🔄 ระบบ Background Smart Polling ทุก 15 วินาที (การันตีว่าแจ้งเตือนทำงาน 100% แม้ไม่ได้เปิดรัน Reverb WebSocket!)
+            // 🔄 Background Smart Polling (อ้างอิงความถี่จากหน้าตั้งค่าระบบทั่วไป)
+            const ksvrPollingMs = {{ (int) ($sysPollingSeconds ?? 30) * 1000 }};
             setInterval(function() {
                 if (document.hidden === false || Notification.permission === 'granted') {
                     fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
@@ -1347,13 +1292,13 @@
                         })
                         .catch(() => {});
                 }
-            }, 15000);
+            }, ksvrPollingMs);
         });
     </script>
 
+    <!-- 🌟 Laravel Echo Real-time WebSocket 🌟 -->
     <script type="module">
         document.addEventListener('DOMContentLoaded', function () {
-            
             if (window.Echo) {
                 const userUnit = document.querySelector('meta[name="user-unit"]')?.getAttribute('content');
                 const userRolesStr = document.querySelector('meta[name="user-roles"]')?.getAttribute('content') || '[]';
@@ -1364,12 +1309,11 @@
                 } catch (e) {
                     userRoles = [];
                 }
-                
+
                 const isMedic = userRoles.includes('medic');
                 const isER = userRoles.includes('er_nurse') || userRoles.includes('opd_nurse') || userRoles.includes('screening');
                 const isAdmin = userRoles.includes('admin');
 
-                // 1. แจ้งเตือนเข้าห้องฉุกเฉิน (ER / OPD / Admin) แบบ Real-time
                 if (isER || isAdmin) {
                     window.Echo.private('er-alerts')
                         .listen('.mews.emergency', (e) => {
@@ -1378,21 +1322,20 @@
                             const isEmer = e.patientData.risk_level === 'emergency' || e.patientData.risk_level === 'emergency_condition';
                             const isObs  = e.patientData.risk_level === 'observe';
 
-                            // บันทึก ID ที่แจ้งเตือนแล้วเพื่อไม่ให้ระบบ Polling แจ้งซ้ำ
                             if (e.patientData.mews_id) {
                                 localStorage.setItem('ksvr_notified_alert_id', String(e.patientData.mews_id));
                             }
 
                             const badge = document.getElementById('notification-badge');
-                            if(badge) badge.classList.remove('hidden');
+                            if (badge) badge.classList.remove('hidden');
 
                             const bellBtn = document.getElementById('notification-bell-btn');
-                            if(bellBtn && e.patientData.mews_id) bellBtn.setAttribute('data-latest-id', e.patientData.mews_id);
+                            if (bellBtn && e.patientData.mews_id) bellBtn.setAttribute('data-latest-id', e.patientData.mews_id);
 
                             const notifList = document.getElementById('notification-list');
                             const notifEmpty = document.getElementById('notification-empty');
-                            if(notifList) {
-                                if(notifEmpty) notifEmpty.remove(); 
+                            if (notifList) {
+                                if (notifEmpty) notifEmpty.remove();
                                 const itemBadgeClass = isEmer ? 'bg-rose-100 text-rose-700' : (isObs ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700');
                                 const itemScoreClass = isEmer ? 'text-rose-600' : (isObs ? 'text-amber-600' : 'text-emerald-600');
 
@@ -1409,12 +1352,11 @@
                                 notifList.insertAdjacentHTML('afterbegin', itemHtml);
                             }
 
-                            // 🔊 ส่งเสียงเตือน + ยิงป๊อปอัปแจ้งเตือนผ่านเบราว์เซอร์ทันที!
                             window.playAlertSound(isEmer);
-                            const notifyTitle = isEmer 
-                                ? `🚨 ฉุกเฉิน! ส่งตัวเข้า ER (MEWS: ${e.patientData.score})` 
+                            const notifyTitle = isEmer
+                                ? `🚨 ฉุกเฉิน! ส่งตัวเข้า ER (MEWS: ${e.patientData.score})`
                                 : (isObs ? `⚠️ เคสเฝ้าระวังใหม่ (MEWS: ${e.patientData.score})` : `✅ ข้อมูลประเมินใหม่ (MEWS: ${e.patientData.score})`);
-                            
+
                             window.triggerNativeBrowserNotification(
                                 notifyTitle,
                                 `ผู้ป่วย: ${e.patientData.name}\nสังกัด: ${e.patientData.unit} (คลิกเพื่อเปิดดูเคสทันที)`,
@@ -1423,7 +1365,7 @@
                                 isEmer
                             );
 
-                            let alertTheme = e.patientData.risk_level === 'normal' 
+                            let alertTheme = e.patientData.risk_level === 'normal'
                                 ? { title: '✅ ข้อมูลใหม่ (ปกติ)', icon: 'success', color: '#10b981', badge: 'bg-emerald-100 text-emerald-700', autoClose: 5000 }
                                 : e.patientData.risk_level === 'observe'
                                 ? { title: '⚠️ มีเคสเฝ้าระวังใหม่', icon: 'warning', color: '#f59e0b', badge: 'bg-amber-100 text-amber-700', autoClose: 5000 }
@@ -1436,7 +1378,7 @@
                                         <p class="text-lg font-bold text-slate-800 dark:text-white mb-1">${e.patientData.name}</p>
                                         <p class="text-sm text-slate-600 dark:text-slate-400"><i class="fa-solid fa-tent text-slate-400 w-5"></i> สังกัด: <b class="dark:text-slate-200">${e.patientData.unit}</b></p>
                                         <p class="text-sm text-slate-600 dark:text-slate-400 mt-3 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
-                                            คะแนนรวม: <b class="text-lg">${e.patientData.score} แต้ม</b> 
+                                            คะแนนรวม: <b class="text-lg">${e.patientData.score} แต้ม</b>
                                             <span class="px-2 py-0.5 rounded ml-2 font-bold ${alertTheme.badge}">${e.patientData.risk_level.toUpperCase()}</span>
                                         </p>
                                     </div>
@@ -1453,7 +1395,7 @@
                                 customClass: {
                                     popup: 'bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-700 p-6',
                                     title: 'text-xl font-black text-slate-800 dark:text-white',
-                                    actions: 'flex gap-3 mt-6 w-full justify-center', 
+                                    actions: 'flex gap-3 mt-6 w-full justify-center',
                                     confirmButton: 'bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl px-6 py-2.5 transition-colors shadow-md outline-none',
                                     cancelButton: 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200 text-slate-700 font-bold rounded-xl px-6 py-2.5 transition-colors shadow-sm outline-none'
                                 }
@@ -1463,12 +1405,11 @@
                         });
                 }
 
-                // 2. แจ้งเตือนกลับไปยังเสนารักษ์กองร้อย
                 if ((isMedic || isAdmin) && userUnit) {
                     window.Echo.private(`unit-alerts.${userUnit}`)
                         .listen('.mews.status.updated', (e) => {
                             const badge = document.getElementById('notification-badge');
-                            if(badge) badge.classList.remove('hidden');
+                            if (badge) badge.classList.remove('hidden');
 
                             window.playAlertSound(false);
                             window.triggerNativeBrowserNotification(
@@ -1506,8 +1447,8 @@
             });
         });
     </script>
-    
-    <!-- ⏰ Global Script: แจ้งเตือนคิวนัดพบแพทย์ล่วงหน้า 1 วัน (และนัดวันนี้) ให้เสนารักษ์รับทราบทันทีที่เข้าสู่ระบบ -->
+
+    <!-- ⏰ Global Script: แจ้งเตือนคิวนัดพบแพทย์ล่วงหน้า (แก้บั๊กบวกปี พ.ศ. ซ้ำเรียบร้อย) -->
     @if(isset($upcomingAppAlerts) && $upcomingAppAlerts->count() > 0 && !request()->routeIs('backend.recruit_appointments.*'))
         @php
             $globalAppModalList = $upcomingAppAlerts->map(function($a) {
@@ -1520,8 +1461,8 @@
                     'unit'          => $a->militaryUnit->short_name ?? $p->militaryUnit->short_name ?? '-',
                     'batch'         => $a->intake_batch ?: '-',
                     'is_today'      => $isToday,
-                    'day_badge'     => $isToday ? '🚨 นัดวันนี้!' : '⏰ นัดพรุ่งนี้ (ล่วงหน้า 1 วัน)',
-                    'date_thai'     => $a->appointment_date->addYears(543)->format('d/m/Y'),
+                    'day_badge'     => $isToday ? '🚨 นัดวันนี้!' : '⏰ นัดล่วงหน้า',
+                    'date_thai'     => $a->appointment_date->copy()->addYears(543)->format('d/m/Y'),
                     'time'          => ($a->appointment_time ?: '08:30') . ' น.',
                     'hospital_type' => $a->hospital_type,
                     'hospital_name' => $a->hospital_name ?: ($a->hospital_type === 'public_hospital' ? 'รพ.สาธารณสุข' : 'รพ.ค่ายกฤษณ์สีวะรา'),
@@ -1536,23 +1477,20 @@
                 const globalAlerts = @json($globalAppModalList);
                 if (!globalAlerts || globalAlerts.length === 0) return;
 
-                // เปิดจุดไฟสีแดงที่กระดิ่งแจ้งเตือนเสมอเมื่อมีคิวนัดวันนี้/พรุ่งนี้
                 const badge = document.getElementById('notification-badge');
                 if (badge) badge.classList.remove('hidden');
 
-                // เช็คว่าเคยเด้งแจ้งเตือน Global ในเซสชันวันนี้ของ User คนนี้แล้วหรือยัง
                 const storageKey = 'ksvr_medic_app_alert_{{ auth()->id() }}_{{ date("Y-m-d") }}';
                 if (sessionStorage.getItem(storageKey)) return;
 
                 setTimeout(() => {
-                    // ส่งเสียงเตือน + ยิง Browser Notification มุมจอควบคู่กัน
                     if (typeof window.playAlertSound === 'function') {
                         window.playAlertSound(false);
                     }
                     if (typeof window.triggerNativeBrowserNotification === 'function') {
                         window.triggerNativeBrowserNotification(
                             `📅 แจ้งเตือนคิวนัดพบแพทย์ (${globalAlerts.length} ราย)`,
-                            `มีพลทหารต้องไปพบแพทย์ (พรุ่งนี้/วันนี้) กรุณาเตรียมการส่งตัวครับ`,
+                            `มีพลทหารต้องไปพบแพทย์เร็วๆ นี้ กรุณาเตรียมการส่งตัวครับ`,
                             "{{ route('backend.recruit_appointments.index') }}",
                             'appointment-advance-alert',
                             false
@@ -1588,7 +1526,7 @@
                     Swal.fire({
                         title: `<div class="text-lg md:text-xl font-black text-slate-800 flex items-center justify-center gap-2"><i class="fa-solid fa-calendar-check text-amber-500 animate-bounce"></i> แจ้งเตือนนำทหารพบแพทย์ (${globalAlerts.length} ราย)</div>`,
                         html: `
-                            <p class="text-xs text-slate-500">แจ้งเตือนล่วงหน้า 1 วัน และคิวนัดวันนี้ เพื่อให้เสนารักษ์และหน่วยฝึกเตรียมความพร้อมในการนำพลทหารมาพบแพทย์ตามนัดครับ</p>
+                            <p class="text-xs text-slate-500">แจ้งเตือนล่วงหน้าและคิวนัดวันนี้ เพื่อให้เสนารักษ์และหน่วยฝึกเตรียมความพร้อมในการนำพลทหารมาพบแพทย์ตามนัดครับ</p>
                             ${itemsHtml}
                         `,
                         width: '40rem',
@@ -1597,9 +1535,7 @@
                         cancelButtonText: '<i class="fa-solid fa-check mr-1"></i> รับทราบ',
                         confirmButtonColor: '#4f46e5',
                         cancelButtonColor: '#059669',
-                        customClass: {
-                            popup: 'rounded-3xl p-6 shadow-2xl'
-                        }
+                        customClass: { popup: 'rounded-3xl p-6 shadow-2xl' }
                     }).then((res) => {
                         sessionStorage.setItem(storageKey, '1');
                         if (res.isConfirmed) {
@@ -1612,14 +1548,37 @@
     @endif
 
     @yield('scripts')
+
+    <!-- 🤖 KSVR AI Data Analyzer (ครบ 11 โหมด + บริบทหน้าดูผล MEWS + AI SBAR Handover 1 คลิก) -->
+    @php
+        $aiPageContext = null;
+        if (request()->routeIs('backend.mews.show') && isset($currentMews) && isset($patient)) {
+            $aiPageContext = [
+                'is_mews_show' => true,
+                'mews_id'      => $currentMews->id,
+                'patient_name' => trim(($patient->rank ?? '') . ($patient->first_name ?? '') . ' ' . ($patient->last_name ?? '')),
+                'short_name'   => trim((string) ($patient->first_name ?? '')),
+                'has_sbar_api' => \Illuminate\Support\Facades\Route::has('backend.ai.sbar_handover'),
+                'sbar_url'     => \Illuminate\Support\Facades\Route::has('backend.ai.sbar_handover')
+                                    ? route('backend.ai.sbar_handover', $currentMews->id)
+                                    : null,
+            ];
+        }
+    @endphp
     <script>
         const styleTitle = "color: #4f46e5; font-size: 24px; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.2);";
         const styleSubtitle = "color: #10b981; font-size: 14px; font-weight: bold;";
-        const styleText = "color: #64748b; font-size: 12px;";
 
         console.log("%c🚀 KSVR Hospital Management System", styleTitle);
         console.log("%c👨‍💻 Engineered & Developed by Supakit (IT KSVR)", styleSubtitle);
         console.log("--------------------------------------------------");
+
+        const ksvrAiMeta = {
+            isAdmin: @json((bool) ($isAdmin ?? false)),
+            canViewChronic: @json((bool) ($canViewChronicAi ?? false)),
+            mewsContext: @json($aiPageContext),
+            sbarUrlTemplate: @json(\Illuminate\Support\Facades\Route::has('backend.ai.sbar_handover') ? route('backend.ai.sbar_handover', ['mews_id' => '__MEWS_ID__']) : null)
+        };
 
         function setExecutiveQuickPrompt(qText) {
             const el = document.getElementById('ai_executive_prompt');
@@ -1629,55 +1588,257 @@
             }
         }
 
-        function openExecutiveAiModal() {
+        function escapeAiHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // 📋 ตัวช่วยก๊อปปี้ข้อความรองรับทั้ง HTTPS และ HTTP วงแลนโรงพยาบาล
+        window.ksvrCopyTextWithFeedback = function(text, btnEl, successLabel = 'ก๊อปปี้แล้ว!') {
+            const onCopied = () => {
+                if (!btnEl) return;
+                const orig = btnEl.innerHTML;
+                btnEl.innerHTML = `<i class="fa-solid fa-check mr-1"></i>${successLabel}`;
+                setTimeout(() => { btnEl.innerHTML = orig; }, 1800);
+            };
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(onCopied).catch(() => fallbackCopyAi(text, onCopied));
+            } else {
+                fallbackCopyAi(text, onCopied);
+            }
+        };
+
+        function fallbackCopyAi(text, cb) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); cb(); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+
+        // 🩺 ฟีเจอร์ AI SBAR Handover (สรุปส่งเวร / ส่งต่อ Refer 1 คลิก บนหน้าดูผล MEWS)
+        window.openSbarHandoverModal = function(mewsId) {
+            if (!ksvrAiMeta.sbarUrlTemplate) {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'ยังไม่พบเส้นทาง API ของ SBAR Handover',
+                    text: 'กรุณาเพิ่มเมธอด sbarHandover ใน AiController.php และ Route backend.ai.sbar_handover ใน routes/web.php ก่อนครับ',
+                    customClass: { popup: 'rounded-3xl' }
+                });
+                return;
+            }
+
+            const targetUrl = ksvrAiMeta.sbarUrlTemplate.replace('__MEWS_ID__', mewsId);
+
             Swal.fire({
-                title: '<div class="text-xl md:text-2xl font-black text-indigo-800 flex items-center justify-center gap-2"><i class="fa-solid fa-wand-magic-sparkles text-indigo-500"></i> KSVR AI Data Analyzer</div>',
+                title: '<div class="text-lg md:text-xl font-black text-emerald-800 flex items-center justify-center gap-2"><i class="fa-solid fa-file-medical text-emerald-500"></i> กำลังสร้างสรุปส่งเวร SBAR...</div>',
+                html: '<div class="py-6 text-slate-500 text-sm"><i class="fa-solid fa-spinner fa-spin text-2xl text-emerald-500 mb-3 block"></i>AI กำลังรวบรวมสัญญาณชีพ แนวโน้มอาการ ยา e-MAR และโรคประจำตัวครับ</div>',
+                showConfirmButton: false,
+                allowOutsideClick: false,
+                customClass: { popup: 'rounded-3xl p-6' }
+            });
+
+            fetch(targetUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                }
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.status !== 'success' || !res.data) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'ไม่สามารถสร้างสรุป SBAR ได้',
+                        text: res.message || 'กรุณาลองใหม่อีกครั้ง',
+                        customClass: { popup: 'rounded-3xl' }
+                    });
+                    return;
+                }
+
+                const d = res.data;
+                window.__latestSbarCopyText = d.copy_text || [
+                    `[SBAR ส่งเวร/ส่งต่อ — ${d.patient_name || ''}]`,
+                    `S (Situation): ${d.situation || '-'}`,
+                    `B (Background): ${d.background || '-'}`,
+                    `A (Assessment): ${d.assessment || '-'}`,
+                    `R (Recommendation): ${d.recommendation || '-'}`
+                ].join('\n');
+
+                Swal.fire({
+                    title: '<div class="text-lg md:text-xl font-black text-emerald-800 flex items-center justify-center gap-2"><i class="fa-solid fa-notes-medical text-emerald-500"></i> สรุปส่งเวร / ส่งต่อมาตรฐาน SBAR</div>',
+                    html: `
+                        <div class="text-left space-y-2.5 mt-2 max-h-[60vh] overflow-y-auto pr-1 text-xs sm:text-sm">
+                            <div class="p-3 rounded-2xl bg-rose-50/70 border border-rose-200">
+                                <div class="font-black text-rose-800 mb-1">S — Situation (สถานการณ์ปัจจุบัน)</div>
+                                <div class="text-slate-700 leading-relaxed">${escapeAiHtml(d.situation)}</div>
+                            </div>
+                            <div class="p-3 rounded-2xl bg-sky-50/70 border border-sky-200">
+                                <div class="font-black text-sky-800 mb-1">B — Background (ประวัติ / โรคประจำตัว / ยา e-MAR)</div>
+                                <div class="text-slate-700 leading-relaxed">${escapeAiHtml(d.background)}</div>
+                            </div>
+                            <div class="p-3 rounded-2xl bg-amber-50/70 border border-amber-200">
+                                <div class="font-black text-amber-800 mb-1">A — Assessment (การประเมินและแนวโน้ม MEWS)</div>
+                                <div class="text-slate-700 leading-relaxed">${escapeAiHtml(d.assessment)}</div>
+                            </div>
+                            <div class="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200">
+                                <div class="font-black text-emerald-800 mb-1">R — Recommendation (ข้อเสนอแนะและการส่งต่อ)</div>
+                                <div class="text-slate-700 leading-relaxed">${escapeAiHtml(d.recommendation)}</div>
+                            </div>
+                            <div class="pt-1 flex justify-end">
+                                <button type="button" onclick="window.ksvrCopyTextWithFeedback(window.__latestSbarCopyText, this, 'ก๊อปปี้ข้อความ SBAR แล้ว!')"
+                                        class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs inline-flex items-center justify-center gap-1.5 shadow-sm transition-colors">
+                                    <i class="fa-regular fa-copy"></i> ก๊อปปี้ส่งกลุ่ม ER / LINE
+                                </button>
+                            </div>
+                        </div>
+                    `,
+                    width: '42rem',
+                    confirmButtonText: 'ปิดหน้าต่าง',
+                    confirmButtonColor: '#334155',
+                    heightAuto: false,
+                    scrollbarPadding: false,
+                    customClass: { popup: 'rounded-3xl p-5 sm:p-6' }
+                });
+            })
+            .catch(() => {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'เชื่อมต่อ AI ไม่สำเร็จ',
+                    text: 'กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่อีกครั้ง',
+                    customClass: { popup: 'rounded-3xl' }
+                });
+            });
+        };
+
+        function openExecutiveAiModal() {
+            // แถบทางลัดพิเศษเมื่อเปิดหน้าต่างหุ่นยนต์จากหน้า "ดูผล MEWS"
+            let mewsContextHtml = '';
+            if (ksvrAiMeta.mewsContext && ksvrAiMeta.mewsContext.is_mews_show) {
+                const ctx = ksvrAiMeta.mewsContext;
+                const safeFull = escapeAiHtml(ctx.patient_name);
+                const safeShort = escapeAiHtml(ctx.short_name || ctx.patient_name);
+                const sbarBtnHtml = ctx.has_sbar_api
+                    ? `<button type="button" onclick="openSbarHandoverModal(${ctx.mews_id})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black shadow-sm transition-colors inline-flex items-center gap-1.5"><i class="fa-solid fa-file-medical"></i> สรุปส่งเวร SBAR 1 คลิก</button>`
+                    : '';
+
+                mewsContextHtml = `
+                    <div class="mb-3 p-3 rounded-2xl bg-emerald-50/80 border border-emerald-200 space-y-2">
+                        <div class="text-[11px] font-black text-emerald-800 flex items-center gap-1.5">
+                            <i class="fa-solid fa-stethoscope text-emerald-600"></i>
+                            <span>เคสที่เปิดดูอยู่ตอนนี้: ${safeFull}</span>
+                        </div>
+                        <div class="flex flex-wrap gap-1.5">
+                            ${sbarBtnHtml}
+                            <button type="button" data-q="ขอดูรายการยา e-MAR ทั้งหมดของ ${safeShort}" onclick="setExecutiveQuickPrompt(this.dataset.q)" class="px-2.5 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold transition-colors">
+                                💊 เช็กยา e-MAR รายนี้
+                            </button>
+                            <button type="button" data-q="ขอดูคิวนัดพบแพทย์ของ ${safeShort}" onclick="setExecutiveQuickPrompt(this.dataset.q)" class="px-2.5 py-1.5 bg-white hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl text-[11px] font-bold transition-colors">
+                                📅 เช็กนัดแพทย์รายนี้
+                            </button>
+                            <button type="button" data-q="ขอดูประวัติแยกนอนห้องพยาบาลของ ${safeShort}" onclick="setExecutiveQuickPrompt(this.dataset.q)" class="px-2.5 py-1.5 bg-white hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-[11px] font-bold transition-colors">
+                                🛌 เช็กแยกนอนรายนี้
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // ปุ่มคำถามด่วนเฉพาะสิทธิ์ PDPA และ Admin
+            const chronicBtnHtml = ksvrAiMeta.canViewChronic
+                ? `<button type="button" onclick="setExecutiveQuickPrompt('ขอดูรายชื่อพลทหารที่มีโรคประจำตัวทั้งหมดในระบบ')" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-[11px] font-bold transition-colors">🔒 ทหารที่มีโรคประจำตัว</button>`
+                : '';
+
+            const adminOnlineBtnHtml = ksvrAiMeta.isAdmin
+                ? `<button type="button" onclick="setExecutiveQuickPrompt('ตอนนี้มีใครออนไลน์อยู่บ้าง และวันนี้มีการลบข้อมูลอะไรในระบบไหม')" class="px-2.5 py-1.5 bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold transition-colors">🟢 คนออนไลน์ &amp; Audit Log วันนี้</button>`
+                : '';
+
+            Swal.fire({
+                title: '<div class="text-lg md:text-2xl font-black text-indigo-800 flex items-center justify-center gap-2"><i class="fa-solid fa-wand-magic-sparkles text-indigo-500"></i> KSVR AI Data Analyzer</div>',
                 html: `
                     <div class="mt-2 text-left">
-                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"><i class="fa-solid fa-bolt text-amber-500 mr-1"></i> แตะเลือกคำถามด่วน หรือพิมพ์คำถามด้านล่าง:</p>
-                        <div class="flex flex-wrap gap-1.5 mb-3">
-                            <button type="button" onclick="setExecutiveQuickPrompt('สรุปรายชื่อผู้ป่วยที่ถูก Admit นอน รพ. หรือส่งต่อทั้งหมดในระบบ')" class="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold transition-colors">
+                        ${mewsContextHtml}
+
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"><i class="fa-solid fa-bolt text-amber-500 mr-1"></i> แตะเลือกคำถามด่วน (ครบ 11 โหมด) หรือพิมพ์คำถามด้านล่าง:</p>
+                        <div class="flex flex-wrap gap-1.5 mb-3 max-h-[155px] overflow-y-auto pr-1">
+                            <button type="button" onclick="setExecutiveQuickPrompt('ตอนนี้มีหน่วยไหนเสี่ยงโรคระบาดหรือพบกลุ่มก้อนไข้สูงบ้าง')" class="px-2.5 py-1.5 bg-rose-100/80 hover:bg-rose-200 text-rose-800 border border-rose-300 rounded-lg text-[11px] font-black transition-colors">
+                                📡 เรดาร์เฝ้าระวังโรคระบาด
+                            </button>
+                            <button type="button" onclick="setExecutiveQuickPrompt('ขอดูคิวผู้ป่วยที่กำลังรอตรวจในห้องฉุกเฉิน ER วันนี้ทั้งหมด')" class="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[11px] font-bold transition-colors">
+                                🚨 คิวห้องฉุกเฉิน (ER) วันนี้
+                            </button>
+                            <button type="button" onclick="setExecutiveQuickPrompt('ขอดูคิวผู้ป่วยนอก OPD ที่รอตรวจวันนี้ทั้งหมด')" class="px-2.5 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-[11px] font-bold transition-colors">
+                                🩺 คิวผู้ป่วยนอก (OPD) วันนี้
+                            </button>
+                            <button type="button" onclick="setExecutiveQuickPrompt('สรุปรายชื่อผู้ป่วยที่ถูก Admit นอน รพ. หรือส่งต่อ Refer ทั้งหมดในระบบ')" class="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold transition-colors">
                                 🏥 ผู้ป่วย Admit / ส่งต่อ รพ.
-                            </button>
-                            <button type="button" onclick="setExecutiveQuickPrompt('มีพลทหารคนไหนบ้างที่ยังไม่มี HN หรือยังไม่ซิงค์สิทธิการรักษา')" class="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-bold transition-colors">
-                                🛡️ เช็คผู้ที่ยังไม่ซิงค์สิทธิ / HN
-                            </button>
-                            <button type="button" onclick="setExecutiveQuickPrompt('ขอดูผลคัดกรองทหารใหม่ที่อยู่ในกลุ่มเสี่ยงสีเหลืองและสีแดงทั้งหมด')" class="px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg text-[11px] font-bold transition-colors">
-                                📋 คัดกรองกลุ่มสีเหลือง/แดง
                             </button>
                             <button type="button" onclick="setExecutiveQuickPrompt('รายงานเจ็บป่วยประจำวัน มีใครป่วยโควิด ไข้หวัดใหญ่ หรือโรคลมร้อนบ้าง')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition-colors">
                                 🦠 โควิด / ไข้หวัดใหญ่ / ลมร้อน
                             </button>
-                            <button type="button" onclick="setExecutiveQuickPrompt('วันนี้มีผู้ป่วยคนไหนมาทำแผล ล้างแผล หรือตัดไหมบ้าง')" class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-bold transition-colors">
-                                🩹 เคสมาทำแผล / หัตถการ
-                            </button>
-                            <button type="button" onclick="setExecutiveQuickPrompt('ขอดูรายชื่อพลทหารที่มีโรคประจำตัวทั้งหมดในระบบ')" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-[11px] font-bold transition-colors">
-                                🔒 ทหารที่มีโรคประจำตัว (Admin)
+                            <button type="button" onclick="setExecutiveQuickPrompt('ขอดูรายชื่อเคสสุขภาพจิตและจิตเวชทั้งหมดในรายงานเจ็บป่วยประจำวัน')" class="px-2.5 py-1.5 bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200 rounded-lg text-[11px] font-bold transition-colors">
+                                🧠 เคสสุขภาพจิต / จิตเวช
                             </button>
                             <button type="button" onclick="setExecutiveQuickPrompt('ขณะนี้มีพลทหารคนไหนแยกนอนที่ห้องพยาบาลหน่วยฝึกหรือฝากนอน รพ. บ้าง')" class="px-2.5 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-[11px] font-bold transition-colors">
-                                🛌 ห้องพยาบาลหน่วยฝึก / ฝากนอน รพ.
+                                🛌 ห้องพยาบาล / ฝากนอน รพ.
                             </button>
                             <button type="button" onclick="setExecutiveQuickPrompt('ขอดูคิวนัดพบแพทย์ของพลทหารวันนี้และพรุ่งนี้ทั้งหมด')" class="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-[11px] font-bold transition-colors">
                                 📅 คิวนัดพบแพทย์ (วันนี้/พรุ่งนี้)
                             </button>
                             <button type="button" onclick="setExecutiveQuickPrompt('มีพลทหารคนไหนต้องรับประทานยาต่อเนื่องหรือยาจิตเวชในระบบ e-MAR บ้าง')" class="px-2.5 py-1.5 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border border-cyan-200 rounded-lg text-[11px] font-bold transition-colors">
-                                💊 เช็ครายชื่อรับประทานยา (e-MAR)
+                                💊 เช็กรายชื่อรับประทานยา (e-MAR)
                             </button>
+                            <button type="button" onclick="setExecutiveQuickPrompt('ขอดูบันทึกสัญญาณชีพ 06:00 และ 18:00 ของวันนี้ทั้งหมด')" class="px-2.5 py-1.5 bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 rounded-lg text-[11px] font-bold transition-colors">
+                                🌡️ สัญญาณชีพ 06:00 / 18:00
+                            </button>
+                            <button type="button" onclick="setExecutiveQuickPrompt('ขอดูรายชื่อพลทหารที่อยู่ในทะเบียนเอกสารนำปลดทั้งหมดในระบบ')" class="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[11px] font-bold transition-colors">
+                                🎖️ เอกสารนำปลดทหาร
+                            </button>
+                            <button type="button" onclick="setExecutiveQuickPrompt('ขอดูผลคัดกรองทหารใหม่ที่อยู่ในกลุ่มเสี่ยงสีเหลืองและสีแดงทั้งหมด')" class="px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg text-[11px] font-bold transition-colors">
+                                📋 คัดกรองกลุ่มสีเหลือง/แดง
+                            </button>
+                            <button type="button" onclick="setExecutiveQuickPrompt('มีพลทหารคนไหนบ้างที่ยังไม่มี HN หรือยังไม่ซิงค์สิทธิการรักษา')" class="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-bold transition-colors">
+                                🛡️ ยังไม่ซิงค์สิทธิ / HN
+                            </button>
+                            <button type="button" onclick="setExecutiveQuickPrompt('วันนี้มีผู้ป่วยคนไหนมาทำแผล ล้างแผล หรือตัดไหมบ้าง')" class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-bold transition-colors">
+                                🩹 เคสมาทำแผล / หัตถการ
+                            </button>
+                            ${chronicBtnHtml}
+                            ${adminOnlineBtnHtml}
                         </div>
 
-                        <textarea id="ai_executive_prompt" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-sm text-slate-800 focus:ring-indigo-500 focus:border-indigo-500 min-h-[85px]" placeholder="พิมพ์คำถามอิสระ เช่น 'พลทหารที่มีไข้ 38 ขึ้นไป', 'ใครใช้สิทธิบัตรทองบ้าง', 'เกณฑ์คะแนน MEWS คิดยังไง'..."></textarea>
-                        
-                        <!-- โซนแสดงผลลัพธ์จาก AI -->
+                        <textarea id="ai_executive_prompt" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-sm text-slate-800 focus:ring-indigo-500 focus:border-indigo-500 min-h-[78px]" placeholder="พิมพ์คำถามอิสระ เช่น 'พลทหาร ร.3 พัน.1 ที่มีไข้ 38 ขึ้นไป', 'ใครใช้สิทธิบัตรทองบ้าง', 'เกณฑ์คะแนน MEWS คิดยังไง' (กด Ctrl+Enter เพื่อส่งทันที)"></textarea>
+
                         <div id="ai_result_box" class="mt-4 hidden p-4 bg-white border border-indigo-100 rounded-xl shadow-sm max-h-[340px] overflow-y-auto"></div>
                     </div>
                 `,
-                width: '42rem',
+                width: '44rem',
                 showCancelButton: true,
                 confirmButtonText: '<i class="fa-solid fa-magnifying-glass mr-1"></i> ให้ AI วิเคราะห์ข้อมูล',
                 cancelButtonText: 'ปิดหน้าต่าง',
                 showLoaderOnConfirm: true,
+                didOpen: () => {
+                    const ta = document.getElementById('ai_executive_prompt');
+                    if (ta) {
+                        ta.addEventListener('keydown', (e) => {
+                            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                Swal.clickConfirm();
+                            }
+                        });
+                    }
+                },
                 customClass: {
-                    popup: 'rounded-[2rem] shadow-2xl border border-slate-100 p-6',
+                    popup: 'rounded-[2rem] shadow-2xl border border-slate-100 p-5 sm:p-6',
                     confirmButton: 'bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl px-5 py-2.5 shadow-md',
                     cancelButton: 'bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl px-5 py-2.5'
                 },
@@ -1703,15 +1864,14 @@
                     .then(data => {
                         const resultBox = document.getElementById('ai_result_box');
                         resultBox.classList.remove('hidden');
-                        
+
                         if (data.status === 'success') {
                             resultBox.innerHTML = data.html;
                         } else {
-                            resultBox.innerHTML = `<div class="text-rose-500 font-bold"><i class="fa-solid fa-circle-exclamation"></i> ${data.message}</div>`;
+                            resultBox.innerHTML = `<div class="text-rose-500 font-bold"><i class="fa-solid fa-circle-exclamation"></i> ${escapeAiHtml(data.message)}</div>`;
                         }
-                        
-                        // คงปุ่มค้นหาไว้เพื่อให้ผู้ใช้สามารถเปลี่ยนคำถามแล้วกดค้นหาต่อได้ทันทีโดยไม่ต้องปิดเปิดใหม่!
-                        return false; 
+
+                        return false;
                     })
                     .catch(error => {
                         Swal.showValidationMessage(`เชื่อมต่อไม่สำเร็จ: ${error}`);
@@ -1720,6 +1880,8 @@
             });
         }
     </script>
+
+    <!-- 📱 PWA Install Banner Script -->
     <script>
         let deferredPrompt = null;
         const isPwaStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
@@ -1730,7 +1892,6 @@
 
             if (isPwaStandalone) return;
 
-            // ซ่อนไว้ 24 ชม. หากผู้ใช้เคยกดปิดไปแล้ว
             const dismissedTime = localStorage.getItem('ksvr_pwa_dismissed');
             const now = Date.now();
             if (!dismissedTime || (now - Number(dismissedTime) > 24 * 60 * 60 * 1000)) {
@@ -1754,7 +1915,6 @@
                 return;
             }
 
-            // กรณีเป็น iOS หรือเบราว์เซอร์ที่ไม่รองรับปุ่มติดตั้งอัตโนมัติ ให้เปิดหน้าต่างคู่มือ 3 ขั้นตอนที่ทำไว้
             if (typeof window.openPwaInstallModal === 'function') {
                 window.openPwaInstallModal();
             }
@@ -1766,43 +1926,7 @@
         }
     </script>
 
-    {{-- <!-- 🌟 ปุ่มลอยมุมขวาล่าง (Floating Button) -->
-    <button onclick="document.getElementById('creditModal').classList.remove('hidden')" 
-            class="fixed bottom-4 right-4 w-10 h-10 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-300 rounded-full shadow-sm hover:shadow-md transition-all flex items-center justify-center opacity-50 hover:opacity-100 z-50">
-        <i class="fa-solid fa-code"></i>
-    </button>
-
-    <!-- 🌟 Modal โชว์เครดิต -->
-    <div id="creditModal" class="hidden fixed inset-0 z-[99999] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-white rounded-3xl shadow-xl max-w-sm w-full p-8 text-center relative animate-fade-in-up">
-            
-            <button onclick="document.getElementById('creditModal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors">
-                <i class="fa-solid fa-xmark text-xl"></i>
-            </button>
-
-            <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 rotate-3">
-                <i class="fa-solid fa-laptop-code"></i>
-            </div>
-            
-            <h3 class="text-xl font-black text-slate-800 mb-1">KSVR System</h3>
-            <p class="text-sm font-bold text-emerald-500 mb-4">Version 1.0.0</p>
-            
-            <div class="text-sm text-slate-600 space-y-2 mb-6">
-                <p>ระบบสารสนเทศเพื่อการบริหารจัดการข้อมูล<br>โรงพยาบาลค่ายกฤษณ์สีวะรา</p>
-                <div class="border-t border-slate-100 my-4"></div>
-                <p class="text-xs text-slate-400 uppercase tracking-widest font-bold">Design & Development by</p>
-                <p class="font-bold text-indigo-600 text-base">คุณศุภกิจ แดงประเสริฐ</p>
-                <p class="text-xs text-slate-500">IT Department</p>
-            </div>
-
-            <div class="flex justify-center gap-2 text-xl text-slate-300">
-                <i class="fa-brands fa-laravel hover:text-[#FF2D20] transition-colors" title="Laravel"></i>
-                <i class="fa-brands fa-php hover:text-[#777BB4] transition-colors" title="PHP 8.3"></i>
-                <i class="fa-solid fa-database hover:text-blue-500 transition-colors" title="MySQL & HosXP"></i>
-            </div>
-        </div>
-    </div> --}}
-
+    <!-- 🔐 Web Push Subscription Script -->
     <script>
         function urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -1815,7 +1939,6 @@
             return outputArray;
         }
 
-        // 🔐 ผูกเบราว์เซอร์/โทรศัพท์เข้ากับระบบ Background Web Push ของเซิร์ฟเวอร์
         window.registerServerWebPushSubscription = async function() {
             if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
             if (Notification.permission !== 'granted') return;
@@ -1857,7 +1980,6 @@
                 window.registerServerWebPushSubscription();
             }
 
-            // อัปเกรดปุ่มทดสอบในกระดิ่งให้ยิง Push จริงจากฝั่ง Server (หน่วงเวลา 3 วินาทีให้คุณลองกดล็อกหน้าจอมือถือเพื่อดูผลลัพธ์ได้!)
             const notifyBtn = document.getElementById('btn-enable-browser-notify');
             if (notifyBtn && 'Notification' in window && Notification.permission === 'granted') {
                 notifyBtn.onclick = function(e) {

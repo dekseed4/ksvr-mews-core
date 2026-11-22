@@ -5,9 +5,8 @@
     "start_url": "/ksvr-mews/",
     "scope": "/ksvr-mews/",
     "display": "standalone",
-    "orientation": "portrait",
     "background_color": "#ffffff",
-    "theme_color": "#1e293b",
+    "theme_color": "#10b981",
     "icons": [
         {
             "src": "/ksvr-mews/images/icon-192.png",
