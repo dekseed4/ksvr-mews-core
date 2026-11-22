@@ -44,18 +44,6 @@
             pointer-events: none;
         }
 
-        /* 🌟 ปรับสี SweetAlert ให้เข้ากับ Dark Mode */
-        html.dark body, html.dark main, html.dark aside#sidebar {
-            background-color: #0f172a !important;
-            color: #f1f5f9 !important;
-        }
-        html.dark .bg-white {
-            background-color: #1e293b !important;
-            border-color: #334155 !important;
-        }
-        html.dark .text-slate-800, html.dark .text-slate-700 {
-            color: #f8fafc !important;
-        }
 
         /* 🌟 ปรับแต่ง Scrollbar ให้ดูหรูหรา */
         ::-webkit-scrollbar { width: 6px; height: 6px; }

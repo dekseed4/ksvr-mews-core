@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@custom-variant dark (&:where(.dark, .dark *));
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
@@ -11,3 +12,269 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ========================================================================= */
+/* 🌙 KSVR Global Dark Mode System (ครอบคลุมทุกหน้า, ตาราง, ฟอร์ม และ SweetAlert2) */
+/* ครอบด้วย @media screen เพื่อไม่ให้กระทบการพิมพ์เอกสาร A4 */
+/* ========================================================================= */
+@media screen {
+    /* 1. พื้นหลังหลักของหน้าเว็บ */
+    html.dark body,
+    html.dark main {
+        background-color: #0f172a !important;
+        color: #f1f5f9 !important;
+    }
+
+    html.dark header {
+        background-color: #1e293b !important;
+        border-bottom: 1px solid #334155 !important;
+    }
+
+    /* 2. การ์ดและพื้นผิวสีขาว / เทาอ่อน (ยกเว้นกล่องโลโก้ใน Sidebar และกระดานสไลด์รายงาน) */
+    html.dark main .bg-white:not(#morbidity-slide-board):not(#morbidity-slide-board *),
+    html.dark main [class*="bg-white/"]:not(#morbidity-slide-board):not(#morbidity-slide-board *),
+    html.dark header .bg-white {
+        background-color: #1e293b !important;
+        border-color: #334155 !important;
+    }
+
+    html.dark main .bg-slate-50:not(#morbidity-slide-board):not(#morbidity-slide-board *),
+    html.dark main [class*="bg-slate-50/"]:not(#morbidity-slide-board):not(#morbidity-slide-board *),
+    html.dark main .bg-gray-50:not(#morbidity-slide-board):not(#morbidity-slide-board *) {
+        background-color: #0f172a !important;
+        border-color: #334155 !important;
+    }
+
+    html.dark main .bg-slate-100:not(#morbidity-slide-board):not(#morbidity-slide-board *),
+    html.dark main [class*="bg-slate-100/"]:not(#morbidity-slide-board):not(#morbidity-slide-board *),
+    html.dark main .bg-gray-100:not(#morbidity-slide-board):not(#morbidity-slide-board *) {
+        background-color: #1e293b !important;
+        border-color: #334155 !important;
+    }
+
+    /* 3. เส้นขอบและเส้นคั่น (Borders & Dividers) */
+    html.dark main .border-slate-100:not(#morbidity-slide-board *),
+    html.dark main .border-slate-200:not(#morbidity-slide-board *),
+    html.dark main [class*="border-slate-200/"]:not(#morbidity-slide-board *),
+    html.dark main .border-slate-300:not(#morbidity-slide-board *),
+    html.dark main .border-gray-200:not(#morbidity-slide-board *),
+    html.dark main [class*="divide-slate-"] > :not([hidden]) ~ :not([hidden]) {
+        border-color: #334155 !important;
+    }
+
+    /* 4. สีตัวอักษรโทนเทา/ดำทั้งหมด (แก้ปัญหาชื่อในตารางเป็นสีดำจมพื้นมืด) */
+    html.dark main .text-slate-900:not(#morbidity-slide-board *),
+    html.dark main .text-slate-800:not(#morbidity-slide-board *),
+    html.dark main .text-gray-900:not(#morbidity-slide-board *),
+    html.dark main .text-gray-800:not(#morbidity-slide-board *),
+    html.dark main .text-black:not(#morbidity-slide-board *),
+    html.dark header .text-slate-800,
+    html.dark header .text-slate-700 {
+        color: #f8fafc !important;
+    }
+
+    html.dark main .text-slate-700:not(#morbidity-slide-board *),
+    html.dark main .text-gray-700:not(#morbidity-slide-board *) {
+        color: #e2e8f0 !important;
+    }
+
+    html.dark main .text-slate-600:not(#morbidity-slide-board *),
+    html.dark main .text-gray-600:not(#morbidity-slide-board *) {
+        color: #cbd5e1 !important;
+    }
+
+    html.dark main .text-slate-500:not(#morbidity-slide-board *),
+    html.dark main .text-gray-500:not(#morbidity-slide-board *) {
+        color: #94a3b8 !important;
+    }
+
+    /* 5. ตารางข้อมูล (Table Header, Rows, Hover) */
+    html.dark main table:not(#morbidity-slide-board table) thead,
+    html.dark main table:not(#morbidity-slide-board table) thead tr,
+    html.dark main table:not(#morbidity-slide-board table) thead th {
+        background-color: #0f172a !important;
+        color: #cbd5e1 !important;
+        border-color: #334155 !important;
+    }
+
+    html.dark main table:not(#morbidity-slide-board table) tbody tr:hover {
+        background-color: rgba(51, 65, 85, 0.55) !important;
+    }
+
+    /* 6. ช่องกรอกข้อมูลและ Dropdown (Inputs, Selects, Textareas) */
+    html.dark main input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not(#morbidity-slide-board *),
+    html.dark main select:not(#morbidity-slide-board *),
+    html.dark main textarea:not(#morbidity-slide-board *) {
+        background-color: #0f172a !important;
+        color: #f8fafc !important;
+        border-color: #475569 !important;
+    }
+
+    html.dark main select option {
+        background-color: #1e293b;
+        color: #f8fafc;
+    }
+
+    html.dark main input::placeholder,
+    html.dark main textarea::placeholder {
+        color: #64748b !important;
+    }
+
+    /* 7. กล่องและป้ายสีพาสเทล (-50 และ -100) เปลี่ยนเป็นโทนโปร่งแสงอ่านง่ายบนพื้นมืด */
+    html.dark main [class*="bg-indigo-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-indigo-100"]:not(#morbidity-slide-board *) {
+        background-color: rgba(99, 102, 241, 0.18) !important;
+        border-color: rgba(129, 140, 248, 0.35) !important;
+    }
+    html.dark main [class*="bg-blue-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-blue-100"]:not(#morbidity-slide-board *) {
+        background-color: rgba(59, 130, 246, 0.18) !important;
+        border-color: rgba(96, 165, 250, 0.35) !important;
+    }
+    html.dark main [class*="bg-sky-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-sky-100"]:not(#morbidity-slide-board *) {
+        background-color: rgba(14, 165, 233, 0.18) !important;
+        border-color: rgba(56, 189, 248, 0.35) !important;
+    }
+    html.dark main [class*="bg-emerald-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-emerald-100"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-teal-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-teal-100"]:not(#morbidity-slide-board *) {
+        background-color: rgba(16, 185, 129, 0.18) !important;
+        border-color: rgba(52, 211, 153, 0.35) !important;
+    }
+    html.dark main [class*="bg-amber-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-amber-100"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-yellow-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-yellow-100"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-orange-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-orange-100"]:not(#morbidity-slide-board *) {
+        background-color: rgba(245, 158, 11, 0.18) !important;
+        border-color: rgba(251, 191, 36, 0.35) !important;
+    }
+    html.dark main [class*="bg-rose-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-rose-100"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-red-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-red-100"]:not(#morbidity-slide-board *) {
+        background-color: rgba(244, 63, 94, 0.18) !important;
+        border-color: rgba(251, 113, 133, 0.35) !important;
+    }
+    html.dark main [class*="bg-purple-50"]:not(#morbidity-slide-board *),
+    html.dark main [class*="bg-purple-100"]:not(#morbidity-slide-board *) {
+        background-color: rgba(168, 85, 247, 0.18) !important;
+        border-color: rgba(192, 132, 252, 0.35) !important;
+    }
+
+    /* ปรับความสว่างของข้อความสีเข้มบนพื้นมืดให้คอนทราสต์ชัดทุกจุด */
+    html.dark main .text-indigo-600:not(#morbidity-slide-board *),
+    html.dark main .text-indigo-700:not(#morbidity-slide-board *),
+    html.dark main .text-indigo-800:not(#morbidity-slide-board *) { color: #a5b4fc !important; }
+
+    html.dark main .text-blue-600:not(#morbidity-slide-board *),
+    html.dark main .text-blue-700:not(#morbidity-slide-board *),
+    html.dark main .text-blue-800:not(#morbidity-slide-board *) { color: #93c5fd !important; }
+
+    html.dark main .text-sky-600:not(#morbidity-slide-board *),
+    html.dark main .text-sky-700:not(#morbidity-slide-board *),
+    html.dark main .text-sky-800:not(#morbidity-slide-board *) { color: #7dd3fc !important; }
+
+    html.dark main .text-emerald-600:not(#morbidity-slide-board *),
+    html.dark main .text-emerald-700:not(#morbidity-slide-board *),
+    html.dark main .text-emerald-800:not(#morbidity-slide-board *),
+    html.dark main .text-teal-600:not(#morbidity-slide-board *),
+    html.dark main .text-teal-700:not(#morbidity-slide-board *),
+    html.dark main .text-teal-800:not(#morbidity-slide-board *) { color: #6ee7b7 !important; }
+
+    html.dark main .text-amber-600:not(#morbidity-slide-board *),
+    html.dark main .text-amber-700:not(#morbidity-slide-board *),
+    html.dark main .text-amber-800:not(#morbidity-slide-board *),
+    html.dark main .text-amber-900:not(#morbidity-slide-board *),
+    html.dark main .text-orange-700:not(#morbidity-slide-board *),
+    html.dark main .text-orange-800:not(#morbidity-slide-board *),
+    html.dark main .text-yellow-900:not(#morbidity-slide-board *) { color: #fcd34d !important; }
+
+    html.dark main .text-rose-600:not(#morbidity-slide-board *),
+    html.dark main .text-rose-700:not(#morbidity-slide-board *),
+    html.dark main .text-rose-800:not(#morbidity-slide-board *) { color: #fda4af !important; }
+
+    html.dark main .text-purple-600:not(#morbidity-slide-board *),
+    html.dark main .text-purple-700:not(#morbidity-slide-board *),
+    html.dark main .text-purple-800:not(#morbidity-slide-board *) { color: #d8b4fe !important; }
+
+    /* 8. แก้หน้าต่าง SweetAlert2 และ Modal ทั้งระบบ (จบปัญหาตัวหนังสือขาวบนพื้นขาว 100%) */
+    html.dark .swal2-popup {
+        background-color: #1e293b !important;
+        color: #f1f5f9 !important;
+        border: 1px solid #334155 !important;
+    }
+
+    html.dark .swal2-title {
+        color: #f8fafc !important;
+    }
+
+    html.dark .swal2-html-container {
+        color: #cbd5e1 !important;
+    }
+
+    html.dark .swal2-close {
+        color: #94a3b8 !important;
+    }
+    html.dark .swal2-close:hover {
+        color: #f8fafc !important;
+    }
+
+    html.dark .swal2-popup .bg-white,
+    html.dark .swal2-popup [class*="bg-white/"],
+    html.dark .swal2-popup .bg-slate-50,
+    html.dark .swal2-popup [class*="bg-slate-50/"],
+    html.dark .swal2-popup .bg-slate-100 {
+        background-color: #0f172a !important;
+        border-color: #334155 !important;
+        color: #f1f5f9 !important;
+    }
+
+    html.dark .swal2-popup [class*="bg-amber-50"],
+    html.dark .swal2-popup [class*="bg-amber-100"] {
+        background-color: rgba(245, 158, 11, 0.16) !important;
+        border-color: rgba(251, 191, 36, 0.35) !important;
+    }
+    html.dark .swal2-popup [class*="bg-rose-50"],
+    html.dark .swal2-popup [class*="bg-rose-100"] {
+        background-color: rgba(244, 63, 94, 0.16) !important;
+        border-color: rgba(251, 113, 133, 0.35) !important;
+    }
+    html.dark .swal2-popup [class*="bg-emerald-50"],
+    html.dark .swal2-popup [class*="bg-emerald-100"],
+    html.dark .swal2-popup [class*="bg-teal-50"] {
+        background-color: rgba(16, 185, 129, 0.16) !important;
+        border-color: rgba(52, 211, 153, 0.35) !important;
+    }
+    html.dark .swal2-popup [class*="bg-indigo-50"],
+    html.dark .swal2-popup [class*="bg-sky-50"],
+    html.dark .swal2-popup [class*="bg-blue-50"] {
+        background-color: rgba(99, 102, 241, 0.18) !important;
+        border-color: rgba(129, 140, 248, 0.35) !important;
+    }
+
+    html.dark .swal2-popup .text-slate-900,
+    html.dark .swal2-popup .text-slate-800,
+    html.dark .swal2-popup .text-slate-700 { color: #f8fafc !important; }
+    html.dark .swal2-popup .text-slate-600 { color: #cbd5e1 !important; }
+    html.dark .swal2-popup .text-slate-500 { color: #94a3b8 !important; }
+    html.dark .swal2-popup .text-indigo-600,
+    html.dark .swal2-popup .text-indigo-700 { color: #a5b4fc !important; }
+    html.dark .swal2-popup .text-emerald-700,
+    html.dark .swal2-popup .text-emerald-800 { color: #6ee7b7 !important; }
+    html.dark .swal2-popup .text-amber-700,
+    html.dark .swal2-popup .text-amber-800 { color: #fcd34d !important; }
+    html.dark .swal2-popup .text-rose-600,
+    html.dark .swal2-popup .text-rose-700 { color: #fda4af !important; }
+
+    html.dark .swal2-popup input:not([type="checkbox"]):not([type="radio"]),
+    html.dark .swal2-popup select,
+    html.dark .swal2-popup textarea {
+        background-color: #0f172a !important;
+        color: #f8fafc !important;
+        border-color: #475569 !important;
+    }
+}
