@@ -5,9 +5,18 @@
 
 @section('content')
 @php
-    // 🛡️ อัปเกรดคอลัมน์ในฐานข้อมูลอัตโนมัติ (รองรับ take_prn และ custom_slot_text ทันที)
-    \App\Http\Controllers\Backend\RecruitInfirmaryController::ensureCareChartSchema();
+    // 🛡️ ใช้ตัวเช็ก Schema ที่มี Cache ครอบแล้วจาก RecruitCareChartController (ไม่ยิง ALTER TABLE ซ้ำ)
+    \App\Http\Controllers\Backend\RecruitCareChartController::ensureCareChartSchema();
+
     $activeStay = $patient->activeInfirmaryStay;
+    $daysCount  = (int) ($days ?? count($dateColumns));
+    $todayStr   = $todayDateStr ?? date('Y-m-d');
+    $prevStart  = $prevStartDate ?? \Carbon\Carbon::parse($startDateStr)->subDays($daysCount)->format('Y-m-d');
+    $nextStart  = $nextStartDate ?? \Carbon\Carbon::parse($startDateStr)->addDays($daysCount)->format('Y-m-d');
+    $firstCol   = $dateColumns[0] ?? null;
+    $lastCol    = !empty($dateColumns) ? $dateColumns[count($dateColumns) - 1] : null;
+    $isCompactMar = $daysCount >= 14;
+
     $defaultMobileMarDate = collect($dateColumns)->firstWhere('is_today', true)['date_str']
         ?? ($dateColumns[0]['date_str'] ?? date('Y-m-d'));
 @endphp
@@ -19,10 +28,9 @@
 
 <div class="max-w-7xl mx-auto space-y-5 pb-12">
 
-    <!-- 🧭 แถบด้านบน: ปุ่มกลับหน้าห้องพยาบาลหน่วยฝึก + ข้อมูลผู้ป่วย + สลับคนตรวจด่วน + เลือกช่วงวันที่ -->
+    <!-- 🧭 แถบด้านบน: ปุ่มกลับหน้าห้องพยาบาล + ข้อมูลผู้ป่วย + สลับคนตรวจด่วน + เลือกช่วงวันที่ -->
     <div class="bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 print:border-0 print:shadow-none print:p-0">
         <div class="flex items-start sm:items-center gap-3.5">
-            <!-- ปุ่มกลับหน้าตารางห้องพยาบาลหน่วยฝึกโดยตรง -->
             <a href="{{ route('backend.recruit_infirmary.index', ['intake_batch' => $patient->intake_batch]) }}"
                class="px-3.5 py-2.5 rounded-2xl bg-teal-50 hover:bg-teal-600 text-teal-700 hover:text-white border border-teal-200 font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 print:hidden"
                title="กลับไปยังตารางห้องพยาบาลหน่วยฝึก & แยกโรงนอน">
@@ -46,7 +54,6 @@
                     </a>
                 </div>
 
-                <!-- แสดงสถานะการแยกนอนปัจจุบันจากหน้าห้องพยาบาลหน่วยฝึก -->
                 @if($activeStay)
                     <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                         <span class="px-2.5 py-0.5 rounded-md font-bold {{ $activeStay->location_type === 'unit_infirmary' ? 'bg-indigo-100 text-indigo-800' : 'bg-amber-100 text-amber-800' }}">
@@ -61,24 +68,23 @@
                     </div>
                 @else
                     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        แบบฟอร์มติดตามสัญญาณชีพประจำวัน (06.00 น. / 18.00 น.) และตารางเช็คการรับประทานยา/ทายาสำหรับเสนารักษ์และพยาบาล
+                        แบบฟอร์มติดตามสัญญาณชีพประจำวัน (06.00 น. / 18.00 น.) และตารางเช็กการรับประทานยาต่อเนื่อง (e-MAR)
                     </p>
                 @endif
             </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-end print:hidden">
-            <!-- 🔄 Dropdown สลับไปตรวจพลทหารคนถัดไปในห้องพยาบาลได้ทันที -->
+        <div class="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-end print:hidden">
             @if(isset($infirmaryPeers) && $infirmaryPeers->count() > 1)
                 <div class="flex items-center gap-1.5 bg-teal-50/70 border border-teal-200 rounded-2xl px-3 py-1.5">
                     <i class="fa-solid fa-user-injured text-teal-600 text-xs"></i>
                     <span class="text-xs font-bold text-teal-800">สลับผู้ป่วย:</span>
-                    <select onchange="if(this.value) window.location.href=this.value" class="bg-transparent text-xs font-black text-slate-800 outline-none cursor-pointer max-w-[190px] truncate">
+                    <select onchange="if(this.value) window.location.href=this.value" class="bg-transparent text-xs font-black text-slate-800 outline-none cursor-pointer max-w-[180px] truncate">
                         @foreach($infirmaryPeers as $peerStay)
                             @php
                                 $peerPt = $peerStay->patient;
                                 if (!$peerPt) continue;
-                                $peerUrl = route('backend.care_chart.show', $peerPt->id);
+                                $peerUrl = route('backend.care_chart.show', ['patient' => $peerPt->id, 'days' => $daysCount]);
                             @endphp
                             <option value="{{ $peerUrl }}" {{ $peerPt->id === $patient->id ? 'selected' : '' }}>
                                 {{ $peerPt->rank }}{{ $peerPt->first_name }} {{ $peerPt->last_name }} ({{ $peerStay->diagnosis_text }})
@@ -89,7 +95,8 @@
             @endif
 
             <form method="GET" action="{{ route('backend.care_chart.show', $patient->id) }}" class="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-1.5">
-                <span class="text-xs font-bold text-slate-500">เริ่มแสดงตั้งแต่วันที่:</span>
+                <input type="hidden" name="days" value="{{ $daysCount }}">
+                <span class="text-xs font-bold text-slate-500">เริ่มวันที่:</span>
                 <input type="date" name="start_date" value="{{ $startDateStr }}" onchange="this.form.submit()" class="bg-transparent text-xs sm:text-sm font-black text-indigo-700 dark:text-indigo-400 outline-none cursor-pointer">
             </form>
 
@@ -100,7 +107,7 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- 📊 ส่วนที่ 1: บันทึกสัญญาณชีพ 06.00 น. และ 18.00 น. (Mobile Cards + Desktop/Print Table) -->
+    <!-- 📊 ส่วนที่ 1: บันทึกสัญญาณชีพ 06.00 น. และ 18.00 น. (แสดง 7 วันจากวันเริ่มต้น) -->
     <!-- ========================================================================= -->
     <div class="bg-white dark:bg-slate-800 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700 print:border-0 print:shadow-none print:p-0">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100 dark:border-slate-700 print:hidden">
@@ -116,7 +123,7 @@
             </button>
         </div>
 
-        <!-- 📱 โหมดมือถือ: การ์ดสัญญาณชีพรายวัน (ซ่อนตอนพิมพ์ A4) -->
+        <!-- 📱 โหมดมือถือ: การ์ดสัญญาณชีพรายวัน -->
         <div class="md:hidden print:hidden space-y-3">
             @foreach(array_slice($dateColumns, 0, 7) as $dCol)
                 @php
@@ -135,7 +142,6 @@
                     </div>
 
                     <div class="grid grid-cols-2 divide-x divide-slate-200/80 dark:divide-slate-700">
-                        <!-- รอบเช้า 06:00 น. -->
                         <button type="button" onclick='openVitalModal("{{ $dCol["date_str"] }}", "06:00", @json($mLog))'
                                 class="p-3 text-left hover:bg-amber-50/60 dark:hover:bg-amber-900/20 transition-colors space-y-1.5">
                             <div class="flex items-center justify-between gap-1">
@@ -162,7 +168,6 @@
                             @endif
                         </button>
 
-                        <!-- รอบเย็น 18:00 น. -->
                         <button type="button" onclick='openVitalModal("{{ $dCol["date_str"] }}", "18:00", @json($eLog))'
                                 class="p-3 text-left hover:bg-indigo-50/60 dark:hover:bg-indigo-900/20 transition-colors space-y-1.5">
                             <div class="flex items-center justify-between gap-1">
@@ -193,7 +198,7 @@
             @endforeach
         </div>
 
-        <!-- 💻 โหมดคอมพิวเตอร์ & โหมดพิมพ์ A4: ตารางทางการครบทุกช่อง -->
+        <!-- 💻 โหมดคอมพิวเตอร์ & โหมดพิมพ์ A4 -->
         <div class="hidden md:block print:block overflow-x-auto">
             <table class="w-full text-xs sm:text-sm text-center border-collapse border-2 border-slate-800">
                 <thead>
@@ -280,16 +285,16 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- 💊 ส่วนที่ 2: ตารางยา e-MAR (Mobile Date-Picker Cards + Desktop/Print Table) -->
+    <!-- 💊 ส่วนที่ 2: ตารางยา e-MAR (รองรับขยายวัน 10 / 14 / 30 วัน + เลื่อนช่วงวันไม่จำกัด) -->
     <!-- ========================================================================= -->
-    <div class="bg-white dark:bg-slate-800 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700 print:border-0 print:shadow-none print:p-0">
+    <div id="emar-section" class="bg-white dark:bg-slate-800 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700 print:border-0 print:shadow-none print:p-0">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100 dark:border-slate-700 print:hidden">
             <div>
                 <h3 class="text-base sm:text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
                     <i class="fa-solid fa-pills text-teal-600"></i> 2. บันทึกการรับประทานยา / ยาทา / ยานวด (e-MAR)
                 </h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400">
-                    แตะช่องมื้อยาเพื่อเช็คสถานะ (<b>✅ ใช้แล้ว → ❌ ขาดยา → ล้างค่า</b>) รองรับทั้งมื้อปกติและเวลามีอาการ (PRN)
+                    แตะช่องมื้อยาเพื่อเช็กสถานะ (<b>✅ ใช้แล้ว → ❌ ขาดยา → ล้างค่า</b>) รองรับยาต่อเนื่องทุกวัน (จิตเวช/โรคเรื้อรัง) และขยายช่วงวันได้ไม่จำกัด
                 </p>
             </div>
             <div class="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 shrink-0">
@@ -304,17 +309,62 @@
             </div>
         </div>
 
-        <h4 class="hidden print:block text-center font-black text-base mb-2">บันทึกการรับประทานยา / การใช้ยา</h4>
+        <!-- 🗓️ แถบควบคุมจำนวนวันและเลื่อนช่วงวัน e-MAR (10 / 14 / 30 วัน + ก่อนหน้า / วันนี้ / ถัดไป) -->
+        <div class="mb-4 p-3 rounded-2xl bg-slate-50/90 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-700 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 print:hidden">
+            <!-- ฝั่งซ้าย: ปุ่มเลื่อนช่วงวัน -->
+            <div class="flex flex-wrap items-center justify-between sm:justify-start gap-2">
+                <div class="inline-flex items-center rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-1 shadow-sm">
+                    <a href="{{ route('backend.care_chart.show', ['patient' => $patient->id, 'start_date' => $prevStart, 'days' => $daysCount]) }}#emar-section"
+                       class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 inline-flex items-center gap-1 transition-colors"
+                       title="ดูย้อนหลัง {{ $daysCount }} วัน">
+                        <i class="fa-solid fa-chevron-left text-[10px]"></i> ก่อนหน้า
+                    </a>
+                    <a href="{{ route('backend.care_chart.show', ['patient' => $patient->id, 'start_date' => $todayStr, 'days' => $daysCount]) }}#emar-section"
+                       class="px-3 py-1.5 rounded-lg text-xs font-black text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/40 hover:bg-sky-100 mx-0.5 inline-flex items-center gap-1 transition-colors">
+                        <i class="fa-solid fa-location-crosshairs text-[11px]"></i> วันนี้
+                    </a>
+                    <a href="{{ route('backend.care_chart.show', ['patient' => $patient->id, 'start_date' => $nextStart, 'days' => $daysCount]) }}#emar-section"
+                       class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 inline-flex items-center gap-1 transition-colors"
+                       title="ดูเพิ่มอีก {{ $daysCount }} วันถัดไป">
+                        ถัดไป <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </a>
+                </div>
+
+                @if($firstCol && $lastCol)
+                    <span class="text-xs font-bold text-slate-600 dark:text-slate-300 px-2">
+                        <i class="fa-regular fa-calendar-days text-teal-600 mr-1"></i>
+                        {{ $firstCol['thai_text'] }} – {{ $lastCol['thai_text'] }}
+                        <span class="text-teal-700 dark:text-teal-400 font-black">({{ $daysCount }} วัน)</span>
+                    </span>
+                @endif
+            </div>
+
+            <!-- ฝั่งขวา: ปุ่มสลับจำนวนวันในตาราง (10 / 14 / 30 วัน) -->
+            <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2">
+                <span class="text-[11px] font-bold text-slate-400">ขยายช่วงวันในตาราง:</span>
+                <div class="inline-flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm">
+                    @foreach([10 => '10 วัน', 14 => '14 วัน', 30 => '30 วัน (ทั้งเดือน)'] as $dVal => $dLabel)
+                        <a href="{{ route('backend.care_chart.show', ['patient' => $patient->id, 'start_date' => $startDateStr, 'days' => $dVal]) }}#emar-section"
+                           class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all {{ $daysCount === $dVal ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-teal-50 dark:hover:bg-slate-700' }}">
+                            {{ $dLabel }}
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+
+        <h4 class="hidden print:block text-center font-black text-base mb-2">
+            บันทึกการรับประทานยา / การใช้ยา ({{ $firstCol['thai_text'] ?? '' }} – {{ $lastCol['thai_text'] ?? '' }})
+        </h4>
 
         <!-- =========================================================== -->
         <!-- 📱 โหมดมือถือ e-MAR: แถบเลือกวันที่ + การ์ดยาพร้อมปุ่มติ๊กขนาดใหญ่ -->
         <!-- =========================================================== -->
         <div class="md:hidden print:hidden space-y-4">
             @if($medications->count() > 0)
-                <!-- แถบเลือกวันที่แบบปัดซ้าย-ขวา (Date Pill Switcher) -->
                 <div>
                     <div class="text-[11px] font-bold text-slate-400 mb-1.5 flex items-center justify-between">
-                        <span><i class="fa-regular fa-calendar-check text-teal-500 mr-1"></i>แตะเลือกวันที่ต้องการเช็คยา:</span>
+                        <span><i class="fa-regular fa-calendar-check text-teal-500 mr-1"></i>แตะเลือกวันที่ต้องการเช็กยา ({{ $daysCount }} วัน):</span>
                         <span class="text-[10px]">ปัดเลื่อนได้ →</span>
                     </div>
                     <div id="mobile-mar-date-strip" class="ksvr-no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 scroll-smooth">
@@ -324,7 +374,7 @@
                                     data-mar-date-btn="{{ $dCol['date_str'] }}"
                                     onclick="selectMobileMarDate('{{ $dCol['date_str'] }}', this)"
                                     class="px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap border transition-all shrink-0 {{ $isDefDate ? 'bg-teal-600 text-white border-teal-600 shadow-sm' : ($dCol['is_today'] ? 'bg-sky-50 text-sky-700 border-sky-300' : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700') }}">
-                                {{ $dCol['thai_text'] }}
+                                {{ $dCol['short_thai'] ?? $dCol['thai_text'] }}
                                 @if($dCol['is_today'])
                                     <span class="ml-1 text-[9px] px-1.5 py-0.2 rounded-full {{ $isDefDate ? 'bg-white/25 text-white' : 'bg-sky-600 text-white' }}">วันนี้</span>
                                 @endif
@@ -333,12 +383,14 @@
                     </div>
                 </div>
 
-                <!-- การ์ดรายการยาทั้งหมด (ซิงค์ปุ่มติ๊กตามวันที่ที่เลือก) -->
                 <div class="space-y-3">
                     @foreach($medications as $med)
                         @php
                             $hasStandardSlots = $med->take_morning || $med->take_noon || $med->take_evening || $med->take_bedtime;
                             $hasPrnOrCustom   = $med->take_prn || !empty($med->custom_slot_text) || !$hasStandardSlots || in_array($med->meal_timing, ['prn', 'external']);
+                            $medStartStr      = $med->start_date ? $med->start_date->format('Y-m-d') : null;
+                            $medEndStr        = $med->end_date ? $med->end_date->format('Y-m-d') : null;
+                            $isContinuousMed  = empty($medEndStr);
 
                             $mobileSlots = [];
                             if ($med->take_morning) $mobileSlots['morning'] = ['label' => '🌅 เช้า',     'is_prn' => false];
@@ -364,13 +416,13 @@
                                 'take_bedtime'     => (bool)$med->take_bedtime,
                                 'take_prn'         => (bool)$med->take_prn,
                                 'custom_slot_text' => $med->custom_slot_text ?? '',
-                                'start_date'       => $med->start_date ? $med->start_date->format('Y-m-d') : $startDateStr,
+                                'start_date'       => $medStartStr ?: $startDateStr,
+                                'end_date'         => $medEndStr ?: '',
                                 'instruction_note' => $med->instruction_note ?? '',
                             ];
                         @endphp
 
                         <div class="rounded-2xl border-2 border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm space-y-3">
-                            <!-- หัวการ์ดยา: ชื่อยา + ปุ่มแก้ไข/ลบ -->
                             <div class="flex items-start justify-between gap-2">
                                 <div class="min-w-0">
                                     <div class="font-black text-slate-900 dark:text-white text-base leading-snug">{{ $med->drug_name }}</div>
@@ -381,6 +433,15 @@
                                         <span class="px-2 py-0.5 {{ $med->meal_timing === 'external' ? 'bg-amber-100 text-amber-900 border-amber-300' : ($med->meal_timing === 'prn' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-indigo-50 text-indigo-800 border-indigo-200') }} border rounded-md font-bold text-[11px]">
                                             {{ $med->meal_timing_label }}
                                         </span>
+                                        @if($isContinuousMed)
+                                            <span class="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-md font-bold text-[10px]">
+                                                <i class="fa-solid fa-infinity mr-0.5"></i>ต่อเนื่องทุกวัน
+                                            </span>
+                                        @else
+                                            <span class="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-md font-bold text-[10px]">
+                                                ถึง {{ \Carbon\Carbon::parse($medEndStr)->addYears(543)->format('d/m/y') }}
+                                            </span>
+                                        @endif
                                     </div>
                                 </div>
 
@@ -406,11 +467,13 @@
                                 </div>
                             @endif
 
-                            <!-- ปุ่มติ๊กมื้อยาแยกตามวันที่ (สลับแสดงตาม Date Pill ที่เลือกด้านบน) -->
                             @foreach($dateColumns as $dCol)
-                                @php $isVisibleDay = ($dCol['date_str'] === $defaultMobileMarDate); @endphp
+                                @php
+                                    $isVisibleDay = ($dCol['date_str'] === $defaultMobileMarDate);
+                                    $isOutsideMedRange = ($medStartStr && $dCol['date_str'] < $medStartStr) || ($medEndStr && $dCol['date_str'] > $medEndStr);
+                                @endphp
                                 <div data-mar-date-panel="{{ $dCol['date_str'] }}"
-                                     class="{{ $isVisibleDay ? 'grid' : 'hidden' }} {{ count($mobileSlots) === 1 ? 'grid-cols-1' : 'grid-cols-2' }} gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                                     class="{{ $isVisibleDay ? 'grid' : 'hidden' }} {{ count($mobileSlots) === 1 ? 'grid-cols-1' : 'grid-cols-2' }} gap-2 pt-2 border-t border-slate-100 dark:border-slate-700 {{ $isOutsideMedRange ? 'opacity-60' : '' }}">
                                     @foreach($mobileSlots as $slotKey => $slotInfo)
                                         @php
                                             $cellKey = $med->id . '_' . $dCol['date_str'] . '_' . $slotKey;
@@ -424,7 +487,7 @@
                                                     : ($slotInfo['is_prn']
                                                         ? 'bg-amber-50/70 text-amber-900 border-amber-300'
                                                         : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600'));
-                                            $stateLabel = $st === 'taken' ? '✓ ใช้แล้ว' : ($st === 'missed' ? '✕ ขาดยา' : 'แตะเช็ค');
+                                            $stateLabel = $st === 'taken' ? '✓ ใช้แล้ว' : ($st === 'missed' ? '✕ ขาดยา' : 'แตะเช็ก');
                                         @endphp
                                         <button type="button"
                                                 id="med-mobile-btn-{{ $cellKey }}"
@@ -450,20 +513,25 @@
         </div>
 
         <!-- =========================================================== -->
-        <!-- 💻 โหมดคอมพิวเตอร์ & โหมดพิมพ์ A4: ตาราง e-MAR 10 วันเต็มรูปแบบ -->
+        <!-- 💻 โหมดคอมพิวเตอร์ & โหมดพิมพ์ A4: ตาราง e-MAR ไดนามิก (10 / 14 / 30 วัน + Sticky Name) -->
         <!-- =========================================================== -->
         <div class="hidden md:block print:block overflow-x-auto">
             <table class="w-full text-xs text-center border-collapse border-2 border-slate-800">
                 <thead>
                     <tr class="bg-slate-100 text-slate-900 font-black">
-                        <th rowspan="2" class="border border-slate-800 px-3 py-2.5 min-w-[210px]">ชื่อยา / ปริมาณ / วิธีรับประทานหรือวิธีใช้</th>
-                        <th rowspan="2" class="border border-slate-800 px-2 py-2.5 w-36">เวลารับประทาน / เวลาใช้ยา</th>
-                        <th colspan="10" class="border border-slate-800 px-2 py-1.5">วัน/เดือน/ปี</th>
+                        <th rowspan="2" class="border border-slate-800 px-3 py-2.5 min-w-[215px] {{ $isCompactMar ? 'sticky left-0 z-20 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] print:static' : '' }}">
+                            ชื่อยา / ปริมาณ / วิธีรับประทานหรือวิธีใช้
+                        </th>
+                        <th rowspan="2" class="border border-slate-800 px-2 py-2.5 min-w-[115px] w-32">เวลารับประทาน / ใช้ยา</th>
+                        <th colspan="{{ count($dateColumns) }}" class="border border-slate-800 px-2 py-1.5">
+                            วัน/เดือน/ปี (แสดง {{ $daysCount }} วัน)
+                        </th>
                     </tr>
                     <tr class="bg-slate-50 text-slate-800 font-bold text-[11px]">
                         @foreach($dateColumns as $dCol)
-                            <th class="border border-slate-800 px-1.5 py-2 min-w-[78px] {{ $dCol['is_today'] ? 'bg-sky-100 text-sky-900 ring-2 ring-sky-500' : '' }}">
-                                {{ $dCol['thai_text'] }}
+                            <th class="border border-slate-800 px-1 py-2 {{ $isCompactMar ? 'min-w-[46px]' : 'min-w-[74px]' }} {{ $dCol['is_today'] ? 'bg-sky-100 text-sky-900 ring-2 ring-inset ring-sky-500' : '' }}"
+                                title="{{ $dCol['thai_text'] }}">
+                                {{ $isCompactMar ? ($dCol['short_thai'] ?? $dCol['thai_text']) : $dCol['thai_text'] }}
                             </th>
                         @endforeach
                     </tr>
@@ -473,6 +541,9 @@
                         @php
                             $hasStandardSlots = $med->take_morning || $med->take_noon || $med->take_evening || $med->take_bedtime;
                             $hasPrnOrCustom   = $med->take_prn || !empty($med->custom_slot_text) || !$hasStandardSlots || in_array($med->meal_timing, ['prn', 'external']);
+                            $medStartStr      = $med->start_date ? $med->start_date->format('Y-m-d') : null;
+                            $medEndStr        = $med->end_date ? $med->end_date->format('Y-m-d') : null;
+                            $isContinuousMed  = empty($medEndStr);
 
                             $medSlotRows = [];
                             if ($hasStandardSlots) {
@@ -502,7 +573,8 @@
                                 'take_bedtime'     => (bool)$med->take_bedtime,
                                 'take_prn'         => (bool)$med->take_prn,
                                 'custom_slot_text' => $med->custom_slot_text ?? '',
-                                'start_date'       => $med->start_date ? $med->start_date->format('Y-m-d') : $startDateStr,
+                                'start_date'       => $medStartStr ?: $startDateStr,
+                                'end_date'         => $medEndStr ?: '',
                                 'instruction_note' => $med->instruction_note ?? '',
                             ];
                         @endphp
@@ -514,7 +586,7 @@
                             @endphp
                             <tr>
                                 @if($loop->first)
-                                    <td rowspan="{{ $totalSlotRows }}" class="border border-slate-800 p-3 text-left align-middle bg-white relative">
+                                    <td rowspan="{{ $totalSlotRows }}" class="border border-slate-800 p-3 text-left align-middle bg-white relative {{ $isCompactMar ? 'sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.12)] print:static' : '' }}">
                                         <div class="font-black text-slate-900 text-sm leading-snug">{{ $med->drug_name }}</div>
                                         <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                                             <span class="px-2 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 rounded font-bold text-[11px]">
@@ -523,6 +595,18 @@
                                             <span class="px-2 py-0.5 {{ $med->meal_timing === 'external' ? 'bg-amber-100 text-amber-900 border-amber-300' : ($med->meal_timing === 'prn' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-indigo-50 text-indigo-800 border-indigo-200') }} border rounded font-bold text-[11px]">
                                                 {{ $med->meal_timing_label }}
                                             </span>
+                                        </div>
+
+                                        <div class="mt-1.5 flex flex-wrap items-center gap-1">
+                                            @if($isContinuousMed)
+                                                <span class="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-bold">
+                                                    <i class="fa-solid fa-infinity mr-0.5"></i>ให้ยาต่อเนื่องทุกวัน
+                                                </span>
+                                            @else
+                                                <span class="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded text-[10px] font-bold">
+                                                    <i class="fa-regular fa-calendar mr-0.5"></i>{{ $medStartStr ? \Carbon\Carbon::parse($medStartStr)->addYears(543)->format('d/m/y') : '-' }} – {{ \Carbon\Carbon::parse($medEndStr)->addYears(543)->format('d/m/y') }}
+                                                </span>
+                                            @endif
                                         </div>
 
                                         @if(!empty($med->custom_slot_text))
@@ -567,12 +651,13 @@
                                     @php
                                         $cellKey = $med->id . '_' . $dCol['date_str'] . '_' . $slotKey;
                                         $cellLog = $medLogs->get($cellKey);
+                                        $isOutsideRange = ($medStartStr && $dCol['date_str'] < $medStartStr) || ($medEndStr && $dCol['date_str'] > $medEndStr);
                                     @endphp
                                     @if($isPrescribedSlot)
                                         <td id="med-cell-{{ $cellKey }}"
                                             onclick="toggleMedCell({{ $med->id }}, '{{ $dCol['date_str'] }}', '{{ $slotKey }}', '{{ $cellKey }}')"
-                                            class="border border-slate-800 p-1.5 cursor-pointer hover:bg-teal-50 transition-colors select-none {{ $dCol['is_today'] ? 'bg-sky-50/30' : 'bg-white' }}"
-                                            title="คลิกเพื่อบันทึก: กิน/ทายาแล้ว (✅) หรือ ขาดยา (❌)">
+                                            class="border border-slate-800 p-1 cursor-pointer hover:bg-teal-50 transition-colors select-none {{ $dCol['is_today'] ? 'bg-sky-50/40' : ($isOutsideRange ? 'bg-slate-50/80 opacity-50' : 'bg-white') }}"
+                                            title="{{ $dCol['thai_text'] }} — คลิกเพื่อบันทึก: กิน/ทายาแล้ว (✓) หรือ ขาดยา (✕){{ $isOutsideRange ? ' (อยู่นอกช่วงวันที่ตั้งไว้)' : '' }}">
                                             @if($cellLog && $cellLog->status === 'taken')
                                                 <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500 text-white font-black text-xs shadow-sm">✓</span>
                                             @elseif($cellLog && $cellLog->status === 'missed')
@@ -589,7 +674,7 @@
                         @endforeach
                     @empty
                         <tr>
-                            <td colspan="12" class="border border-slate-800 py-10 text-center text-slate-400">
+                            <td colspan="{{ count($dateColumns) + 2 }}" class="border border-slate-800 py-10 text-center text-slate-400">
                                 ยังไม่มีรายการยาที่ต้องรับประทาน คลิกปุ่ม <b>"+ เพิ่มรายการยาที่ต้องกิน / ทา"</b> ด้านบนเพื่อเพิ่มชื่อยาได้เลยครับ
                             </td>
                         </tr>
@@ -638,7 +723,7 @@
         form.submit();
     }
 
-    // 🧮 ฟังก์ชันคำนวณคะแนน MEWS สดในหน้าต่างกรอกสัญญาณชีพ
+    // 🧮 คำนวณคะแนน MEWS สดในหน้าต่างกรอกสัญญาณชีพ
     function calcLiveModalMews() {
         const temp = parseFloat(document.getElementById('mv_temp')?.value);
         const hr   = parseInt(document.getElementById('mv_hr')?.value);
@@ -771,7 +856,45 @@
         });
     }
 
-    // 🛠️ ตัวช่วยในป๊อปอัปเพิ่ม/แก้ไขยา: ล้างมื้อเช้า-เที่ยง-เย็น-ก่อนนอน แล้วเปิดโหมดเวลามีอาการ/กำหนดเอง
+    // 🛠️ ตัวช่วยตั้งค่าระยะเวลาให้ยา (ต่อเนื่องทุกวัน vs กำหนดจำนวนวัน +7/+10/+14/+30)
+    window.toggleMedContinuousMode = function(isChecked) {
+        const endDateInput = document.getElementById('med_end_date');
+        if (!endDateInput) return;
+        if (isChecked) {
+            endDateInput.value = '';
+            endDateInput.disabled = true;
+            endDateInput.classList.add('opacity-50', 'bg-slate-100');
+        } else {
+            endDateInput.disabled = false;
+            endDateInput.classList.remove('opacity-50', 'bg-slate-100');
+        }
+    };
+
+    window.applyMedDurationDays = function(addDays) {
+        const startEl = document.getElementById('med_start_date');
+        const endEl   = document.getElementById('med_end_date');
+        const contCb  = document.getElementById('med_is_continuous');
+        if (!startEl || !endEl) return;
+
+        const base = startEl.value ? new Date(startEl.value + 'T00:00:00') : new Date();
+        base.setDate(base.getDate() + Math.max(0, addDays - 1));
+        const yyyy = base.getFullYear();
+        const mm   = String(base.getMonth() + 1).padStart(2, '0');
+        const dd   = String(base.getDate()).padStart(2, '0');
+
+        if (contCb) contCb.checked = false;
+        window.toggleMedContinuousMode(false);
+        endEl.value = `${yyyy}-${mm}-${dd}`;
+    };
+
+    window.onSwalCareGroupChange = function(val) {
+        const contCb = document.getElementById('med_is_continuous');
+        if ((val === 'psychiatric' || val === 'chronic') && contCb) {
+            contCb.checked = true;
+            window.toggleMedContinuousMode(true);
+        }
+    };
+
     window.clearStandardMedSlots = function() {
         ['morning', 'noon', 'evening', 'bedtime'].forEach(val => {
             const cb = document.querySelector(`input[name="swal_med_slots"][value="${val}"]`);
@@ -827,21 +950,23 @@
         if (prnCb) prnCb.checked = true;
     };
 
-    // 💊 เปิดป๊อปอัปเพิ่มหรือแก้ไขรายการยา (ไม่บังคับติ๊กมื้อหลัก + รองรับเวลามีอาการ / ยานวด / ยาทา)
+    // 💊 เปิดป๊อปอัปเพิ่มหรือแก้ไขรายการยา (รองรับระยะเวลาต่อเนื่องทุกวัน + ปุ่มกำหนดจำนวนวัน)
     function openAddMedicationModal(prefillDrugName = '', prefillDosage = '', editData = null) {
-        const isEdit = !!editData;
-        const careGroup  = editData ? editData.care_group : 'ci_isolation';
-        const drugName   = editData ? editData.drug_name : prefillDrugName;
-        const dosage     = editData ? editData.dosage : (prefillDosage || 'ครั้งละ 1 เม็ด');
-        const mealTiming = editData ? editData.meal_timing : 'after_meal';
-        const chkM       = editData ? editData.take_morning : true;
-        const chkN       = editData ? editData.take_noon : true;
-        const chkE       = editData ? editData.take_evening : true;
-        const chkB       = editData ? editData.take_bedtime : false;
-        const chkPrn     = editData ? editData.take_prn : false;
-        const customSlot = editData ? editData.custom_slot_text : '';
-        const startDate  = editData ? editData.start_date : '{{ $startDateStr }}';
-        const noteText   = editData ? editData.instruction_note : '';
+        const isEdit       = !!editData;
+        const careGroup    = editData ? editData.care_group : 'ci_isolation';
+        const drugName     = editData ? editData.drug_name : prefillDrugName;
+        const dosage       = editData ? editData.dosage : (prefillDosage || 'ครั้งละ 1 เม็ด');
+        const mealTiming   = editData ? editData.meal_timing : 'after_meal';
+        const chkM         = editData ? editData.take_morning : true;
+        const chkN         = editData ? editData.take_noon : true;
+        const chkE         = editData ? editData.take_evening : true;
+        const chkB         = editData ? editData.take_bedtime : false;
+        const chkPrn       = editData ? editData.take_prn : false;
+        const customSlot   = editData ? editData.custom_slot_text : '';
+        const startDate    = editData ? editData.start_date : '{{ $startDateStr }}';
+        const endDate      = editData ? (editData.end_date || '') : '';
+        const isContinuous = !endDate;
+        const noteText     = editData ? editData.instruction_note : '';
 
         Swal.fire({
             title: `<div class="text-lg font-black text-slate-800"><i class="fa-solid fa-pills text-teal-600 mr-2"></i>${isEdit ? 'แก้ไขรายการยา / วิธีใช้ยา' : 'เพิ่มรายการยาที่ต้องรับประทาน / ยาใช้ภายนอก'}</div>`,
@@ -849,9 +974,9 @@
                 <div class="text-left space-y-3.5 mt-2">
                     <div>
                         <label class="block text-xs font-bold text-slate-700 mb-1">กลุ่มผู้ป่วยที่ต้องติดตามการใช้ยา <span class="text-rose-500">*</span></label>
-                        <select id="med_care_group" class="w-full rounded-xl border-2 border-slate-300 bg-slate-50 p-2.5 text-xs sm:text-sm font-bold text-slate-800 outline-none">
+                        <select id="med_care_group" onchange="window.onSwalCareGroupChange(this.value)" class="w-full rounded-xl border-2 border-slate-300 bg-slate-50 p-2.5 text-xs sm:text-sm font-bold text-slate-800 outline-none">
                             <option value="ci_isolation" ${careGroup === 'ci_isolation' ? 'selected' : ''}>🏕️ 1. ผู้ป่วยแยกกัก CI / ห้องพยาบาลหน่วยฝึก (โควิด/ทางเดินหายใจ/อื่นๆ)</option>
-                            <option value="psychiatric" ${careGroup === 'psychiatric' ? 'selected' : ''}>🧠 2. ผู้ป่วยโรคจิตเวช (ต้องรับประทานยาต่อเนื่องตามเวลา)</option>
+                            <option value="psychiatric" ${careGroup === 'psychiatric' ? 'selected' : ''}>🧠 2. ผู้ป่วยโรคจิตเวช (ต้องรับประทานยาต่อเนื่องทุกวัน)</option>
                             <option value="chronic" ${careGroup === 'chronic' ? 'selected' : ''}>💊 3. ผู้ป่วยโรคประจำตัวเรื้อรังอื่นๆ (เช่น หอบหืด, ลมชัก, ความดัน)</option>
                         </select>
                     </div>
@@ -859,19 +984,19 @@
                     <div>
                         <label class="block text-xs font-bold text-slate-700 mb-1">ชื่อยา (Drug Name) <span class="text-rose-500">*</span></label>
                         <div class="flex flex-wrap gap-1 mb-1.5">
-                            <button type="button" onclick="window.applyQuickDrugPreset('Paracetamol 500 mg.', 'ครั้งละ 1 เม็ด', 'prn', false, true, 'กินเวลามีไข้หรือปวด ทุก 4-6 ชม.')" class="px-2 py-0.5 bg-slate-100 hover:bg-teal-50 text-slate-700 rounded text-[10px] font-bold border border-slate-200">+ Paracetamol (เวลามีอาการ)</button>
+                            <button type="button" onclick="window.applyQuickDrugPreset('Paracetamol 500 mg.', 'ครั้งละ 1 เม็ด', 'prn', false, true, 'กินเวลามีไข้หรือปวด ทุก 4-6 ชม.')" class="px-2 py-0.5 bg-slate-100 hover:bg-teal-50 text-slate-700 rounded text-[10px] font-bold border border-slate-200">+ Paracetamol (PRN)</button>
                             <button type="button" onclick="window.applyQuickDrugPreset('ยาละลายเสมหะ (Bromhexine)', 'ครั้งละ 1 เม็ด', 'after_meal', true, false, '')" class="px-2 py-0.5 bg-slate-100 hover:bg-teal-50 text-slate-700 rounded text-[10px] font-bold border border-slate-200">+ ละลายเสมหะ</button>
                             <button type="button" onclick="window.applyQuickDrugPreset('ยาแก้แพ้ ลดน้ำมูก (CPM)', 'ครั้งละ 1 เม็ด', 'after_meal', true, false, '')" class="px-2 py-0.5 bg-slate-100 hover:bg-teal-50 text-slate-700 rounded text-[10px] font-bold border border-slate-200">+ ลดน้ำมูก (CPM)</button>
-                            <button type="button" onclick="window.applyQuickDrugPreset('ยานวดคลายกล้ามเนื้อ (Balm)', 'ทาบางๆ บริเวณที่ปวด', 'external', false, true, 'ทา/นวดบริเวณที่ปวดเมื่อย เช้า-เย็น หรือเวลามีอาการ')" class="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded text-[10px] font-bold border border-amber-200">🧴 + ยานวดคลายกล้ามเนื้อ</button>
-                            <button type="button" onclick="window.applyQuickDrugPreset('ยาทาผื่นคัน / ยาทาแผล', 'ทาบางๆ บริเวณที่เป็น', 'external', false, true, 'ทาบริเวณแผล/ผื่นคัน เช้า-เย็น')" class="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded text-[10px] font-bold border border-amber-200">🧴 + ยาทาผื่น/แผล</button>
+                            <button type="button" onclick="window.applyQuickDrugPreset('ยานวดคลายกล้ามเนื้อ (Balm)', 'ทาบางๆ บริเวณที่ปวด', 'external', false, true, 'ทา/นวดบริเวณที่ปวดเมื่อย เช้า-เย็น หรือเวลามีอาการ')" class="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded text-[10px] font-bold border border-amber-200">🧴 + ยานวด</button>
+                            <button type="button" onclick="window.applyQuickDrugPreset('ยาทาผื่นคัน / ยาทาแผล', 'ทาบางๆ บริเวณที่เป็น', 'external', false, true, 'ทาบริเวณแผล/ผื่นคัน เช้า-เย็น')" class="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded text-[10px] font-bold border border-amber-200">🧴 + ยาทา</button>
                         </div>
-                        <input type="text" id="med_drug_name" value="${escapeMarHtml(drugName)}" placeholder="เช่น Paracetamol 500 mg., ยานวดคลายกล้ามเนื้อ, ยาทาผื่น..." class="w-full px-3.5 py-2.5 border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none">
+                        <input type="text" id="med_drug_name" value="${escapeMarHtml(drugName)}" placeholder="เช่น Sertraline 50 mg., Paracetamol 500 mg., ยานวด..." class="w-full px-3.5 py-2.5 border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none">
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">ปริมาณยา / ขนาดที่ใช้ <span class="text-slate-400 font-normal">(ไม่บังคับ)</span></label>
-                            <input type="text" id="med_dosage" value="${escapeMarHtml(dosage)}" placeholder="เช่น ครั้งละ 1 เม็ด, ทาบางๆ บริเวณที่ปวด..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none">
+                            <label class="block text-xs font-bold text-slate-700 mb-1">ปริมาณยา / ขนาดที่ใช้</label>
+                            <input type="text" id="med_dosage" value="${escapeMarHtml(dosage)}" placeholder="เช่น ครั้งละ 1 เม็ด, ทาบางๆ..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1">การรับประทาน / วิธีใช้ <span class="text-rose-500">*</span></label>
@@ -881,16 +1006,16 @@
                                 <option value="with_meal" ${mealTiming === 'with_meal' ? 'selected' : ''}>🥗 พร้อมอาหาร</option>
                                 <option value="bedtime_only" ${mealTiming === 'bedtime_only' ? 'selected' : ''}>🌙 ก่อนนอนอย่างเดียว</option>
                                 <option value="prn" ${mealTiming === 'prn' ? 'selected' : ''}>🚨 เวลามีอาการ (PRN)</option>
-                                <option value="external" ${mealTiming === 'external' ? 'selected' : ''}>🧴 ยาทาภายนอก / ยานวด (ไม่เกี่ยวกับอาหาร)</option>
+                                <option value="external" ${mealTiming === 'external' ? 'selected' : ''}>🧴 ยาทาภายนอก / ยานวด</option>
                             </select>
                         </div>
                     </div>
 
-                    <!-- 🌟 โซนเลือกมื้อยาแบบไม่บังคับ + ช่องพิมพ์เองสำหรับเวลามีอาการ / ยาทา / ยานวด -->
+                    <!-- โซนเลือกมื้อยา -->
                     <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
                         <div class="flex flex-wrap items-center justify-between gap-1">
                             <label class="text-xs font-bold text-slate-700">
-                                เวลาใช้ยา <span class="text-teal-600 font-semibold">(ไม่บังคับมื้อหลัก — เลือกเวลามีอาการ หรือพิมพ์ระบุเองด้านล่างได้)</span>
+                                เวลาใช้ยา <span class="text-teal-600 font-semibold">(เลือกมื้อปกติ หรือเวลามีอาการ)</span>
                             </label>
                             <button type="button" onclick="window.clearStandardMedSlots()" class="text-[11px] font-bold text-rose-500 hover:underline">
                                 ล้างมื้อ เช้า-เที่ยง-เย็น
@@ -916,39 +1041,52 @@
                             </label>
                             <label class="col-span-2 sm:col-span-1 flex items-center gap-1.5 p-2 rounded-xl border-2 border-amber-200 bg-amber-50/50 cursor-pointer has-[:checked]:border-amber-500 has-[:checked]:bg-amber-100 font-black text-amber-900 text-xs">
                                 <input type="checkbox" name="swal_med_slots" value="prn" ${chkPrn ? 'checked' : ''} class="w-4 h-4 text-amber-600 rounded">
-                                <span>⚡ มีอาการ/อื่นๆ</span>
+                                <span>⚡ มีอาการ</span>
                             </label>
                         </div>
 
                         <div class="pt-1">
-                            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-                                <i class="fa-solid fa-pen-clip text-teal-600 mr-1"></i>ช่องพิมพ์ระบุเวลา / วิธีใช้เพิ่มเติม (เช่น กินเวลามีอาการ, ยานวด, ยาทา — ไม่บังคับ):
-                            </label>
-                            <div class="flex flex-wrap gap-1 mb-1.5">
-                                <button type="button" onclick="window.setSwalCustomSlotTag('กินเวลามีไข้หรือปวด (ทุก 4-6 ชม.)')" class="px-2 py-0.5 bg-white hover:bg-amber-50 text-slate-600 hover:text-amber-800 border border-slate-200 rounded text-[10px] font-bold">+ กินเวลามีไข้/ปวด</button>
-                                <button type="button" onclick="window.setSwalCustomSlotTag('กินเวลามีอาการไอ หรือระคายคอ')" class="px-2 py-0.5 bg-white hover:bg-amber-50 text-slate-600 hover:text-amber-800 border border-slate-200 rounded text-[10px] font-bold">+ กินเวลาไอ</button>
-                                <button type="button" onclick="window.setSwalCustomSlotTag('ทา/นวดบริเวณที่ปวดเมื่อย')" class="px-2 py-0.5 bg-white hover:bg-amber-50 text-slate-600 hover:text-amber-800 border border-slate-200 rounded text-[10px] font-bold">+ ทา/นวดเวลาปวด</button>
-                                <button type="button" onclick="window.setSwalCustomSlotTag('ทาแผล/ผื่นคัน เช้า-เย็น')" class="px-2 py-0.5 bg-white hover:bg-amber-50 text-slate-600 hover:text-amber-800 border border-slate-200 rounded text-[10px] font-bold">+ ทาแผล/ผื่นคัน</button>
-                            </div>
                             <input type="text" id="med_custom_slot_text" value="${escapeMarHtml(customSlot)}"
-                                   placeholder="พิมพ์ระบุเองได้เลย เช่น กินเวลามีอาการปวด, ทานวดบริเวณข้อเท้า..."
+                                   placeholder="ระบุเวลา / วิธีใช้เพิ่มเติม (ถ้ามี) เช่น กินเวลามีไข้, ทานวดเวลาปวด..."
                                    class="w-full px-3 py-2 bg-white border border-slate-300 focus:border-teal-600 rounded-xl text-xs font-semibold text-slate-800 outline-none">
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">วันที่เริ่มให้ยา <span class="text-rose-500">*</span></label>
-                            <input type="date" id="med_start_date" value="${escapeMarHtml(startDate)}" class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-xs font-bold">
+                    <!-- 🗓️ โซนกำหนดวันเริ่มและระยะเวลาให้ยา (รองรับต่อเนื่องทุกวันไม่จำกัด) -->
+                    <div class="p-3.5 rounded-2xl bg-purple-50/50 border border-purple-200/80 space-y-2.5">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <label class="inline-flex items-center gap-2 cursor-pointer text-xs font-black text-purple-900">
+                                <input type="checkbox" id="med_is_continuous" ${isContinuous ? 'checked' : ''} onchange="window.toggleMedContinuousMode(this.checked)" class="w-4 h-4 text-purple-600 rounded">
+                                <span><i class="fa-solid fa-infinity mr-1"></i>ให้ยาต่อเนื่องทุกวัน (ไม่กำหนดวันสิ้นสุด — จิตเวช/เรื้อรัง)</span>
+                            </label>
                         </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">ข้อควรระวัง / หมายเหตุให้เสนารักษ์</label>
-                            <input type="text" id="med_note" value="${escapeMarHtml(noteText)}" placeholder="เช่น ห้ามขาดยา, ยาใช้ภายนอกห้ามรับประทาน..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-xs">
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">วันที่เริ่มให้ยา <span class="text-rose-500">*</span></label>
+                                <input type="date" id="med_start_date" value="${escapeMarHtml(startDate)}" class="w-full px-3 py-2 bg-white border-2 border-slate-300 rounded-xl text-xs font-bold">
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-xs font-bold text-slate-700">วันที่สิ้นสุด (ถ้ามี)</label>
+                                    <div class="flex items-center gap-1">
+                                        <button type="button" onclick="window.applyMedDurationDays(7)" class="px-1.5 py-0.5 bg-white hover:bg-purple-100 border border-purple-200 rounded text-[10px] font-bold text-purple-700">+7วัน</button>
+                                        <button type="button" onclick="window.applyMedDurationDays(14)" class="px-1.5 py-0.5 bg-white hover:bg-purple-100 border border-purple-200 rounded text-[10px] font-bold text-purple-700">+14วัน</button>
+                                        <button type="button" onclick="window.applyMedDurationDays(30)" class="px-1.5 py-0.5 bg-white hover:bg-purple-100 border border-purple-200 rounded text-[10px] font-bold text-purple-700">+30วัน</button>
+                                    </div>
+                                </div>
+                                <input type="date" id="med_end_date" value="${escapeMarHtml(endDate)}" ${isContinuous ? 'disabled' : ''} class="w-full px-3 py-2 bg-white border-2 border-slate-300 rounded-xl text-xs font-bold ${isContinuous ? 'opacity-50 bg-slate-100' : ''}">
+                            </div>
                         </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">ข้อควรระวัง / หมายเหตุให้เสนารักษ์</label>
+                        <input type="text" id="med_note" value="${escapeMarHtml(noteText)}" placeholder="เช่น ห้ามขาดยา, เฝ้าระวังอาการง่วงซึม..." class="w-full px-3 py-2 border-2 border-slate-300 rounded-xl text-xs">
                     </div>
                 </div>
             `,
-            width: '40rem',
+            width: '42rem',
             showCancelButton: true,
             confirmButtonText: `<i class="fa-solid ${isEdit ? 'fa-floppy-disk' : 'fa-plus'} mr-1"></i> ${isEdit ? 'บันทึกการแก้ไข' : 'บันทึกรายการยา'}`,
             cancelButtonText: 'ยกเลิก',
@@ -959,13 +1097,19 @@
                 const dDosage    = document.getElementById('med_dosage').value.trim();
                 const mTiming    = document.getElementById('med_meal_timing').value;
                 const customSlot = document.getElementById('med_custom_slot_text').value.trim();
+                const sDate      = document.getElementById('med_start_date').value;
+                const isCont     = document.getElementById('med_is_continuous')?.checked ? 1 : 0;
+                const eDate      = isCont ? '' : (document.getElementById('med_end_date')?.value || '');
                 let checkedSlots = Array.from(document.querySelectorAll('input[name="swal_med_slots"]:checked')).map(cb => cb.value);
 
                 if (!dName) {
                     Swal.showValidationMessage('กรุณาระบุชื่อยา (Drug Name) ครับ');
                     return false;
                 }
-
+                if (!isCont && eDate && sDate && eDate < sDate) {
+                    Swal.showValidationMessage('วันที่สิ้นสุดต้องไม่น้อยกว่าวันที่เริ่มให้ยาครับ');
+                    return false;
+                }
                 if (checkedSlots.length === 0) {
                     checkedSlots = ['prn'];
                 }
@@ -978,7 +1122,9 @@
                     meal_timing: mTiming,
                     slots: checkedSlots,
                     custom_slot_text: customSlot,
-                    start_date: document.getElementById('med_start_date').value,
+                    start_date: sDate,
+                    end_date: eDate,
+                    is_continuous: isCont,
                     instruction_note: document.getElementById('med_note').value.trim()
                 };
             }
@@ -1031,7 +1177,7 @@
         }
     });
 
-    // ✅ คลิกสลับสถานะกิน/ทายา (อัปเดตพร้อมกันทั้งปุ่มการ์ดมือถือและช่องตาราง Desktop)
+    // ✅ คลิกสลับสถานะกิน/ทายา
     function toggleMedCell(medId, logDate, timeSlot, cellKey) {
         const desktopCell = document.getElementById('med-cell-' + cellKey);
         const mobileBtn   = document.getElementById('med-mobile-btn-' + cellKey);
@@ -1087,7 +1233,7 @@
                     mobileBtn.className = `${colSpanCls}p-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-between gap-2 transition-all active:scale-95 ${neutralCls}`;
                     if (stateBadge) {
                         stateBadge.className = 'js-mobile-state-label px-2 py-0.5 rounded-lg text-[10px] font-black shrink-0 bg-white/80 dark:bg-slate-800 text-slate-500';
-                        stateBadge.innerText = 'แตะเช็ค';
+                        stateBadge.innerText = 'แตะเช็ก';
                     }
                 }
             }
@@ -1097,7 +1243,7 @@
         });
     }
 
-    // 🏥 ดึงรายการยาล่าสุดจาก HosXP มาให้เลือกเพิ่มเข้าตาราง (ใช้ Cache ตาม Index กันบั๊กเครื่องหมายคำพูด)
+    // 🏥 ดึงรายการยาล่าสุดจาก HosXP
     function selectHosxpDrugByIndex(idx) {
         const drug = window._hosxpDrugsCache[idx];
         if (!drug) return;

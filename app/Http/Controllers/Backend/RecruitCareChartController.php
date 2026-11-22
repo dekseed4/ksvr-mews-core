@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Schema;
 
 class RecruitCareChartController extends Controller
 {
-    private const SCHEMA_CACHE_KEY = 'ksvr_care_chart_schema_verified_v1';
+    private const SCHEMA_CACHE_KEY = 'ksvr_care_chart_schema_verified_v2';
     private bool $hosxpTimeoutApplied = false;
 
     private function getUserRoles($user): array
@@ -100,7 +100,7 @@ class RecruitCareChartController extends Controller
         $this->hosxpTimeoutApplied = true;
     }
 
-    // 🛡️ ตรวจสอบและอัปเดตคอลัมน์เพียงครั้งเดียวแล้วจำใน Cache (ป้องกัน ALTER TABLE ล็อกตารางทุกคลิก)
+    // 🛡️ ตรวจสอบและอัปเดตคอลัมน์เพียงครั้งเดียวแล้วจำใน Cache (รองรับ end_date, take_prn, custom_slot_text)
     public static function ensureCareChartSchema(): void
     {
         if (Cache::get(self::SCHEMA_CACHE_KEY)) {
@@ -115,6 +115,9 @@ class RecruitCareChartController extends Controller
                 if (!Schema::hasColumn('patient_medications', 'custom_slot_text')) {
                     DB::statement('ALTER TABLE patient_medications ADD COLUMN custom_slot_text VARCHAR(255) NULL AFTER take_prn');
                 }
+                if (!Schema::hasColumn('patient_medications', 'end_date')) {
+                    DB::statement('ALTER TABLE patient_medications ADD COLUMN end_date DATE NULL AFTER start_date');
+                }
                 if (!Schema::hasColumn('patient_medications', 'instruction_note')) {
                     DB::statement('ALTER TABLE patient_medications ADD COLUMN instruction_note VARCHAR(255) NULL');
                 }
@@ -127,7 +130,7 @@ class RecruitCareChartController extends Controller
 
             Cache::forever(self::SCHEMA_CACHE_KEY, true);
         } catch (\Throwable $e) {
-            // ข้ามกรณีที่อัปเดตโครงสร้างตารางเรียบร้อยแล้ว
+            // ข้ามกรณีโครงสร้างตารางพร้อมใช้งานแล้ว
         }
     }
 
@@ -178,7 +181,7 @@ class RecruitCareChartController extends Controller
         return $score;
     }
 
-    // 📋 หน้าแสดงใบบันทึกสัญญาณชีพ (06:00/18:00) และตารางบันทึกการรับประทานยา 10 วัน
+    // 📋 หน้าแสดงใบบันทึกสัญญาณชีพ (06:00/18:00) และตาราง e-MAR (รองรับ 10 / 14 / 30 วัน + เลื่อนวันไม่จำกัด)
     public function showChart(Request $request, $patient_id)
     {
         self::ensureCareChartSchema();
@@ -188,9 +191,23 @@ class RecruitCareChartController extends Controller
 
         $this->authorizePatientAccess($patient, $user);
 
-        $defaultStartDate = $patient->activeInfirmaryStay && $patient->activeInfirmaryStay->admitted_at
-            ? $patient->activeInfirmaryStay->admitted_at->format('Y-m-d')
-            : Carbon::today()->format('Y-m-d');
+        // จำนวนวันที่แสดงในตาราง e-MAR (รองรับ 10, 14, 30 วัน — ค่าเริ่มต้น 10 วัน)
+        $days = (int) $request->input('days', 10);
+        if (!in_array($days, [7, 10, 14, 30], true)) {
+            $days = 10;
+        }
+
+        // คำนวณวันเริ่มต้นอย่างฉลาด: หากพักห้องพยาบาลยังไม่เกินช่วงวันที่เลือก ให้เริ่มจากวันแรกรับ แต่ถ้าเลยมาแล้วให้ขยับมาให้เห็น "วันนี้"
+        $today = Carbon::today();
+        if ($patient->activeInfirmaryStay && $patient->activeInfirmaryStay->admitted_at) {
+            $admitDay = $patient->activeInfirmaryStay->admitted_at->copy()->startOfDay();
+            $daysSinceAdmit = $admitDay->diffInDays($today, false);
+            $defaultStartDate = ($daysSinceAdmit >= 0 && $daysSinceAdmit < $days)
+                ? $admitDay->format('Y-m-d')
+                : $today->copy()->subDays(min(2, $days - 1))->format('Y-m-d');
+        } else {
+            $defaultStartDate = $today->format('Y-m-d');
+        }
 
         $startDateStr = (string) $request->input('start_date', $defaultStartDate);
         try {
@@ -200,15 +217,22 @@ class RecruitCareChartController extends Controller
             $startDate = Carbon::parse($defaultStartDate)->startOfDay();
             $startDateStr = $defaultStartDate;
         }
-        $endDate = $startDate->copy()->addDays(9)->endOfDay();
+
+        $endDate       = $startDate->copy()->addDays($days - 1)->endOfDay();
+        $prevStartDate = $startDate->copy()->subDays($days)->format('Y-m-d');
+        $nextStartDate = $startDate->copy()->addDays($days)->format('Y-m-d');
+        $todayDateStr  = $today->format('Y-m-d');
 
         $dateColumns = [];
-        for ($i = 0; $i < 10; $i++) {
+        for ($i = 0; $i < $days; $i++) {
             $d = $startDate->copy()->addDays($i);
+            $dTh = $d->copy()->locale('th');
             $dateColumns[] = [
-                'date_str'  => $d->format('Y-m-d'),
-                'thai_text' => $d->copy()->locale('th')->addYears(543)->translatedFormat('j M Y'),
-                'is_today'  => $d->isToday(),
+                'date_str'   => $d->format('Y-m-d'),
+                'thai_text'  => $dTh->copy()->addYears(543)->translatedFormat('j M Y'),
+                'short_thai' => $dTh->translatedFormat('j M'),
+                'day_num'    => $d->day,
+                'is_today'   => $d->isToday(),
             ];
         }
 
@@ -218,7 +242,7 @@ class RecruitCareChartController extends Controller
             ->get()
             ->groupBy(fn ($item) => $item->record_date instanceof Carbon ? $item->record_date->format('Y-m-d') : substr((string) $item->record_date, 0, 10));
 
-        // 2. ดึงรายการยาทั้งหมดของผู้ป่วยคนนี้ พร้อมประวัติการกดรับประทานยาในรอบ 10 วัน
+        // 2. ดึงรายการยาทั้งหมดของผู้ป่วยคนนี้ พร้อมประวัติการกดรับประทานยาในช่วงวันที่เลือก
         $medications = PatientMedication::where('patient_id', $patient->id)
             ->where('is_active', true)
             ->orderBy('id', 'asc')
@@ -245,7 +269,19 @@ class RecruitCareChartController extends Controller
         $hosxpSyncPaused = $this->isHosxpSyncPaused();
 
         return view('backend.recruit_infirmary.care_chart', compact(
-            'patient', 'startDate', 'startDateStr', 'dateColumns', 'vitalLogs', 'medications', 'medLogs', 'infirmaryPeers', 'hosxpSyncPaused'
+            'patient',
+            'startDate',
+            'startDateStr',
+            'days',
+            'prevStartDate',
+            'nextStartDate',
+            'todayDateStr',
+            'dateColumns',
+            'vitalLogs',
+            'medications',
+            'medLogs',
+            'infirmaryPeers',
+            'hosxpSyncPaused'
         ));
     }
 
@@ -305,7 +341,7 @@ class RecruitCareChartController extends Controller
         return back()->with('success', "บันทึกสัญญาณชีพรอบ {$data['round_time']} น. สำเร็จ (MEWS Score: {$mewsScore} คะแนน)");
     }
 
-    // 💊 เพิ่มหรือแก้ไขรายการยา (รองรับมื้อปกติ, PRN, ยานวด และยาทา)
+    // 💊 เพิ่มหรือแก้ไขรายการยา (รองรับยาต่อเนื่องทุกวันไม่มีกำหนด + กำหนดวันสิ้นสุด end_date)
     public function storeMedication(Request $request)
     {
         self::ensureCareChartSchema();
@@ -321,9 +357,12 @@ class RecruitCareChartController extends Controller
             'slots.*'          => 'in:morning,noon,evening,bedtime,prn',
             'custom_slot_text' => 'nullable|string|max:255',
             'start_date'       => 'required|date',
+            'end_date'         => 'nullable|date|after_or_equal:start_date',
+            'is_continuous'    => 'nullable|boolean',
             'instruction_note' => 'nullable|string|max:255',
         ], [
-            'drug_name.required' => 'กรุณาระบุชื่อยา (เช่น Paracetamol 500 mg., ยานวดคลายกล้ามเนื้อ)',
+            'drug_name.required'      => 'กรุณาระบุชื่อยา (เช่น Paracetamol 500 mg., ยานวดคลายกล้ามเนื้อ)',
+            'end_date.after_or_equal' => 'วันที่สิ้นสุดการให้ยาต้องไม่น้อยกว่าวันที่เริ่มให้ยาครับ',
         ]);
 
         $patient = Patient::findOrFail($data['patient_id']);
@@ -348,6 +387,11 @@ class RecruitCareChartController extends Controller
             }
         }
 
+        // หากเลือกกินต่อเนื่องทุกวัน (is_continuous = 1) ให้บันทึก end_date เป็น null
+        $resolvedEndDate = $request->boolean('is_continuous')
+            ? null
+            : (!empty($data['end_date']) ? $data['end_date'] : null);
+
         $payload = [
             'patient_id'       => $patient->id,
             'care_group'       => $data['care_group'],
@@ -361,12 +405,12 @@ class RecruitCareChartController extends Controller
             'take_prn'         => $takePrn,
             'custom_slot_text' => $customText !== '' ? $customText : null,
             'start_date'       => $data['start_date'],
+            'end_date'         => $resolvedEndDate,
             'is_active'        => true,
             'instruction_note' => $data['instruction_note'] ?? null,
             'created_by'       => auth()->id(),
         ];
 
-        // ใช้ Eloquent Model instance เพื่อกระตุ้น Trait RecordsSystemLog เก็บ Audit Diff อัตโนมัติ
         if (!empty($data['medication_id'])) {
             $med = PatientMedication::where('id', $data['medication_id'])
                 ->where('patient_id', $patient->id)
@@ -437,7 +481,6 @@ class RecruitCareChartController extends Controller
     // 🏥 ดึงรายการยาล่าสุดจากฐานข้อมูล HosXP อัตโนมัติ (Read-Only + Index Optimized + HIS Safety)
     public function fetchHosxpMedications(Request $request, $patient_id)
     {
-        // 🛡️ เช็กสวิตช์พักการซิงค์ HosXP ชั่วคราวก่อนยิง Query
         if ($this->isHosxpSyncPaused()) {
             return response()->json([
                 'status'  => 'error',
@@ -456,15 +499,18 @@ class RecruitCareChartController extends Controller
         try {
             $this->applyHosxpTimeout();
 
-            $cleanUTF8 = function ($str) {
+            $cleanUTF8 = function ($str): string {
                 if (empty($str)) {
                     return '';
                 }
-                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string) $str);
-                return trim(mb_convert_encoding($utf8 ?: (string) $str, 'UTF-8', 'UTF-8'));
+                $raw = (string) $str;
+                if (mb_check_encoding($raw, 'UTF-8') && !preg_match('/[\x{00C0}-\x{024F}]/u', $raw)) {
+                    return trim($raw);
+                }
+                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', $raw);
+                return trim(mb_convert_encoding($utf8 ?: $raw, 'UTF-8', 'UTF-8'));
             };
 
-            // ใช้ where('vstdate', '>=', ...) แทน whereDate เพื่อให้ HosXP วิ่งผ่าน Index (hn, vstdate) ได้ทันที
             $latestVn = DB::connection('hosxp')
                 ->table('ovst')
                 ->where('hn', trim((string) $patient->hn))

@@ -27,6 +27,7 @@ class PatientMedication extends Model
         'is_active',
         'instruction_note',
         'created_by',
+        'recorded_by',
     ];
 
     protected $casts = [
