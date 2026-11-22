@@ -100,9 +100,10 @@
                 <input type="date" name="start_date" value="{{ $startDateStr }}" onchange="this.form.submit()" class="bg-transparent text-xs sm:text-sm font-black text-indigo-700 dark:text-indigo-400 outline-none cursor-pointer">
             </form>
 
-            <button type="button" onclick="window.print()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm flex items-center gap-1.5">
-                <i class="fa-solid fa-print"></i> พิมพ์ใบตาราง (A4)
-            </button>
+            @include('partials.export_report_menu', [
+                'module' => 'care_chart',
+                'params' => ['patient_id' => $patient->id, 'start_date' => $startDateStr, 'days' => $daysCount],
+            ])
         </div>
     </div>
 

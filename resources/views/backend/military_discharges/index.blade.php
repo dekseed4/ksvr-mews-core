@@ -168,9 +168,10 @@
                 <i class="fa-solid fa-user-plus"></i> เพิ่มรายชื่อทหารนำปลด
             </button>
 
-            <button type="button" onclick="window.print()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs sm:text-sm shadow-sm flex items-center gap-1.5 transition-all">
-                <i class="fa-solid fa-print"></i> พิมพ์เอกสารทั้งหมด (A4)
-            </button>
+            @include('partials.export_report_menu', [
+                'module' => 'discharges',
+                'params' => request()->only(['intake_batch', 'unit_id', 'process_status', 'status']),
+            ])
         </div>
     </div>
 

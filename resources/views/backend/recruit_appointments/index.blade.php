@@ -139,6 +139,16 @@
                     class="w-full xl:w-auto justify-center px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap">
                 <i class="fa-solid fa-calendar-plus"></i> + ลงวันนัดพบแพทย์
             </button>
+            @include('partials.export_report_menu', [
+                'module' => 'appointments',
+                'params' => [
+                    'intake_batch'  => $selectedBatch ?? 'all',
+                    'unit_id'       => $selectedUnit ?? '',
+                    'hospital_type' => $selectedType ?? '',
+                    'patient_id'    => request('patient_id', ''),
+                    'date_scope'    => $selectedScope ?? 'upcoming',
+                ],
+            ])
         </div>
     </div>
 

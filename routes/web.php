@@ -101,6 +101,7 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/backend/ai/extract-vitals', [\App\Http\Controllers\Backend\AiController::class, 'extractVitals'])->name('backend.ai.extract_vitals');
         Route::post('/backend/ai/triage-copilot', [\App\Http\Controllers\Backend\AiController::class, 'triageCopilot'])->name('backend.ai.triage_copilot');
         Route::post('/backend/ai/ask-executive', [\App\Http\Controllers\Backend\AiController::class, 'askExecutive'])->name('backend.ai.ask_executive');
+        Route::post('/backend/ai/sbar-handover', [\App\Http\Controllers\Backend\AiController::class, 'sbarHandover'])->name('backend.ai.sbar_handover');
 
         // คัดกรองทหารใหม่
         Route::prefix('recruit-screenings')->name('backend.recruit_screenings.')->group(function () {
@@ -161,6 +162,12 @@ Route::middleware(['auth'])->group(function () {
             Route::delete('/{id}', [\App\Http\Controllers\Backend\MilitaryDischargeController::class, 'destroy'])->name('destroy');
         });
 
+        // 📤 ศูนย์ส่งออกรายงานทางการ 4 โมดูล (Excel .xlsx / PDF A4 / รูปภาพ PNG)
+        Route::prefix('backend/reports/export')->name('backend.reports.export.')->group(function () {
+            Route::get('/{module}/data', [\App\Http\Controllers\Backend\ReportExportController::class, 'exportData'])->name('data');
+            Route::get('/{module}/sheet', [\App\Http\Controllers\Backend\ReportExportController::class, 'printSheet'])->name('sheet');
+        });
+        
         // ==========================================
         // 2.2 โซนจัดการระบบ (Restricted) - ใช้งานได้เฉพาะ Admin เท่านั้น!
         // ==========================================

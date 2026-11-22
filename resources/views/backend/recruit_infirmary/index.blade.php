@@ -110,6 +110,16 @@
                     class="w-full xl:w-auto justify-center px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap">
                 <i class="fa-solid fa-bed-pulse"></i> + บันทึกแยกโรงนอน / ห้องพยาบาล
             </button>
+            @include('partials.export_report_menu', [
+                'module' => 'infirmary',
+                'params' => [
+                    'intake_batch'    => $selectedBatch,
+                    'unit_id'         => $selectedUnit,
+                    'location_type'   => $selectedLocation,
+                    'reason_category' => $selectedReason,
+                    'status'          => $selectedStatus,
+                ],
+            ])
         </div>
     </div>
 
