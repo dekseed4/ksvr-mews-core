@@ -4,123 +4,365 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ $report['title'] }} - KSVR Hospital</title>
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    @vite(['resources/css/app.css'])
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
+
+    @php
+        // ฝังโลโก้เป็น Base64 เพื่อป้องกันปัญหา CORS / Tainted Canvas ตอนสร้าง PNG และ PDF
+        $logoPath = public_path('images/logo5.png');
+        $logoDataUri = (file_exists($logoPath) && is_readable($logoPath))
+            ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath))
+            : asset('images/logo5.png');
+        $isPortrait = ($report['orientation'] ?? 'landscape') === 'portrait';
+    @endphp
 
     <style>
-        body { font-family: 'Prompt', sans-serif; background: #f1f5f9; color: #0f172a; }
-        @page { size: A4 {{ ($report['orientation'] ?? 'landscape') === 'portrait' ? 'portrait' : 'landscape' }}; margin: 10mm; }
+        /* ใช้สีมาตรฐาน HEX/RGB ล้วน 100% เพื่อรองรับ html2canvas ทุกเบราว์เซอร์โดยไม่ติด oklch() ของ Tailwind v4 */
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 16px 12px 40px;
+            font-family: 'Prompt', sans-serif;
+            background-color: #f1f5f9;
+            color: #0f172a;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* แถบเครื่องมือด้านบน */
+        .export-toolbar {
+            max-width: 1240px;
+            margin: 0 auto 16px;
+            background-color: #0f172a;
+            color: #ffffff;
+            border-radius: 16px;
+            padding: 12px 16px;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.22);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            position: sticky;
+            top: 10px;
+            z-index: 50;
+        }
+        .toolbar-left, .toolbar-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+        .toolbar-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #6ee7b7;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-exp {
+            border: none;
+            cursor: pointer;
+            font-family: 'Prompt', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 8px 14px;
+            border-radius: 11px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background-color 0.15s ease, opacity 0.15s ease;
+            color: #ffffff;
+            text-decoration: none;
+        }
+        .btn-exp:disabled { opacity: 0.65; cursor: wait; }
+        .btn-back  { background-color: #1e293b; color: #e2e8f0; }
+        .btn-back:hover  { background-color: #334155; }
+        .btn-print { background-color: #e11d48; }
+        .btn-print:hover { background-color: #be123c; }
+        .btn-pdf   { background-color: #9f1239; border: 1px solid #fb7185; }
+        .btn-pdf:hover   { background-color: #be123c; }
+        .btn-png   { background-color: #0284c7; }
+        .btn-png:hover   { background-color: #0369a1; }
+        .btn-excel { background-color: #059669; }
+        .btn-excel:hover { background-color: #047857; }
+
+        /* พื้นที่กระดาษรายงานทางการ */
+        #report-capture-area {
+            max-width: 1240px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 18px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+            padding: 28px 32px;
+        }
+
+        /* หัวกระดาษ รพ. */
+        .sheet-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            border-bottom: 2px solid #1e293b;
+            padding-bottom: 14px;
+            margin-bottom: 18px;
+        }
+        .sheet-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .sheet-logo {
+            width: 56px;
+            height: 56px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+        .sheet-org {
+            font-size: 11px;
+            font-weight: 700;
+            color: #047857;
+            letter-spacing: 0.3px;
+        }
+        .sheet-title {
+            margin: 2px 0 0;
+            font-size: 19px;
+            font-weight: 800;
+            color: #0f172a;
+            line-height: 1.3;
+        }
+        .sheet-subtitle {
+            margin: 3px 0 0;
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+        }
+        .sheet-meta {
+            text-align: right;
+            font-size: 11px;
+            color: #64748b;
+            line-height: 1.6;
+        }
+        .sheet-meta b { color: #334155; }
+
+        /* กล่องสรุปตัวเลข KPI */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .summary-card {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 10px 14px;
+        }
+        .summary-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #64748b;
+        }
+        .summary-value {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-top: 2px;
+        }
+
+        /* ตารางข้อมูล */
+        .sheet-section { margin-bottom: 22px; }
+        .section-heading {
+            margin: 0 0 8px;
+            font-size: 13px;
+            font-weight: 800;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 9999px;
+            background-color: #059669;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .table-wrap { width: 100%; overflow-x: auto; }
+        table.report-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            background-color: #ffffff;
+        }
+        table.report-table th {
+            background-color: #f1f5f9;
+            color: #0f172a;
+            font-weight: 700;
+            text-align: center;
+            border: 1px solid #475569;
+            padding: 7px 6px;
+            white-space: nowrap;
+        }
+        table.report-table td {
+            border: 1px solid #94a3b8;
+            padding: 6px 7px;
+            color: #1e293b;
+            vertical-align: middle;
+            line-height: 1.4;
+        }
+        table.report-table tbody tr:nth-child(even) { background-color: #f8fafc; }
+        .cell-center { text-align: center; font-weight: 700; }
+        .cell-nowrap { white-space: nowrap; }
+        .cell-check  { text-align: center; font-weight: 800; color: #047857; background-color: #ecfdf5; }
+        .cell-cross  { text-align: center; font-weight: 800; color: #be123c; background-color: #fff1f2; }
+        .cell-empty  { text-align: center; padding: 28px 10px; color: #94a3b8; font-weight: 700; }
+
+        /* ส่วนท้ายลงนาม */
+        .signature-grid {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+            font-size: 11.5px;
+            color: #334155;
+            text-align: center;
+        }
+        .sig-box { line-height: 2.2; }
+        .sig-line { margin-top: 22px; }
+
+        @media (max-width: 640px) {
+            #report-capture-area { padding: 18px 16px; }
+            .sheet-meta { text-align: left; }
+            .signature-grid { grid-template-columns: 1fr; }
+        }
+
+        @page {
+            size: A4 {{ $isPortrait ? 'portrait' : 'landscape' }};
+            margin: 10mm;
+        }
         @media print {
-            body { background: #ffffff !important; margin: 0; padding: 0; }
+            body { background-color: #ffffff !important; padding: 0 !important; }
             .no-print { display: none !important; }
-            #report-capture-area { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
-            table { page-break-inside: auto; }
-            tr { page-break-inside: avoid; page-break-after: auto; }
-            thead { display: table-header-group; }
+            #report-capture-area {
+                box-shadow: none !important;
+                border: none !important;
+                border-radius: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                max-width: 100% !important;
+            }
+            table.report-table { page-break-inside: auto; }
+            table.report-table tr { page-break-inside: avoid; page-break-after: auto; }
+            table.report-table thead { display: table-header-group; }
         }
     </style>
 </head>
-<body class="py-4 px-3 sm:px-6">
+<body>
 
-    <!-- 🛠️ แถบเครื่องมือส่งออกด้านบน (ซ่อนอัตโนมัติตอนพิมพ์และตอนแคปรูป/PDF) -->
-    <div class="no-print max-w-[1200px] mx-auto mb-4 bg-slate-900 text-white rounded-2xl p-3.5 shadow-lg flex flex-wrap items-center justify-between gap-3 sticky top-3 z-50">
-        <div class="flex items-center gap-2.5 min-w-0">
-            <button type="button" onclick="window.close(); history.back();" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1.5">
+    <!-- 🛠️ แถบเครื่องมือส่งออกด้านบน -->
+    <div class="export-toolbar no-print">
+        <div class="toolbar-left">
+            <button type="button" onclick="window.close(); history.back();" class="btn-exp btn-back">
                 <i class="fa-solid fa-arrow-left"></i> กลับ
             </button>
-            <span class="text-xs sm:text-sm font-bold truncate text-emerald-300">
-                <i class="fa-solid fa-file-shield mr-1"></i>พร้อมส่งออกรายงานทางการ
+            <span class="toolbar-title">
+                <i class="fa-solid fa-file-shield"></i> พร้อมส่งออกรายงานทางการ
             </span>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-            <button type="button" onclick="window.print()"
-                    class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black inline-flex items-center gap-1.5 shadow-sm transition-colors">
+        <div class="toolbar-actions">
+            <button type="button" onclick="window.print()" class="btn-exp btn-print">
                 <i class="fa-solid fa-print"></i> พิมพ์ / บันทึก PDF (คมชัดสุด)
             </button>
 
-            <button type="button" id="btn-dl-pdf" onclick="downloadReportAsPdf()"
-                    class="px-3.5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-400/40 text-xs font-bold inline-flex items-center gap-1.5 transition-colors">
+            <button type="button" id="btn-dl-pdf" onclick="downloadReportAsPdf()" class="btn-exp btn-pdf">
                 <i class="fa-solid fa-file-pdf"></i> ดาวน์โหลดไฟล์ .PDF
             </button>
 
-            <button type="button" id="btn-dl-png" onclick="downloadReportAsImage()"
-                    class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black inline-flex items-center gap-1.5 shadow-sm transition-colors">
+            <button type="button" id="btn-dl-png" onclick="downloadReportAsImage()" class="btn-exp btn-png">
                 <i class="fa-solid fa-image"></i> บันทึกรูปภาพ (.PNG ส่ง LINE)
             </button>
 
-            <button type="button" onclick="downloadReportAsExcel()"
-                    class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black inline-flex items-center gap-1.5 shadow-sm transition-colors">
+            <button type="button" onclick="downloadReportAsExcel()" class="btn-exp btn-excel">
                 <i class="fa-solid fa-file-excel"></i> ดาวน์โหลด Excel (.XLSX)
             </button>
         </div>
     </div>
 
-    <!-- 📄 พื้นที่กระดาษรายงานทางการ A4 (เป้าหมายสำหรับ Print / PDF / PNG) -->
-    <div id="report-capture-area" class="max-w-[1200px] mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 p-6 sm:p-8 space-y-5">
-
-        <!-- หัวกระดาษโรงพยาบาล -->
-        <div class="flex items-start justify-between gap-4 border-b-2 border-slate-800 pb-4">
-            <div class="flex items-center gap-3.5">
-                <img src="{{ asset('images/logo5.png') }}" alt="KSVR Logo" class="w-14 h-14 object-contain shrink-0">
+    <!-- 📄 พื้นที่กระดาษรายงานทางการ A4 -->
+    <div id="report-capture-area">
+        <div class="sheet-header">
+            <div class="sheet-brand">
+                <img src="{{ $logoDataUri }}" alt="KSVR Logo" class="sheet-logo">
                 <div>
-                    <div class="text-xs font-bold text-emerald-700 uppercase tracking-wider">โรงพยาบาลค่ายกฤษณ์สีวะรา (KSVR Hospital) • M-CARE System</div>
-                    <h1 class="text-lg sm:text-xl font-black text-slate-900 mt-0.5">{{ $report['title'] }}</h1>
-                    <p class="text-xs font-semibold text-slate-600 mt-0.5">{{ $report['subtitle'] }}</p>
+                    <div class="sheet-org">โรงพยาบาลค่ายกฤษณ์สีวะรา (KSVR Hospital) • M-CARE System</div>
+                    <h1 class="sheet-title">{{ $report['title'] }}</h1>
+                    <p class="sheet-subtitle">{{ $report['subtitle'] }}</p>
                 </div>
             </div>
-            <div class="text-right text-[11px] text-slate-500 shrink-0 space-y-0.5">
+            <div class="sheet-meta">
                 <div><b>พิมพ์เมื่อ:</b> {{ $report['printed_at'] }}</div>
                 <div><b>ผู้จัดทำ:</b> {{ $report['printed_by'] }}</div>
             </div>
         </div>
 
-        <!-- กล่องสรุปตัวเลข KPI ด้านบน -->
         @if(!empty($report['summary']))
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div class="summary-grid">
                 @foreach($report['summary'] as $sItem)
-                    <div class="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                        <div class="text-[10px] font-bold text-slate-500 uppercase">{{ $sItem['label'] }}</div>
-                        <div class="text-sm font-black text-slate-900 mt-0.5">{{ $sItem['value'] }}</div>
+                    <div class="summary-card">
+                        <div class="summary-label">{{ $sItem['label'] }}</div>
+                        <div class="summary-value">{{ $sItem['value'] }}</div>
                     </div>
                 @endforeach
             </div>
         @endif
 
-        <!-- ตารางข้อมูล (รองรับทั้ง 1 ตาราง และ 2 ตารางสำหรับ Care Chart) -->
         @foreach($report['sheets'] as $sheet)
-            <div class="space-y-2">
-                <h2 class="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full bg-emerald-600 inline-block"></span>
+            <div class="sheet-section">
+                <h2 class="section-heading">
+                    <span class="section-dot"></span>
                     <span>{{ $sheet['title'] }}</span>
                 </h2>
 
-                <div class="overflow-x-auto">
-                    <table class="w-full text-[11px] border-collapse border border-slate-700">
+                <div class="table-wrap">
+                    <table class="report-table">
                         <thead>
-                            <tr class="bg-slate-100 text-slate-900 font-black">
+                            <tr>
                                 @foreach($sheet['headers'] as $head)
-                                    <th class="border border-slate-700 px-2 py-2 text-center whitespace-nowrap">{{ $head }}</th>
+                                    <th>{{ $head }}</th>
                                 @endforeach
                             </tr>
                         </thead>
                         <tbody>
                             @forelse($sheet['rows'] as $row)
-                                <tr class="odd:bg-white even:bg-slate-50/60">
-                                    @foreach($row as $cell)
+                                <tr>
+                                    @foreach($row as $cIdx => $cell)
                                         @php
-                                            $isCheck = ($cell === '✓');
-                                            $isCross = ($cell === '✕');
-                                            $alignCls = ($loop->first || $isCheck || $isCross) ? 'text-center font-bold' : 'text-left';
-                                            $colorCls = $isCheck ? 'text-emerald-700 bg-emerald-50/70' : ($isCross ? 'text-rose-700 bg-rose-50/70' : 'text-slate-800');
+                                            $headLabel = (string) ($sheet['headers'][$cIdx] ?? '');
+                                            $isCheck   = ($cell === '✓');
+                                            $isCross   = ($cell === '✕');
+                                            $isNoWrap  = in_array($headLabel, ['ลำดับ', 'วันที่นัด', 'เวลา', 'รอบเวลา', 'เลข ปชช.', 'HN', 'ผลัด', 'จำนวนวัน', 'วันที่ขึ้นทะเบียน'], true);
+
+                                            $tdClass = $isCheck
+                                                ? 'cell-check'
+                                                : ($isCross
+                                                    ? 'cell-cross'
+                                                    : ($loop->first ? 'cell-center cell-nowrap' : ($isNoWrap ? 'cell-nowrap' : '')));
                                         @endphp
-                                        <td class="border border-slate-400 px-2 py-1.5 {{ $alignCls }} {{ $colorCls }}">{{ $cell }}</td>
+                                        <td class="{{ $tdClass }}">{{ $cell }}</td>
                                     @endforeach
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="{{ count($sheet['headers']) }}" class="border border-slate-400 py-8 text-center text-slate-400 font-bold">
+                                    <td colspan="{{ count($sheet['headers']) }}" class="cell-empty">
                                         ไม่พบข้อมูลในช่วงเวลาหรือตัวกรองที่เลือก
                                     </td>
                                 </tr>
@@ -131,22 +373,21 @@
             </div>
         @endforeach
 
-        <!-- ส่วนท้ายสำหรับลงนามรายงานผู้บังคับบัญชา -->
-        <div class="pt-6 mt-4 border-t border-slate-200 grid grid-cols-2 gap-8 text-xs text-slate-700">
-            <div class="text-center space-y-6">
+        <div class="signature-grid">
+            <div class="sig-box">
                 <div>ผู้จัดทำรายงาน / ผู้บันทึก</div>
-                <div>ลงชื่อ ...........................................................</div>
+                <div class="sig-line">ลงชื่อ ...........................................................</div>
                 <div>({{ $report['printed_by'] }}) • วันที่ {{ $report['printed_at'] }}</div>
             </div>
-            <div class="text-center space-y-6">
+            <div class="sig-box">
                 <div>ผู้ตรวจสอบ / รับทราบรายงาน</div>
-                <div>ลงชื่อ ...........................................................</div>
+                <div class="sig-line">ลงชื่อ ...........................................................</div>
                 <div>(...........................................................) • ตำแหน่ง .......................................</div>
             </div>
         </div>
     </div>
 
-    <!-- ไลบรารีส่งออกฝั่ง Client (SheetJS + html2canvas + jsPDF — 0 โหลดเซิร์ฟเวอร์) -->
+    <!-- ไลบรารีส่งออกฝั่ง Client (SheetJS + html2canvas + jsPDF) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -155,7 +396,35 @@
         const reportPayload = @json($report);
         const autoAction    = @json($autoAction);
 
-        // 📊 1. ส่งออกเป็นไฟล์ Excel (.xlsx แท้) รองรับหลายชีต + คอลัมน์เลข ปชช. เป็น Text
+        // ตัวช่วยเรนเดอร์กระดาษเป็น Canvas (รอฟอนต์ไทยพร้อม + คำนวณ scale ปลอดภัยไม่เกินขีดจำกัดเบราว์เซอร์)
+        async function captureReportCanvas() {
+            const el = document.getElementById('report-capture-area');
+            if (!el || typeof window.html2canvas === 'undefined') {
+                throw new Error('ไลบรารีสร้างภาพยังโหลดไม่เสร็จ กรุณารอสักครู่แล้วลองใหม่');
+            }
+
+            if (document.fonts && document.fonts.ready) {
+                try { await document.fonts.ready; } catch (e) {}
+            }
+
+            // จำกัดความสูงรวมไม่ให้เกิน 14,000px เพื่อกันเบราว์เซอร์/มือถือค้างในเคสที่มีหลายร้อยแถว
+            const captureWidth = Math.max(1200, el.scrollWidth);
+            const naturalHeight = Math.max(el.scrollHeight, el.offsetHeight, 1);
+            const safeScale = Math.max(1, Math.min(2, Math.floor((14000 / naturalHeight) * 10) / 10));
+
+            return await window.html2canvas(el, {
+                scale: safeScale,
+                useCORS: true,
+                allowTaint: false,
+                backgroundColor: '#ffffff',
+                logging: false,
+                windowWidth: captureWidth,
+                scrollX: 0,
+                scrollY: 0
+            });
+        }
+
+        // 📊 1. ส่งออกเป็นไฟล์ Excel (.xlsx แท้)
         function downloadReportAsExcel() {
             if (typeof XLSX === 'undefined') {
                 alert('กำลังโหลดไลบรารี Excel กรุณารอสักครู่แล้วกดอีกครั้ง');
@@ -175,7 +444,6 @@
 
                 const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-                // บังคับคอลัมน์เลข ปชช. 13 หลักให้เป็น String กันเพี้ยนเป็น 1.47E+12
                 if (sheet.cid_col !== null && sheet.cid_col !== undefined) {
                     const colIdx = Number(sheet.cid_col);
                     for (let r = 5; r < aoa.length; r++) {
@@ -187,7 +455,6 @@
                     }
                 }
 
-                // คำนวณความกว้างคอลัมน์อัตโนมัติ
                 ws['!cols'] = sheet.headers.map((h, cIdx) => {
                     let maxLen = String(h || '').length;
                     sheet.rows.forEach(row => {
@@ -204,90 +471,99 @@
             XLSX.writeFile(wb, `${reportPayload.filename || 'KSVR_Report'}.xlsx`);
         }
 
-        // 🖼️ 2. ส่งออกเป็นรูปภาพ PNG ความละเอียดสูง (scale 2x คมชัดพร้อมส่ง LINE)
+        // 🖼️ 2. ส่งออกเป็นรูปภาพ PNG ความละเอียดสูง (ใช้ Blob เพื่อรองรับ PWA และภาพขนาดใหญ่)
         async function downloadReportAsImage() {
             const btn = document.getElementById('btn-dl-png');
-            const el  = document.getElementById('report-capture-area');
-            if (!el || typeof html2canvas === 'undefined') return;
-
             const origText = btn ? btn.innerHTML : '';
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังสร้างภาพ...'; }
 
             try {
-                const canvas = await html2canvas(el, {
-                    scale: 2,
-                    useCORS: true,
-                    backgroundColor: '#ffffff',
-                    windowWidth: Math.max(1200, el.scrollWidth)
+                const canvas = await captureReportCanvas();
+                await new Promise((resolve, reject) => {
+                    canvas.toBlob((blob) => {
+                        if (!blob) return reject(new Error('ไม่สามารถสร้างไฟล์ภาพได้'));
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.download = `${reportPayload.filename || 'KSVR_Report'}.png`;
+                        link.href = url;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        setTimeout(() => URL.revokeObjectURL(url), 5000);
+                        resolve();
+                    }, 'image/png');
                 });
-                const link = document.createElement('a');
-                link.download = `${reportPayload.filename || 'KSVR_Report'}.png`;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
             } catch (e) {
-                alert('ไม่สามารถสร้างรูปภาพได้ กรุณาลองใหม่อีกครั้ง');
+                console.error('Export PNG Error:', e);
+                alert('ไม่สามารถสร้างรูปภาพได้: ' + (e?.message || 'กรุณาลองใหม่อีกครั้ง'));
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = origText; }
             }
         }
 
-        // 📄 3. ดาวน์โหลดเป็นไฟล์ .PDF โดยตรง (แบ่งหน้า A4 แนวนอนอัตโนมัติสำหรับข้อมูลหลายหน้า)
+        // 📄 3. ดาวน์โหลดเป็นไฟล์ .PDF โดยตรง (ตัดแบ่งหน้า A4 ทีละแผ่น ขอบกระดาษสะอาดไม่ล้น)
         async function downloadReportAsPdf() {
             const btn = document.getElementById('btn-dl-pdf');
-            const el  = document.getElementById('report-capture-area');
-            if (!el || typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') return;
-
             const origText = btn ? btn.innerHTML : '';
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังสร้าง PDF...'; }
 
             try {
-                const canvas = await html2canvas(el, {
-                    scale: 2,
-                    useCORS: true,
-                    backgroundColor: '#ffffff',
-                    windowWidth: Math.max(1200, el.scrollWidth)
-                });
+                if (typeof window.jspdf === 'undefined') {
+                    throw new Error('ไลบรารี PDF ยังโหลดไม่เสร็จ กรุณารอสักครู่แล้วกดอีกครั้ง');
+                }
 
-                const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                const canvas = await captureReportCanvas();
                 const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+                const orientation = reportPayload.orientation === 'portrait' ? 'portrait' : 'landscape';
+                const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
 
                 const pageWidth  = pdf.internal.pageSize.getWidth();
                 const pageHeight = pdf.internal.pageSize.getHeight();
                 const margin     = 8;
                 const usableW    = pageWidth - (margin * 2);
                 const usableH    = pageHeight - (margin * 2);
-                const imgH       = (canvas.height * usableW) / canvas.width;
 
-                let heightLeft = imgH;
-                let position   = margin;
+                const pxPerMm = canvas.width / usableW;
+                const pageSliceHeightPx = Math.floor(usableH * pxPerMm);
 
-                pdf.addImage(imgData, 'JPEG', margin, position, usableW, imgH);
-                heightLeft -= usableH;
+                let renderedY = 0;
+                let pageIndex = 0;
 
-                while (heightLeft > 0) {
-                    position = margin - (imgH - heightLeft);
-                    pdf.addPage();
-                    pdf.addImage(imgData, 'JPEG', margin, position, usableW, imgH);
-                    heightLeft -= usableH;
+                while (renderedY < canvas.height) {
+                    const sliceH = Math.min(pageSliceHeightPx, canvas.height - renderedY);
+                    const sliceCanvas = document.createElement('canvas');
+                    sliceCanvas.width = canvas.width;
+                    sliceCanvas.height = sliceH;
+
+                    const ctx = sliceCanvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+                    ctx.drawImage(canvas, 0, renderedY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+                    if (pageIndex > 0) pdf.addPage();
+                    const sliceHeightMm = sliceH / pxPerMm;
+                    pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', margin, margin, usableW, sliceHeightMm);
+
+                    renderedY += sliceH;
+                    pageIndex++;
                 }
 
                 pdf.save(`${reportPayload.filename || 'KSVR_Report'}.pdf`);
             } catch (e) {
-                alert('ไม่สามารถสร้างไฟล์ PDF ได้ กรุณาใช้ปุ่ม "พิมพ์ / บันทึก PDF" แทนครับ');
+                console.error('Export PDF Error:', e);
+                alert('ไม่สามารถสร้างไฟล์ PDF ได้ (' + (e?.message || 'เกิดข้อผิดพลาด') + ') กรุณาใช้ปุ่ม "พิมพ์ / บันทึก PDF" แทนครับ');
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = origText; }
             }
         }
 
-        // ทำงานอัตโนมัติหากเปิดหน้านี้มาจากปุ่มลัด PNG / PDF / Print
         window.addEventListener('load', () => {
             if (autoAction === 'png') {
-                setTimeout(() => downloadReportAsImage(), 450);
+                setTimeout(() => downloadReportAsImage(), 600);
             } else if (autoAction === 'pdf') {
-                setTimeout(() => downloadReportAsPdf(), 450);
+                setTimeout(() => downloadReportAsPdf(), 600);
             } else if (autoAction === 'print') {
-                setTimeout(() => window.print(), 450);
+                setTimeout(() => window.print(), 500);
             }
         });
     </script>
