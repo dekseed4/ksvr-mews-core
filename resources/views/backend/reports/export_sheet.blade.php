@@ -19,7 +19,7 @@
     @endphp
 
     <style>
-        /* ใช้สีมาตรฐาน HEX/RGB ล้วน 100% เพื่อรองรับ html2canvas ทุกเบราว์เซอร์โดยไม่ติด oklch() ของ Tailwind v4 */
+        /* ใช้สีมาตรฐาน HEX/RGB ล้วน 100% รองรับ html2canvas ทุกเบราว์เซอร์โดยไม่ติด oklch() */
         *, *::before, *::after { box-sizing: border-box; }
         body {
             margin: 0;
@@ -32,7 +32,7 @@
 
         /* แถบเครื่องมือด้านบน */
         .export-toolbar {
-            max-width: 1240px;
+            max-width: 1480px;
             margin: 0 auto 16px;
             background-color: #0f172a;
             color: #ffffff;
@@ -89,22 +89,22 @@
         .btn-excel { background-color: #059669; }
         .btn-excel:hover { background-color: #047857; }
 
-        /* พื้นที่กระดาษรายงานทางการ */
+        /* พื้นที่กระดาษรายงานทางการ (ขยายกว้างเป็น 1480px เพื่อไม่ให้ตาราง 14 คอลัมน์โดนบีบ) */
         #report-capture-area {
-            max-width: 1240px;
+            max-width: 1480px;
             margin: 0 auto;
             background-color: #ffffff;
             border: 1px solid #e2e8f0;
             border-radius: 18px;
             box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
-            padding: 28px 32px;
+            padding: 30px 34px;
         }
 
         /* หัวกระดาษ รพ. */
         .sheet-header {
             display: flex;
             flex-wrap: wrap;
-            align-items: flex-start;
+            align-items: center;
             justify-content: space-between;
             gap: 16px;
             border-bottom: 2px solid #1e293b;
@@ -114,36 +114,38 @@
         .sheet-brand {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 16px;
         }
+        /* ✅ แก้โลโก้โดนบีบ: ล็อกเฉพาะ height แล้วปล่อย width: auto เพื่อรักษาสัดส่วนจริง 100% ใน html2canvas */
         .sheet-logo {
-            width: 56px;
-            height: 56px;
-            object-fit: contain;
+            height: 54px;
+            width: auto;
+            max-width: 160px;
+            display: block;
             flex-shrink: 0;
         }
         .sheet-org {
-            font-size: 11px;
+            font-size: 11.5px;
             font-weight: 700;
             color: #047857;
             letter-spacing: 0.3px;
         }
         .sheet-title {
             margin: 2px 0 0;
-            font-size: 19px;
+            font-size: 20px;
             font-weight: 800;
             color: #0f172a;
             line-height: 1.3;
         }
         .sheet-subtitle {
             margin: 3px 0 0;
-            font-size: 12px;
+            font-size: 12.5px;
             font-weight: 600;
             color: #475569;
         }
         .sheet-meta {
             text-align: right;
-            font-size: 11px;
+            font-size: 11.5px;
             color: #64748b;
             line-height: 1.6;
         }
@@ -152,33 +154,33 @@
         /* กล่องสรุปตัวเลข KPI */
         .summary-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
             margin-bottom: 20px;
         }
         .summary-card {
             background-color: #f8fafc;
             border: 1px solid #e2e8f0;
             border-radius: 12px;
-            padding: 10px 14px;
+            padding: 11px 16px;
         }
         .summary-label {
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 700;
             color: #64748b;
         }
         .summary-value {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 800;
             color: #0f172a;
             margin-top: 2px;
         }
 
         /* ตารางข้อมูล */
-        .sheet-section { margin-bottom: 22px; }
+        .sheet-section { margin-bottom: 24px; }
         .section-heading {
-            margin: 0 0 8px;
-            font-size: 13px;
+            margin: 0 0 10px;
+            font-size: 14px;
             font-weight: 800;
             color: #1e293b;
             display: flex;
@@ -197,7 +199,7 @@
         table.report-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 11px;
+            font-size: 11.5px;
             background-color: #ffffff;
         }
         table.report-table th {
@@ -206,32 +208,33 @@
             font-weight: 700;
             text-align: center;
             border: 1px solid #475569;
-            padding: 7px 6px;
+            padding: 8px 8px;
             white-space: nowrap;
         }
         table.report-table td {
             border: 1px solid #94a3b8;
-            padding: 6px 7px;
+            padding: 7px 8px;
             color: #1e293b;
             vertical-align: middle;
-            line-height: 1.4;
+            line-height: 1.45;
         }
         table.report-table tbody tr:nth-child(even) { background-color: #f8fafc; }
         .cell-center { text-align: center; font-weight: 700; }
         .cell-nowrap { white-space: nowrap; }
+        .cell-wide   { min-width: 150px; }
         .cell-check  { text-align: center; font-weight: 800; color: #047857; background-color: #ecfdf5; }
         .cell-cross  { text-align: center; font-weight: 800; color: #be123c; background-color: #fff1f2; }
         .cell-empty  { text-align: center; padding: 28px 10px; color: #94a3b8; font-weight: 700; }
 
         /* ส่วนท้ายลงนาม */
         .signature-grid {
-            margin-top: 24px;
+            margin-top: 26px;
             padding-top: 20px;
             border-top: 1px solid #e2e8f0;
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 24px;
-            font-size: 11.5px;
+            font-size: 12px;
             color: #334155;
             text-align: center;
         }
@@ -259,7 +262,7 @@
                 padding: 0 !important;
                 max-width: 100% !important;
             }
-            table.report-table { page-break-inside: auto; }
+            table.report-table { page-break-inside: auto; font-size: 10.5px; }
             table.report-table tr { page-break-inside: avoid; page-break-after: auto; }
             table.report-table thead { display: table-header-group; }
         }
@@ -349,15 +352,29 @@
                                             $headLabel = (string) ($sheet['headers'][$cIdx] ?? '');
                                             $isCheck   = ($cell === '✓');
                                             $isCross   = ($cell === '✕');
-                                            $isNoWrap  = in_array($headLabel, ['ลำดับ', 'วันที่นัด', 'เวลา', 'รอบเวลา', 'เลข ปชช.', 'HN', 'ผลัด', 'จำนวนวัน', 'วันที่ขึ้นทะเบียน'], true);
 
-                                            $tdClass = $isCheck
-                                                ? 'cell-check'
-                                                : ($isCross
-                                                    ? 'cell-cross'
-                                                    : ($loop->first ? 'cell-center cell-nowrap' : ($isNoWrap ? 'cell-nowrap' : '')));
+                                            // คอลัมน์สั้นและข้อมูลหลัก: ล็อกไม่ให้ตัดบรรทัดกลางคำ (เช่น ร.3 พัน 1)
+                                            $isNoWrap = in_array($headLabel, [
+                                                'ลำดับ', 'ยศ ชื่อ-นามสกุล', 'เลข ปชช.', 'HN', 'หน่วยฝึก', 'ผลัด',
+                                                'วันที่นัด', 'เวลา', 'รอบเวลา', 'วันที่เริ่มพัก', 'จำนวนวัน',
+                                                'วันที่ขึ้นทะเบียน', 'ประเภทการนำปลด', 'สถานะ', 'โซน/เตียง',
+                                            ], true);
+
+                                            $isCenter = $loop->first || in_array($headLabel, ['ผลัด', 'HN', 'จำนวนวัน', 'เวลา', 'รอบเวลา'], true);
+                                            $isWide   = in_array($headLabel, ['อาการ / Dx.', 'คำแนะนำการดูแล', 'การเตรียมตัว/หมายเหตุ', 'โรควินิจฉัยนำปลด (Dx.)', 'สาเหตุการนัด'], true);
+
+                                            $classes = [];
+                                            if ($isCheck) {
+                                                $classes[] = 'cell-check';
+                                            } elseif ($isCross) {
+                                                $classes[] = 'cell-cross';
+                                            } else {
+                                                if ($isCenter) $classes[] = 'cell-center';
+                                                if ($isNoWrap) $classes[] = 'cell-nowrap';
+                                                if ($isWide)   $classes[] = 'cell-wide';
+                                            }
                                         @endphp
-                                        <td class="{{ $tdClass }}">{{ $cell }}</td>
+                                        <td class="{{ implode(' ', $classes) }}">{{ $cell }}</td>
                                     @endforeach
                                 </tr>
                             @empty
@@ -373,7 +390,7 @@
             </div>
         @endforeach
 
-        <div class="signature-grid">
+        {{-- <div class="signature-grid">
             <div class="sig-box">
                 <div>ผู้จัดทำรายงาน / ผู้บันทึก</div>
                 <div class="sig-line">ลงชื่อ ...........................................................</div>
@@ -384,7 +401,7 @@
                 <div class="sig-line">ลงชื่อ ...........................................................</div>
                 <div>(...........................................................) • ตำแหน่ง .......................................</div>
             </div>
-        </div>
+        </div> --}}
     </div>
 
     <!-- ไลบรารีส่งออกฝั่ง Client (SheetJS + html2canvas + jsPDF) -->
@@ -396,7 +413,7 @@
         const reportPayload = @json($report);
         const autoAction    = @json($autoAction);
 
-        // ตัวช่วยเรนเดอร์กระดาษเป็น Canvas (รอฟอนต์ไทยพร้อม + คำนวณ scale ปลอดภัยไม่เกินขีดจำกัดเบราว์เซอร์)
+        // ตัวช่วยเรนเดอร์กระดาษเป็น Canvas (ขยายความกว้างตามตารางจริง ไม่บีบโลโก้ ไม่บีบคอลัมน์)
         async function captureReportCanvas() {
             const el = document.getElementById('report-capture-area');
             if (!el || typeof window.html2canvas === 'undefined') {
@@ -407,8 +424,15 @@
                 try { await document.fonts.ready; } catch (e) {}
             }
 
-            // จำกัดความสูงรวมไม่ให้เกิน 14,000px เพื่อกันเบราว์เซอร์/มือถือค้างในเคสที่มีหลายร้อยแถว
-            const captureWidth = Math.max(1200, el.scrollWidth);
+            // คำนวณความกว้างที่เหมาะสมที่สุดจากตารางที่กว้างที่สุดในหน้า (กันคอลัมน์เบียดกัน)
+            let maxTableWidth = 0;
+            el.querySelectorAll('table.report-table').forEach(tbl => {
+                if (tbl.scrollWidth > maxTableWidth) {
+                    maxTableWidth = tbl.scrollWidth;
+                }
+            });
+
+            const captureWidth = Math.max(1480, maxTableWidth + 80);
             const naturalHeight = Math.max(el.scrollHeight, el.offsetHeight, 1);
             const safeScale = Math.max(1, Math.min(2, Math.floor((14000 / naturalHeight) * 10) / 10));
 
@@ -418,9 +442,37 @@
                 allowTaint: false,
                 backgroundColor: '#ffffff',
                 logging: false,
+                width: captureWidth,
                 windowWidth: captureWidth,
                 scrollX: 0,
-                scrollY: 0
+                scrollY: 0,
+                onclone: (clonedDoc) => {
+                    const clonedArea = clonedDoc.getElementById('report-capture-area');
+                    if (clonedArea) {
+                        clonedArea.style.width = `${captureWidth}px`;
+                        clonedArea.style.maxWidth = 'none';
+                        clonedArea.style.margin = '0';
+                        clonedArea.style.borderRadius = '0';
+                        clonedArea.style.boxShadow = 'none';
+                        clonedArea.style.border = 'none';
+                        clonedArea.style.padding = '32px 36px';
+                    }
+
+                    // ปลด overflow-x เพื่อให้ตารางกว้าง (เช่น 14 คอลัมน์ หรือ e-MAR 30 วัน) แสดงครบไม่โดนตัด
+                    clonedDoc.querySelectorAll('.table-wrap').forEach(wrap => {
+                        wrap.style.overflow = 'visible';
+                    });
+
+                    // ล็อกสัดส่วนโลโก้จริงจาก naturalWidth / naturalHeight เพื่อกันบีบ 100%
+                    clonedDoc.querySelectorAll('.sheet-logo').forEach(img => {
+                        const targetH = 54;
+                        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                            const ratio = img.naturalWidth / img.naturalHeight;
+                            img.style.height = `${targetH}px`;
+                            img.style.width = `${Math.round(targetH * ratio)}px`;
+                        }
+                    });
+                }
             });
         }
 
@@ -471,7 +523,7 @@
             XLSX.writeFile(wb, `${reportPayload.filename || 'KSVR_Report'}.xlsx`);
         }
 
-        // 🖼️ 2. ส่งออกเป็นรูปภาพ PNG ความละเอียดสูง (ใช้ Blob เพื่อรองรับ PWA และภาพขนาดใหญ่)
+        // 🖼️ 2. ส่งออกเป็นรูปภาพ PNG ความละเอียดสูง
         async function downloadReportAsImage() {
             const btn = document.getElementById('btn-dl-png');
             const origText = btn ? btn.innerHTML : '';
@@ -501,7 +553,7 @@
             }
         }
 
-        // 📄 3. ดาวน์โหลดเป็นไฟล์ .PDF โดยตรง (ตัดแบ่งหน้า A4 ทีละแผ่น ขอบกระดาษสะอาดไม่ล้น)
+        // 📄 3. ดาวน์โหลดเป็นไฟล์ .PDF โดยตรง (แบ่งหน้า A4 อัตโนมัติ)
         async function downloadReportAsPdf() {
             const btn = document.getElementById('btn-dl-pdf');
             const origText = btn ? btn.innerHTML : '';
