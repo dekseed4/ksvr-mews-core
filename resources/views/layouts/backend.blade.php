@@ -832,14 +832,20 @@
             const htmlTag = document.documentElement;
             const themeIcon = document.getElementById('theme-icon');
             const themeSlider = document.getElementById('theme-slider');
-            const isMobile = window.innerWidth < 768;
+
+            // ล้าง inline transform เดิมทิ้ง เพื่อให้ Tailwind (translate-x-1 / dark:translate-x-6 / md:dark:translate-x-7) คุมตำแหน่งพอดีกรอบ 100%
+            if (themeSlider) {
+                themeSlider.style.transform = '';
+            }
 
             if (htmlTag.classList.contains('dark')) {
-                if (themeIcon) themeIcon.className = "fa-solid fa-moon text-indigo-500 text-[9px] md:text-[11px] transition-all duration-300";
-                if (themeSlider) themeSlider.style.transform = isMobile ? 'translateX(20px)' : 'translateX(24px)';
+                if (themeIcon) {
+                    themeIcon.className = "fa-solid fa-moon text-indigo-400 text-[9px] md:text-[11px] transition-all duration-300";
+                }
             } else {
-                if (themeIcon) themeIcon.className = "fa-solid fa-sun text-amber-500 text-[9px] md:text-[11px] transition-all duration-300";
-                if (themeSlider) themeSlider.style.transform = 'translateX(4px)';
+                if (themeIcon) {
+                    themeIcon.className = "fa-solid fa-sun text-amber-500 text-[9px] md:text-[11px] transition-all duration-300";
+                }
             }
         }
 
