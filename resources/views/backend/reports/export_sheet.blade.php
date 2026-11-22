@@ -413,8 +413,8 @@
         const reportPayload = @json($report);
         const autoAction    = @json($autoAction);
 
-        // ตัวช่วยเรนเดอร์กระดาษเป็น Canvas (ขยายความกว้างตามตารางจริง ไม่บีบโลโก้ ไม่บีบคอลัมน์)
-        async function captureReportCanvas() {
+        // 🎯 เรนเดอร์กระดาษเป็น Canvas พร้อมเก็บพิกัดขอบแถวตาราง (<tr>) และหัวตาราง (<thead>) เพื่อตัดหน้า PDF ไม่ให้ขาดกลางแถว
+        async function captureReportWithLayout() {
             const el = document.getElementById('report-capture-area');
             if (!el || typeof window.html2canvas === 'undefined') {
                 throw new Error('ไลบรารีสร้างภาพยังโหลดไม่เสร็จ กรุณารอสักครู่แล้วลองใหม่');
@@ -424,7 +424,6 @@
                 try { await document.fonts.ready; } catch (e) {}
             }
 
-            // คำนวณความกว้างที่เหมาะสมที่สุดจากตารางที่กว้างที่สุดในหน้า (กันคอลัมน์เบียดกัน)
             let maxTableWidth = 0;
             el.querySelectorAll('table.report-table').forEach(tbl => {
                 if (tbl.scrollWidth > maxTableWidth) {
@@ -436,7 +435,13 @@
             const naturalHeight = Math.max(el.scrollHeight, el.offsetHeight, 1);
             const safeScale = Math.max(1, Math.min(2, Math.floor((14000 / naturalHeight) * 10) / 10));
 
-            return await window.html2canvas(el, {
+            const layoutInfo = {
+                areaHeightCss: 0,
+                breakPointsCss: [],
+                tablesCss: []
+            };
+
+            const canvas = await window.html2canvas(el, {
                 scale: safeScale,
                 useCORS: true,
                 allowTaint: false,
@@ -458,12 +463,10 @@
                         clonedArea.style.padding = '32px 36px';
                     }
 
-                    // ปลด overflow-x เพื่อให้ตารางกว้าง (เช่น 14 คอลัมน์ หรือ e-MAR 30 วัน) แสดงครบไม่โดนตัด
                     clonedDoc.querySelectorAll('.table-wrap').forEach(wrap => {
                         wrap.style.overflow = 'visible';
                     });
 
-                    // ล็อกสัดส่วนโลโก้จริงจาก naturalWidth / naturalHeight เพื่อกันบีบ 100%
                     clonedDoc.querySelectorAll('.sheet-logo').forEach(img => {
                         const targetH = 54;
                         if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -472,8 +475,54 @@
                             img.style.width = `${Math.round(targetH * ratio)}px`;
                         }
                     });
+
+                    // วัดพิกัดจุดตัดหน้าที่ปลอดภัยทั้งหมด (หลังจัดความกว้างจริงเรียบร้อยแล้ว)
+                    if (clonedArea) {
+                        const areaRect = clonedArea.getBoundingClientRect();
+                        layoutInfo.areaHeightCss = areaRect.height;
+
+                        const points = new Set([0, areaRect.height]);
+                        const addPoint = (absY) => {
+                            const rel = absY - areaRect.top;
+                            if (rel > 0 && rel < areaRect.height) {
+                                points.add(rel);
+                            }
+                        };
+
+                        // ขอบหัวกระดาษ, กล่องสรุป KPI, หัวข้อหมวด และกล่องลงนาม (กันกล่องลงนามโดนผ่าครึ่ง)
+                        clonedArea.querySelectorAll('.sheet-header, .summary-grid, .sheet-section, .signature-grid').forEach(node => {
+                            const r = node.getBoundingClientRect();
+                            addPoint(r.top);
+                            addPoint(r.bottom);
+                        });
+
+                        // พิกัดหัวตาราง (<thead>) และขอบล่างของทุกแถวข้อมูล (<tbody> <tr>)
+                        clonedArea.querySelectorAll('table.report-table').forEach(tbl => {
+                            const thead = tbl.querySelector('thead');
+                            const tbody = tbl.querySelector('tbody');
+
+                            if (thead && tbody) {
+                                const thRect = thead.getBoundingClientRect();
+                                const tbRect = tbody.getBoundingClientRect();
+                                layoutInfo.tablesCss.push({
+                                    theadTop: Math.max(0, thRect.top - areaRect.top),
+                                    theadBottom: Math.max(0, thRect.bottom - areaRect.top),
+                                    tbodyBottom: Math.max(0, tbRect.bottom - areaRect.top),
+                                });
+                            }
+
+                            tbl.querySelectorAll('tbody tr').forEach(tr => {
+                                const r = tr.getBoundingClientRect();
+                                addPoint(r.bottom);
+                            });
+                        });
+
+                        layoutInfo.breakPointsCss = Array.from(points).sort((a, b) => a - b);
+                    }
                 }
             });
+
+            return { canvas, layoutInfo };
         }
 
         // 📊 1. ส่งออกเป็นไฟล์ Excel (.xlsx แท้)
@@ -530,7 +579,7 @@
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังสร้างภาพ...'; }
 
             try {
-                const canvas = await captureReportCanvas();
+                const { canvas } = await captureReportWithLayout();
                 await new Promise((resolve, reject) => {
                     canvas.toBlob((blob) => {
                         if (!blob) return reject(new Error('ไม่สามารถสร้างไฟล์ภาพได้'));
@@ -553,7 +602,7 @@
             }
         }
 
-        // 📄 3. ดาวน์โหลดเป็นไฟล์ .PDF โดยตรง (แบ่งหน้า A4 อัตโนมัติ)
+        // 📄 3. ดาวน์โหลดเป็นไฟล์ .PDF (แบ่งหน้าตามขอบแถว <tr> อัตโนมัติ + ซ้ำหัวตารางหน้าถัดไป + เลขหน้า)
         async function downloadReportAsPdf() {
             const btn = document.getElementById('btn-dl-pdf');
             const origText = btn ? btn.innerHTML : '';
@@ -564,41 +613,110 @@
                     throw new Error('ไลบรารี PDF ยังโหลดไม่เสร็จ กรุณารอสักครู่แล้วกดอีกครั้ง');
                 }
 
-                const canvas = await captureReportCanvas();
+                const { canvas, layoutInfo } = await captureReportWithLayout();
                 const { jsPDF } = window.jspdf;
                 const orientation = reportPayload.orientation === 'portrait' ? 'portrait' : 'landscape';
                 const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
 
                 const pageWidth  = pdf.internal.pageSize.getWidth();
                 const pageHeight = pdf.internal.pageSize.getHeight();
-                const margin     = 8;
-                const usableW    = pageWidth - (margin * 2);
-                const usableH    = pageHeight - (margin * 2);
+                const marginX    = 8;
+                const marginTop  = 8;
+                const marginBot  = 11; // เว้นพื้นที่ด้านล่างสำหรับเลขหน้า
+                const usableW    = pageWidth - (marginX * 2);
+                const usableH    = pageHeight - marginTop - marginBot;
 
                 const pxPerMm = canvas.width / usableW;
                 const pageSliceHeightPx = Math.floor(usableH * pxPerMm);
 
-                let renderedY = 0;
-                let pageIndex = 0;
+                // แปลงพิกัด CSS -> พิกัด Pixel จริงบน Canvas แบบแม่นยำ
+                const scaleY = layoutInfo.areaHeightCss > 0
+                    ? (canvas.height / layoutInfo.areaHeightCss)
+                    : 1;
 
-                while (renderedY < canvas.height) {
-                    const sliceH = Math.min(pageSliceHeightPx, canvas.height - renderedY);
+                const breakPointsPx = (layoutInfo.breakPointsCss || [])
+                    .map(y => Math.ceil(y * scaleY))
+                    .filter(y => y > 0 && y < canvas.height);
+
+                const tablesPx = (layoutInfo.tablesCss || []).map(t => ({
+                    theadTop: Math.max(0, Math.floor(t.theadTop * scaleY)),
+                    theadBottom: Math.min(canvas.height, Math.ceil(t.theadBottom * scaleY)),
+                    tbodyBottom: Math.min(canvas.height, Math.ceil(t.tbodyBottom * scaleY)),
+                }));
+
+                // คำนวณช่วงตัดแต่ละหน้าโดยไม่ผ่ากลางแถวตาราง
+                const slices = [];
+                let renderedY = 0;
+
+                while (renderedY < canvas.height - 2) {
+                    // หากหน้าใหม่นี้อยู่กลางตาราง ให้ดึงหัวตาราง (<thead>) มาแปะด้านบนซ้ำอัตโนมัติ
+                    let repeatHead = null;
+                    if (renderedY > 0) {
+                        repeatHead = tablesPx.find(t => renderedY >= (t.theadBottom - 4) && renderedY < (t.tbodyBottom - 8)) || null;
+                    }
+
+                    const headH = repeatHead ? Math.max(0, repeatHead.theadBottom - repeatHead.theadTop) : 0;
+                    const maxBodyH = Math.max(100, pageSliceHeightPx - headH);
+                    const maxEndY = renderedY + maxBodyH;
+
+                    let nextY;
+                    if (maxEndY >= canvas.height) {
+                        nextY = canvas.height;
+                    } else {
+                        let chosen = null;
+                        for (let i = breakPointsPx.length - 1; i >= 0; i--) {
+                            const bp = breakPointsPx[i];
+                            if (bp <= maxEndY && bp > renderedY + 20) {
+                                chosen = bp;
+                                break;
+                            }
+                        }
+                        nextY = chosen !== null ? chosen : Math.min(canvas.height, maxEndY);
+                    }
+
+                    slices.push({ startY: renderedY, endY: nextY, repeatHead });
+                    renderedY = nextY;
+                }
+
+                const totalPages = slices.length;
+
+                slices.forEach((slice, idx) => {
+                    const bodyH = Math.max(1, slice.endY - slice.startY);
+                    const headH = slice.repeatHead ? Math.max(0, slice.repeatHead.theadBottom - slice.repeatHead.theadTop) : 0;
+
                     const sliceCanvas = document.createElement('canvas');
                     sliceCanvas.width = canvas.width;
-                    sliceCanvas.height = sliceH;
+                    sliceCanvas.height = headH + bodyH;
 
                     const ctx = sliceCanvas.getContext('2d');
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-                    ctx.drawImage(canvas, 0, renderedY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
 
-                    if (pageIndex > 0) pdf.addPage();
-                    const sliceHeightMm = sliceH / pxPerMm;
-                    pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', margin, margin, usableW, sliceHeightMm);
+                    // 1. วาดหัวตารางซ้ำด้านบนสุดของหน้า 2+ (กรณีตารางต่อเนื่องข้ามหน้า)
+                    if (slice.repeatHead && headH > 0) {
+                        ctx.drawImage(
+                            canvas,
+                            0, slice.repeatHead.theadTop, canvas.width, headH,
+                            0, 0, canvas.width, headH
+                        );
+                    }
 
-                    renderedY += sliceH;
-                    pageIndex++;
-                }
+                    // 2. วาดแถวข้อมูลของหน้านั้นๆ ต่อจากหัวตาราง
+                    ctx.drawImage(
+                        canvas,
+                        0, slice.startY, canvas.width, bodyH,
+                        0, headH, canvas.width, bodyH
+                    );
+
+                    if (idx > 0) pdf.addPage();
+                    const sliceHeightMm = (headH + bodyH) / pxPerMm;
+                    pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', marginX, marginTop, usableW, sliceHeightMm);
+
+                    // 3. พิมพ์เลขหน้ามุมขวาล่าง
+                    pdf.setFontSize(8);
+                    pdf.setTextColor(120, 130, 145);
+                    pdf.text(`Page ${idx + 1} / ${totalPages}`, pageWidth - marginX, pageHeight - 4, { align: 'right' });
+                });
 
                 pdf.save(`${reportPayload.filename || 'KSVR_Report'}.pdf`);
             } catch (e) {
