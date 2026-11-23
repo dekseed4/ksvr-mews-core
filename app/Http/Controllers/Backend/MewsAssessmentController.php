@@ -56,6 +56,20 @@ class MewsAssessmentController extends Controller
         return is_array($raw) ? $raw : (array) $raw;
     }
 
+    // 🛡️ ตัวช่วยล้างอักขระ UTF-8 ที่ไม่สมบูรณ์และจำกัดความยาวไม่ให้เกินเกณฑ์ Discord Embed
+    private function sanitizeDiscordText($value, int $maxLen = 1000): string
+    {
+        $clean = mb_convert_encoding((string) ($value ?? ''), 'UTF-8', 'UTF-8');
+        $clean = trim($clean);
+        if ($clean === '') {
+            return '';
+        }
+
+        return mb_strlen($clean, 'UTF-8') > $maxLen
+            ? mb_substr($clean, 0, $maxLen - 3, 'UTF-8') . '...'
+            : $clean;
+    }
+
     // 🌟 ดึง URL ของ Discord Webhook ผ่านศูนย์กลาง SettingService (คุมสวิตช์เปิด-ปิดและไม่เด้งซ้ำ)
     private function getDiscordWebhookUrl(string $channel = 'er'): ?string
     {
@@ -64,8 +78,8 @@ class MewsAssessmentController extends Controller
             return null;
         }
 
-        $url = SettingService::getDiscordWebhook($channel);
-        if (!empty($url)) {
+        $url = trim((string) SettingService::getDiscordWebhook($channel));
+        if ($url !== '' && filter_var($url, FILTER_VALIDATE_URL)) {
             return $url;
         }
 
@@ -76,15 +90,21 @@ class MewsAssessmentController extends Controller
 
             if ($channel === 'exec' && preg_match('/^DISCORD_EXEC_WEBHOOK_URL\s*=\s*([^\r\n]+)/m', $envContent, $matches)) {
                 $val = trim($matches[1], " \t\n\r\0\x0B\"'");
-                if ($val !== '') {
+                if ($val !== '' && filter_var($val, FILTER_VALIDATE_URL)) {
                     return $val;
                 }
             }
 
             if (preg_match('/^DISCORD_MEWS_WEBHOOK_URL\s*=\s*([^\r\n]+)/m', $envContent, $matches)) {
-                return trim($matches[1], " \t\n\r\0\x0B\"'");
+                $val = trim($matches[1], " \t\n\r\0\x0B\"'");
+                if ($val !== '' && filter_var($val, FILTER_VALIDATE_URL)) {
+                    return $val;
+                }
             } elseif (preg_match('/^DISCORD_WEBHOOK_URL\s*=\s*([^\r\n]+)/m', $envContent, $matches)) {
-                return trim($matches[1], " \t\n\r\0\x0B\"'");
+                $val = trim($matches[1], " \t\n\r\0\x0B\"'");
+                if ($val !== '' && filter_var($val, FILTER_VALIDATE_URL)) {
+                    return $val;
+                }
             }
         }
 
@@ -300,8 +320,18 @@ class MewsAssessmentController extends Controller
                     $this->sendDiscordAlert($assessment, false, false);
                     $this->checkAndSendOutbreakAlert($assessment, $patient);
                 } catch (\Throwable $discordError) {
-                    Log::warning('MEWS Discord Notification Warning: ' . $discordError->getMessage());
+                    Log::warning('MEWS Discord Notification Warning', [
+                        'mews_id' => $assessment->id,
+                        'hn'      => $patient->hn,
+                        'error'   => $discordError->getMessage(),
+                    ]);
                 }
+            } else {
+                Log::info('KSVR Discord Skip: reassessment in existing case', [
+                    'mews_id' => $assessment->id,
+                    'case_id' => $assessment->case_id,
+                    'hn'      => $patient->hn,
+                ]);
             }
 
             // ✅ 2. ยิงสัญญาณ Real-time WebSocket & Web Push เฉพาะรอบแรก ($isNewCase) ทุกเคส
@@ -773,22 +803,35 @@ class MewsAssessmentController extends Controller
 
     // =========================================================================
     // 🌟 Private Functions: ระบบส่งแจ้งเตือนเข้า Discord Webhook (ช่อง ER / MEWS)
-    // (ล็อกให้ส่งเฉพาะการประเมินครั้งที่ 1 ตอนเปิดแฟ้มใหม่เท่านั้น)
+    // (ล็อกให้ส่งเฉพาะการประเมินครั้งที่ 1 ตอนเปิดแฟ้มใหม่ + บันทึก Trace Log ครบทุกสถานะ)
     // =========================================================================
     private function sendDiscordAlert($assessment, bool $isReassessment = false, bool $isEdited = false): void
     {
         if ($isReassessment || $isEdited) {
+            Log::info('KSVR Discord Skip: reassessment or edited', [
+                'mews_id' => $assessment->id,
+                'case_id' => $assessment->case_id,
+            ]);
             return;
         }
 
         // ✅ ส่งไปยังช่องห้องฉุกเฉิน (ER / จุดคัดกรอง MEWS)
         $webhookUrl = $this->getDiscordWebhookUrl('er');
         if (!$webhookUrl) {
+            Log::warning('KSVR Discord Skip: webhook disabled or empty', [
+                'mews_id'         => $assessment->id,
+                'case_id'         => $assessment->case_id,
+                'discord_enabled' => SettingService::get('discord_enabled', true),
+            ]);
             return;
         }
 
+        $assessment->loadMissing('evaluator');
         $patient = $assessment->patient()->with('militaryUnit')->first() ?? $assessment->patient;
         if (!$patient) {
+            Log::warning('KSVR Discord Skip: patient not found', [
+                'mews_id' => $assessment->id,
+            ]);
             return;
         }
 
@@ -835,7 +878,7 @@ class MewsAssessmentController extends Controller
             : '✅ ไม่มีอาการฉุกเฉินเฉพาะโรค';
 
         if (!empty(trim((string) $assessment->symptoms_note))) {
-            $symptomsText .= "\n\n📝 **อาการสำคัญ / บันทึกเพิ่มเติม:**\n" . trim($assessment->symptoms_note);
+            $symptomsText .= "\n\n📝 **อาการสำคัญ / บันทึกเพิ่มเติม:**\n" . trim((string) $assessment->symptoms_note);
         }
 
         $mewsUrl = route('backend.mews.show', $assessment->id);
@@ -863,6 +906,7 @@ class MewsAssessmentController extends Controller
             $contentMsg = "⚠️ **มีเคสเฝ้าระวังใหม่ (MEWS: {$assessment->total_score}) ส่งตัวเข้า ER**";
         }
 
+        $cidText = $patient->cid ?: '-';
         $hnText = $patient->hn ?: 'ยังไม่มี HN';
         $pttypeText = $patient->pttype_name ?: 'รอซิงค์สิทธิ';
         $unitDisplay = ($patient->militaryUnit->short_name ?? $patient->militaryUnit->name ?? $patient->company ?? '-')
@@ -875,55 +919,87 @@ class MewsAssessmentController extends Controller
             $chronicText = '📌 อื่นๆ: ' . ($patient->chronic_disease_detail ?: 'ระบุ');
         }
 
+        $evaluatorName = $assessment->evaluator->name ?? auth()->user()?->name ?? 'เจ้าหน้าที่หน่วยฝึก';
+
         $embed = [
-            'title'       => "{$alertIcon} [เคสใหม่จากหน่วย] ผลประเมิน MEWS: {$assessment->total_score} คะแนน [{$riskText}]",
-            'url'         => $mewsUrl,
-            'description' => "**ผู้ป่วย:** {$patient->rank}{$patient->first_name} {$patient->last_name}\n"
-                           . "**เลข ปชช.:** `{$patient->cid}` | **HN:** `{$hnText}`\n"
-                           . "**สิทธิการรักษา:** {$pttypeText}\n"
-                           . "**โรคประจำตัว:** {$chronicText}\n\n"
-                           . "👉 **[คลิกที่นี่เพื่อเปิดดูรายละเอียดเคส]({$mewsUrl})**",
+            'title'       => $this->sanitizeDiscordText("{$alertIcon} [เคสใหม่จากหน่วย] ผลประเมิน MEWS: {$assessment->total_score} คะแนน [{$riskText}]", 250),
+            'description' => $this->sanitizeDiscordText(
+                "**ผู้ป่วย:** {$patient->rank}{$patient->first_name} {$patient->last_name}\n"
+                . "**เลข ปชช.:** `{$cidText}` | **HN:** `{$hnText}`\n"
+                . "**สิทธิการรักษา:** {$pttypeText}\n"
+                . "**โรคประจำตัว:** {$chronicText}\n\n"
+                . "👉 **[คลิกที่นี่เพื่อเปิดดูรายละเอียดเคส]({$mewsUrl})**",
+                3900
+            ),
             'color'       => $embedColor,
             'fields'      => [
                 [
                     'name'   => '🏢 สังกัด / หน่วยฝึกทหาร',
-                    'value'  => $unitDisplay,
+                    'value'  => $this->sanitizeDiscordText($unitDisplay, 250) ?: '-',
                     'inline' => true,
                 ],
                 [
                     'name'   => '🎖️ ผลัดที่',
-                    'value'  => '` ผลัด ' . ($patient->intake_batch ?? 'ไม่ระบุ') . ' `',
+                    'value'  => $this->sanitizeDiscordText('` ผลัด ' . ($patient->intake_batch ?? 'ไม่ระบุ') . ' `', 100),
                     'inline' => true,
                 ],
                 [
                     'name'   => '❤️ สัญญาณชีพแรกรับ (Vital Signs)',
-                    'value'  => "BP: **{$assessment->systolic_bp}** | HR: **{$assessment->heart_rate}** | RR: **{$assessment->respiratory_rate}** | Temp: **{$assessment->temperature}°C** | O2: **{$assessment->o2sat}%** | AVPU: **{$assessment->consciousness}**",
+                    'value'  => $this->sanitizeDiscordText("BP: **{$assessment->systolic_bp}** | HR: **{$assessment->heart_rate}** | RR: **{$assessment->respiratory_rate}** | Temp: **{$assessment->temperature}°C** | O2: **{$assessment->o2sat}%** | AVPU: **{$assessment->consciousness}**", 500),
                     'inline' => false,
                 ],
                 [
                     'name'   => '🏥 อาการที่พบ (Emergency Conditions)',
-                    'value'  => $symptomsText,
+                    'value'  => $this->sanitizeDiscordText($symptomsText, 1000) ?: '-',
                     'inline' => false,
                 ],
             ],
             'footer'      => [
-                'text' => 'ประเมินส่งตัวโดย: ' . (auth()->user()->name ?? 'เจ้าหน้าที่หน่วยฝึก') . ' | VN: ' . ($assessment->case_id ?? '-'),
+                'text' => $this->sanitizeDiscordText('ประเมินส่งตัวโดย: ' . $evaluatorName . ' | VN: ' . ($assessment->case_id ?? '-'), 250),
             ],
             'timestamp'   => now()->toIso8601String(),
         ];
 
+        if (filter_var($mewsUrl, FILTER_VALIDATE_URL)) {
+            $embed['url'] = $mewsUrl;
+        }
+
         $payload = ['embeds' => [$embed]];
-        if (!empty($contentMsg)) {
-            $payload['content'] = $contentMsg;
+        if ($contentMsg !== '') {
+            $payload['content'] = $this->sanitizeDiscordText($contentMsg, 1900);
         }
 
         try {
-            $response = Http::withoutVerifying()->timeout(5)->post($webhookUrl, $payload);
+            // เพิ่ม connectTimeout + timeout + retry 2 ครั้ง กันเน็ต/Firewall รพ. หน่วงหรือ Discord Rate Limit
+            $response = Http::withoutVerifying()
+                ->connectTimeout(5)
+                ->timeout(10)
+                ->retry(2, 1000, null, false)
+                ->post($webhookUrl, $payload);
+
             if ($response->failed()) {
-                Log::error('KSVR Discord Webhook HTTP Error: ' . $response->status() . ' | ' . $response->body());
+                Log::error('KSVR Discord Webhook HTTP Error', [
+                    'mews_id' => $assessment->id,
+                    'hn'      => $patient->hn,
+                    'vn'      => $assessment->case_id,
+                    'status'  => $response->status(),
+                    'body'    => $response->body(),
+                ]);
+            } else {
+                Log::info('KSVR Discord Sent OK', [
+                    'mews_id' => $assessment->id,
+                    'hn'      => $patient->hn,
+                    'vn'      => $assessment->case_id,
+                    'status'  => $response->status(),
+                ]);
             }
         } catch (\Throwable $e) {
-            Log::error('KSVR Discord Webhook Exception: ' . $e->getMessage());
+            Log::error('KSVR Discord Webhook Exception', [
+                'mews_id' => $assessment->id,
+                'hn'      => $patient->hn,
+                'vn'      => $assessment->case_id,
+                'error'   => $e->getMessage(),
+            ]);
         }
     }
 
@@ -971,9 +1047,14 @@ class MewsAssessmentController extends Controller
             // ✅ ส่งไปยังช่องผู้บริหาร / โรคระบาด (หากว่างระบบจะ fallback ไปช่อง ER ให้เอง)
             $webhookUrl = $this->getDiscordWebhookUrl('exec');
             if (!$webhookUrl) {
+                Log::warning('KSVR Outbreak Discord Skip: webhook disabled or empty', [
+                    'mews_id' => $assessment->id,
+                    'unit'    => $unitName,
+                ]);
                 return;
             }
 
+            $assessment->loadMissing('evaluator');
             $mewsUrl = route('backend.mews.show', $assessment->id);
             $alertReasons = [];
             if ($isRedScreening) {
@@ -986,17 +1067,21 @@ class MewsAssessmentController extends Controller
                 $alertReasons[] = "📈 พบกลุ่มก้อนผู้ป่วยไข้สูง (≥ {$tempThreshold}°C) ในหน่วย **{$unitName}** สะสม **{$feverCountInUnit} นาย** ภายใน {$windowHours} ชม.";
             }
 
+            $reporterName = $assessment->evaluator->name ?? auth()->user()?->name ?? 'เจ้าหน้าที่';
+
             $embed = [
-                'title'       => '🦠 แจ้งเตือนผู้บริหาร: เฝ้าระวังโรคติดต่อ/การระบาดในหน่วยฝึก!',
-                'url'         => $mewsUrl,
-                'description' => "**ผู้ป่วยล่าสุด:** {$patient->rank}{$patient->first_name} {$patient->last_name}\n"
-                               . "**อุณหภูมิร่างกาย:** ` {$temp} °C ` | **MEWS Score:** ` {$assessment->total_score} คะแนน `\n\n"
-                               . "**สาเหตุการแจ้งเตือน:**\n• " . implode("\n• ", $alertReasons),
+                'title'       => $this->sanitizeDiscordText('🦠 แจ้งเตือนผู้บริหาร: เฝ้าระวังโรคติดต่อ/การระบาดในหน่วยฝึก!', 250),
+                'description' => $this->sanitizeDiscordText(
+                    "**ผู้ป่วยล่าสุด:** {$patient->rank}{$patient->first_name} {$patient->last_name}\n"
+                    . "**อุณหภูมิร่างกาย:** ` {$temp} °C ` | **MEWS Score:** ` {$assessment->total_score} คะแนน `\n\n"
+                    . "**สาเหตุการแจ้งเตือน:**\n• " . implode("\n• ", $alertReasons),
+                    3900
+                ),
                 'color'       => 10181046,
                 'fields'      => [
                     [
                         'name'   => '🏕️ หน่วยฝึกที่ต้องเฝ้าระวัง',
-                        'value'  => $unitName . ' (ผลัด ' . ($patient->intake_batch ?? '-') . ')',
+                        'value'  => $this->sanitizeDiscordText($unitName . ' (ผลัด ' . ($patient->intake_batch ?? '-') . ')', 250),
                         'inline' => true,
                     ],
                     [
@@ -1006,18 +1091,45 @@ class MewsAssessmentController extends Controller
                     ],
                 ],
                 'footer'      => [
-                    'text' => 'KSVR AI Outbreak Surveillance | รายงานโดย: ' . (auth()->user()->name ?? 'เจ้าหน้าที่'),
+                    'text' => $this->sanitizeDiscordText('KSVR AI Outbreak Surveillance | รายงานโดย: ' . $reporterName, 250),
                 ],
                 'timestamp'   => now()->toIso8601String(),
             ];
 
+            if (filter_var($mewsUrl, FILTER_VALIDATE_URL)) {
+                $embed['url'] = $mewsUrl;
+            }
+
             try {
-                Http::withoutVerifying()->timeout(5)->post($webhookUrl, [
-                    'content' => "@here 🦠 **[รายงานพิเศษถึงผู้บริหาร]** พบสัญญาณเฝ้าระวังโรคติดต่อ/กลุ่มก้อนไข้สูงในหน่วยฝึก **{$unitName}**!",
-                    'embeds'  => [$embed],
-                ]);
+                $response = Http::withoutVerifying()
+                    ->connectTimeout(5)
+                    ->timeout(10)
+                    ->retry(2, 1000, null, false)
+                    ->post($webhookUrl, [
+                        'content' => $this->sanitizeDiscordText("@here 🦠 **[รายงานพิเศษถึงผู้บริหาร]** พบสัญญาณเฝ้าระวังโรคติดต่อ/กลุ่มก้อนไข้สูงในหน่วยฝึก **{$unitName}**!", 1900),
+                        'embeds'  => [$embed],
+                    ]);
+
+                if ($response->failed()) {
+                    Log::error('KSVR Outbreak Webhook HTTP Error', [
+                        'mews_id' => $assessment->id,
+                        'unit'    => $unitName,
+                        'status'  => $response->status(),
+                        'body'    => $response->body(),
+                    ]);
+                } else {
+                    Log::info('KSVR Outbreak Discord Sent OK', [
+                        'mews_id' => $assessment->id,
+                        'unit'    => $unitName,
+                        'status'  => $response->status(),
+                    ]);
+                }
             } catch (\Throwable $e) {
-                Log::error('Outbreak Webhook Error: ' . $e->getMessage());
+                Log::error('KSVR Outbreak Webhook Exception', [
+                    'mews_id' => $assessment->id,
+                    'unit'    => $unitName,
+                    'error'   => $e->getMessage(),
+                ]);
             }
         }
     }
