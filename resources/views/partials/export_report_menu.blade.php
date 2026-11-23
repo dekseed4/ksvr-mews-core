@@ -1,23 +1,26 @@
 @php
-    $expModule = $module ?? 'infirmary';
-    $expParams = $params ?? request()->query();
-    $expUid    = 'ksvr_exp_' . $expModule . '_' . uniqid();
-    $dataUrl   = route('backend.reports.export.data', array_merge(['module' => $expModule], $expParams));
-    $sheetUrl  = route('backend.reports.export.sheet', array_merge(['module' => $expModule], $expParams));
+    $expModule   = $module ?? 'infirmary';
+    $expParams   = $params ?? request()->query();
+    $expLabel    = $label ?? 'ส่งออกรายงาน';
+    $expBtnClass = $btnClass ?? 'bg-slate-800 hover:bg-slate-900 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white';
+    $expIconCls  = $iconClass ?? 'text-emerald-400 dark:text-white';
+    $expUid      = 'ksvr_exp_' . $expModule . '_' . uniqid();
+    $dataUrl     = route('backend.reports.export.data', array_merge(['module' => $expModule], $expParams));
+    $sheetUrl    = route('backend.reports.export.sheet', array_merge(['module' => $expModule], $expParams));
 @endphp
 
-<div class="relative inline-block print:hidden" data-ksvr-export-wrapper>
+<div class="relative inline-block w-full sm:w-auto print:hidden" data-ksvr-export-wrapper>
     <button type="button"
             onclick="window.toggleKsvrExportMenu('{{ $expUid }}', event)"
-            class="w-full sm:w-auto justify-center px-4 py-2.5 bg-slate-800 hover:bg-slate-900 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm inline-flex items-center gap-2 transition-all whitespace-nowrap">
-        <i class="fa-solid fa-file-export text-emerald-400 dark:text-white"></i>
-        <span>ส่งออกรายงาน</span>
+            class="w-full sm:w-auto justify-center px-4 py-2.5 {{ $expBtnClass }} rounded-2xl text-xs sm:text-sm font-bold shadow-sm inline-flex items-center gap-2 transition-all whitespace-nowrap">
+        <i class="fa-solid fa-file-export {{ $expIconCls }}"></i>
+        <span>{{ $expLabel }}</span>
         <i class="fa-solid fa-chevron-down text-[10px] opacity-80"></i>
     </button>
 
     <div id="{{ $expUid }}"
-         class="hidden absolute right-0 mt-2 w-60 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden p-1.5 space-y-1 text-left">
-
+         class="hidden absolute right-0 mt-2 w-60 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden p-1.5 space-y-1 text-left">
+         
         <!-- 1. ดาวน์โหลด Excel (.xlsx) ทันที -->
         <button type="button"
                 onclick="window.ksvrQuickExportExcel('{{ $dataUrl }}', '{{ $expUid }}')"

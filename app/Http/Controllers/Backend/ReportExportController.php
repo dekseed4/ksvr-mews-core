@@ -123,7 +123,8 @@ class ReportExportController extends Controller
     }
 
     // =========================================================================
-    // 1️⃣ โมดูล: ใบบันทึกสัญญาณชีพ (06:00/18:00) & ตารางยา (e-MAR) — แยก 2 ชีตใน Excel
+    // 1️⃣ โมดูล: ใบบันทึกสัญญาณชีพ (06:00/18:00) & ตารางยา (e-MAR)
+    // รองรับ section=all (รวม 2 ชีต), section=vitals (เฉพาะสัญญาณชีพ), section=emar (เฉพาะตารางยา)
     // =========================================================================
     private function buildCareChartReport(Request $request): array
     {
@@ -131,6 +132,14 @@ class ReportExportController extends Controller
         if (empty($patientId)) {
             abort(422, 'กรุณาระบุรหัสผู้ป่วย (patient_id)');
         }
+
+        $section = (string) $request->query('section', 'all');
+        if (!in_array($section, ['all', 'vitals', 'emar'], true)) {
+            $section = 'all';
+        }
+
+        $includeVitals = in_array($section, ['all', 'vitals'], true);
+        $includeEmar   = in_array($section, ['all', 'emar'], true);
 
         $user = auth()->user();
         $patient = Patient::with(['militaryUnit', 'activeInfirmaryStay'])->findOrFail($patientId);
@@ -163,101 +172,166 @@ class ReportExportController extends Controller
             ];
         }
 
-        // ชีตที่ 1: บันทึกสัญญาณชีพ 06:00 / 18:00
-        $vitalLogs = CovidVitalLog::where('patient_id', $patient->id)
-            ->whereBetween('record_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
-            ->get()
-            ->groupBy(fn ($item) => $item->record_date instanceof Carbon ? $item->record_date->format('Y-m-d') : substr((string) $item->record_date, 0, 10));
+        $sheets = [];
+        $recordedVitalRounds = 0;
+        $medicationsCount    = 0;
 
-        $vitalHeaders = ['วัน/เดือน/ปี', 'รอบเวลา', 'อุณหภูมิ (°C)', 'ชีพจร (/นาที)', 'ความดันโลหิต (mmHg)', 'หายใจ (/นาที)', 'O2 Sat (%)', 'MEWS Score', 'หมายเหตุ'];
-        $vitalRows = [];
-        foreach (array_slice($dateCols, 0, min(14, $days)) as $dCol) {
-            $dayGroup = $vitalLogs->get($dCol['date_str'], collect());
-            foreach (['06:00' => '06.00 น.', '18:00' => '18.00 น.'] as $rKey => $rLabel) {
-                $log = $dayGroup->firstWhere('round_time', $rKey);
-                $vitalRows[] = [
-                    $dCol['thai_text'],
-                    $rLabel,
-                    $log ? number_format((float) $log->temperature, 1) : '-',
-                    $log->heart_rate ?? '-',
-                    ($log && $log->systolic_bp) ? ($log->systolic_bp . '/' . ($log->diastolic_bp ?? '-')) : '-',
-                    $log->respiratory_rate ?? '-',
-                    $log ? ($log->o2sat . '%') : '-',
-                    $log !== null ? (string) $log->mews_score : '-',
-                    $log->note ?? '-',
-                ];
-            }
-        }
+        // ---------------------------------------------------------------------
+        // ส่วนที่ 1: บันทึกสัญญาณชีพ 06:00 / 18:00 (คิวรีเฉพาะเมื่อต้องการ)
+        // ---------------------------------------------------------------------
+        if ($includeVitals) {
+            $vitalDaysLimit = $section === 'vitals' ? $days : min(14, $days);
+            $vitalDateCols  = array_slice($dateCols, 0, $vitalDaysLimit);
+            $vitalEndStr    = $vitalDateCols[count($vitalDateCols) - 1]['date_str'];
 
-        // ชีตที่ 2: ตารางการรับประทานยา (e-MAR)
-        $medications = PatientMedication::where('patient_id', $patient->id)
-            ->where('is_active', true)
-            ->orderBy('id', 'asc')
-            ->get();
+            $vitalLogs = CovidVitalLog::where('patient_id', $patient->id)
+                ->whereBetween('record_date', [$startDate->format('Y-m-d'), $vitalEndStr])
+                ->get()
+                ->groupBy(fn ($item) => $item->record_date instanceof Carbon ? $item->record_date->format('Y-m-d') : substr((string) $item->record_date, 0, 10));
 
-        $medLogs = PatientMedicationLog::where('patient_id', $patient->id)
-            ->whereBetween('log_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
-            ->get()
-            ->keyBy(function ($log) {
-                $dStr = $log->log_date instanceof Carbon ? $log->log_date->format('Y-m-d') : substr((string) $log->log_date, 0, 10);
-                return $log->patient_medication_id . '_' . $dStr . '_' . $log->time_slot;
-            });
+            $vitalHeaders = ['วัน/เดือน/ปี', 'รอบเวลา', 'อุณหภูมิ (°C)', 'ชีพจร (/นาที)', 'ความดันโลหิต (mmHg)', 'หายใจ (/นาที)', 'O2 Sat (%)', 'MEWS Score', 'หมายเหตุ'];
+            $vitalRows = [];
 
-        $marHeaders = array_merge(
-            ['ชื่อยา', 'ปริมาณ / วิธีใช้', 'ระยะเวลา', 'มื้อยา'],
-            array_map(fn ($c) => $c['short_thai'], $dateCols)
-        );
-        $marRows = [];
-
-        foreach ($medications as $med) {
-            $hasStd = $med->take_morning || $med->take_noon || $med->take_evening || $med->take_bedtime;
-            $hasPrn = $med->take_prn || !empty($med->custom_slot_text) || !$hasStd || in_array($med->meal_timing, ['prn', 'external'], true);
-
-            $slots = [];
-            if ($med->take_morning) $slots['morning'] = 'เช้า';
-            if ($med->take_noon)    $slots['noon']    = 'เที่ยง';
-            if ($med->take_evening) $slots['evening'] = 'เย็น';
-            if ($med->take_bedtime) $slots['bedtime'] = 'ก่อนนอน';
-            if ($hasPrn) {
-                $slots['prn'] = !empty($med->custom_slot_text)
-                    ? $med->custom_slot_text
-                    : ($med->meal_timing === 'external' ? 'ทา/นวดตามอาการ' : 'เวลามีอาการ (PRN)');
-            }
-
-            $durationText = empty($med->end_date)
-                ? 'ต่อเนื่องทุกวัน'
-                : ($this->formatThaiDate($med->start_date) . ' – ' . $this->formatThaiDate($med->end_date));
-
-            foreach ($slots as $slotKey => $slotLabel) {
-                $row = [
-                    $med->drug_name,
-                    trim(($med->dosage ?: 'ตามแพทย์สั่ง') . ' (' . ($med->meal_timing_label ?? $med->meal_timing) . ')'),
-                    $durationText,
-                    $slotLabel,
-                ];
-                foreach ($dateCols as $dCol) {
-                    $cell = $medLogs->get($med->id . '_' . $dCol['date_str'] . '_' . $slotKey);
-                    if ($cell && $cell->status === 'taken') {
-                        $row[] = '✓';
-                    } elseif ($cell && $cell->status === 'missed') {
-                        $row[] = '✕';
-                    } else {
-                        $row[] = '';
+            foreach ($vitalDateCols as $dCol) {
+                $dayGroup = $vitalLogs->get($dCol['date_str'], collect());
+                foreach (['06:00' => '06.00 น.', '18:00' => '18.00 น.'] as $rKey => $rLabel) {
+                    $log = $dayGroup->firstWhere('round_time', $rKey);
+                    if ($log) {
+                        $recordedVitalRounds++;
                     }
+                    $vitalRows[] = [
+                        $dCol['thai_text'],
+                        $rLabel,
+                        $log ? number_format((float) $log->temperature, 1) : '-',
+                        $log->heart_rate ?? '-',
+                        ($log && $log->systolic_bp) ? ($log->systolic_bp . '/' . ($log->diastolic_bp ?? '-')) : '-',
+                        $log->respiratory_rate ?? '-',
+                        $log ? ($log->o2sat . '%') : '-',
+                        $log !== null ? (string) $log->mews_score : '-',
+                        $log->note ?? '-',
+                    ];
                 }
-                $marRows[] = $row;
             }
+
+            $sheets[] = [
+                'name'    => 'บันทึกสัญญาณชีพ',
+                'title'   => $section === 'vitals'
+                    ? "ตารางบันทึกสัญญาณชีพประจำวัน (06.00 น. / 18.00 น.) — ช่วง {$vitalDaysLimit} วัน"
+                    : 'ส่วนที่ 1: บันทึกสัญญาณชีพประจำวัน (06.00 น. / 18.00 น.)',
+                'headers' => $vitalHeaders,
+                'rows'    => $vitalRows,
+                'cid_col' => null,
+            ];
         }
 
-        $fullName = trim(($patient->rank ?? '') . ($patient->first_name ?? '') . ' ' . ($patient->last_name ?? ''));
-        $unitName = $patient->militaryUnit?->short_name ?? $patient->company ?? 'ไม่ระบุหน่วย';
+        // ---------------------------------------------------------------------
+        // ส่วนที่ 2: ตารางการรับประทานยา e-MAR (คิวรีเฉพาะเมื่อต้องการ)
+        // ---------------------------------------------------------------------
+        if ($includeEmar) {
+            $medications = PatientMedication::where('patient_id', $patient->id)
+                ->where('is_active', true)
+                ->orderBy('id', 'asc')
+                ->get();
+
+            $medicationsCount = $medications->count();
+
+            $medLogs = PatientMedicationLog::where('patient_id', $patient->id)
+                ->whereBetween('log_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+                ->get()
+                ->keyBy(function ($log) {
+                    $dStr = $log->log_date instanceof Carbon ? $log->log_date->format('Y-m-d') : substr((string) $log->log_date, 0, 10);
+                    return $log->patient_medication_id . '_' . $dStr . '_' . $log->time_slot;
+                });
+
+            $marHeaders = array_merge(
+                ['ชื่อยา', 'ปริมาณ / วิธีใช้', 'ระยะเวลา', 'มื้อยา'],
+                array_map(fn ($c) => $c['short_thai'], $dateCols)
+            );
+            $marRows = [];
+
+            foreach ($medications as $med) {
+                $hasStd = $med->take_morning || $med->take_noon || $med->take_evening || $med->take_bedtime;
+                $hasPrn = $med->take_prn || !empty($med->custom_slot_text) || !$hasStd || in_array($med->meal_timing, ['prn', 'external'], true);
+
+                $slots = [];
+                if ($med->take_morning) $slots['morning'] = 'เช้า';
+                if ($med->take_noon)    $slots['noon']    = 'เที่ยง';
+                if ($med->take_evening) $slots['evening'] = 'เย็น';
+                if ($med->take_bedtime) $slots['bedtime'] = 'ก่อนนอน';
+                if ($hasPrn) {
+                    $slots['prn'] = !empty($med->custom_slot_text)
+                        ? $med->custom_slot_text
+                        : ($med->meal_timing === 'external' ? 'ทา/นวดตามอาการ' : 'เวลามีอาการ (PRN)');
+                }
+
+                $durationText = empty($med->end_date)
+                    ? 'ต่อเนื่องทุกวัน'
+                    : ($this->formatThaiDate($med->start_date) . ' – ' . $this->formatThaiDate($med->end_date));
+
+                foreach ($slots as $slotKey => $slotLabel) {
+                    $row = [
+                        $med->drug_name,
+                        trim(($med->dosage ?: 'ตามแพทย์สั่ง') . ' (' . ($med->meal_timing_label ?? $med->meal_timing) . ')'),
+                        $durationText,
+                        $slotLabel,
+                    ];
+                    foreach ($dateCols as $dCol) {
+                        $cell = $medLogs->get($med->id . '_' . $dCol['date_str'] . '_' . $slotKey);
+                        if ($cell && $cell->status === 'taken') {
+                            $row[] = '✓';
+                        } elseif ($cell && $cell->status === 'missed') {
+                            $row[] = '✕';
+                        } else {
+                            $row[] = '';
+                        }
+                    }
+                    $marRows[] = $row;
+                }
+            }
+
+            $sheets[] = [
+                'name'    => 'ตารางยา e-MAR',
+                'title'   => $section === 'emar'
+                    ? "ตารางบันทึกการรับประทานยา / ใช้ยา e-MAR (จำนวน {$days} วัน) — ✓ = ใช้แล้ว, ✕ = ขาดยา"
+                    : "ส่วนที่ 2: ตารางบันทึกการรับประทานยา / ใช้ยา e-MAR (จำนวน {$days} วัน) — ✓ = ใช้แล้ว, ✕ = ขาดยา",
+                'headers' => $marHeaders,
+                'rows'    => $marRows,
+                'cid_col' => null,
+            ];
+        }
+
+        $fullName  = trim(($patient->rank ?? '') . ($patient->first_name ?? '') . ' ' . ($patient->last_name ?? ''));
+        $unitName  = $patient->militaryUnit?->short_name ?? $patient->company ?? 'ไม่ระบุหน่วย';
         $rangeText = $dateCols[0]['thai_text'] . ' – ' . $dateCols[count($dateCols) - 1]['thai_text'];
+        $idTag     = $patient->hn ?: $patient->id;
+
+        $metaBySection = [
+            'vitals' => [
+                'title'    => 'ใบบันทึกสัญญาณชีพประจำวัน (06:00 น. / 18:00 น.)',
+                'filename' => "VitalSigns_{$idTag}_" . date('Ymd'),
+                'stat_lbl' => 'จำนวนรอบที่บันทึกแล้ว',
+                'stat_val' => "{$recordedVitalRounds} รอบ (ช่วง {$days} วัน)",
+            ],
+            'emar' => [
+                'title'    => 'ตารางบันทึกการรับประทานยา / การใช้ยา (e-MAR)',
+                'filename' => "eMAR_{$idTag}_" . date('Ymd'),
+                'stat_lbl' => 'รายการยาที่ใช้งาน',
+                'stat_val' => "{$medicationsCount} รายการ (ช่วง {$days} วัน)",
+            ],
+            'all' => [
+                'title'    => 'ใบบันทึกสัญญาณชีพ (06:00/18:00) และตารางการรับประทานยา (e-MAR)',
+                'filename' => "CareChart_eMAR_{$idTag}_" . date('Ymd'),
+                'stat_lbl' => 'รายการยา / รอบ V/S',
+                'stat_val' => "{$medicationsCount} ยา • {$recordedVitalRounds} รอบ V/S ({$days} วัน)",
+            ],
+        ];
+        $meta = $metaBySection[$section];
 
         return [
             'module'      => 'care_chart',
-            'title'       => 'ใบบันทึกสัญญาณชีพ (06:00/18:00) และตารางการรับประทานยา (e-MAR)',
+            'title'       => $meta['title'],
             'subtitle'    => "ผู้ป่วย: {$fullName} | HN: " . ($patient->hn ?: '-') . " | สังกัด: {$unitName} (ผลัด " . ($patient->intake_batch ?: '-') . ") | ช่วงวันที่: {$rangeText}",
-            'filename'    => 'CareChart_eMAR_' . ($patient->hn ?: $patient->id) . '_' . date('Ymd'),
+            'filename'    => $meta['filename'],
             'orientation' => 'landscape',
             'printed_at'  => $this->formatThaiDate(now(), true),
             'printed_by'  => auth()->user()->name ?? 'เจ้าหน้าที่',
@@ -265,24 +339,9 @@ class ReportExportController extends Controller
                 ['label' => 'ชื่อ-สกุล', 'value' => $fullName],
                 ['label' => 'HN / เลข ปชช.', 'value' => ($patient->hn ?: '-') . ' / ' . ($patient->cid ?: '-')],
                 ['label' => 'หน่วยฝึก / ผลัด', 'value' => "{$unitName} (ผลัด " . ($patient->intake_batch ?: '-') . ')'],
-                ['label' => 'รายการยาที่ใช้งาน', 'value' => $medications->count() . ' รายการ (ช่วง ' . $days . ' วัน)'],
+                ['label' => $meta['stat_lbl'], 'value' => $meta['stat_val']],
             ],
-            'sheets' => [
-                [
-                    'name'    => 'บันทึกสัญญาณชีพ',
-                    'title'   => 'ส่วนที่ 1: บันทึกสัญญาณชีพประจำวัน (06.00 น. / 18.00 น.)',
-                    'headers' => $vitalHeaders,
-                    'rows'    => $vitalRows,
-                    'cid_col' => null,
-                ],
-                [
-                    'name'    => 'ตารางยา e-MAR',
-                    'title'   => "ส่วนที่ 2: ตารางบันทึกการรับประทานยา / ใช้ยา e-MAR (จำนวน {$days} วัน) — ✓ = ใช้แล้ว, ✕ = ขาดยา",
-                    'headers' => $marHeaders,
-                    'rows'    => $marRows,
-                    'cid_col' => null,
-                ],
-            ],
+            'sheets' => $sheets,
         ];
     }
 

@@ -102,7 +102,13 @@
 
             @include('partials.export_report_menu', [
                 'module' => 'care_chart',
-                'params' => ['patient_id' => $patient->id, 'start_date' => $startDateStr, 'days' => $daysCount],
+                'label'  => 'ส่งออกรวม (V/S + e-MAR)',
+                'params' => [
+                    'patient_id' => $patient->id,
+                    'start_date' => $startDateStr,
+                    'days'       => $daysCount,
+                    'section'    => 'all',
+                ],
             ])
         </div>
     </div>
@@ -118,10 +124,24 @@
                 </h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400">แตะรอบเวลา <b>06.00 น.</b> หรือ <b>18.00 น.</b> เพื่อลงข้อมูล ระบบคำนวณ <b>Mew score</b> อัตโนมัติ</p>
             </div>
-            <button type="button" onclick="openVitalModal('{{ date('Y-m-d') }}', '{{ (int)date('H') < 12 ? '06:00' : '18:00' }}')"
-                    class="w-full sm:w-auto justify-center px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm flex items-center gap-1.5 shrink-0">
-                <i class="fa-solid fa-plus-circle"></i> + ลงสัญญาณชีพวันนี้
-            </button>
+            <div class="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 shrink-0">
+                @include('partials.export_report_menu', [
+                    'module'    => 'care_chart',
+                    'label'     => 'ส่งออกสัญญาณชีพ',
+                    'btnClass'  => 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/40 dark:hover:bg-rose-800/60 text-rose-700 dark:text-rose-200 border border-rose-200 dark:border-rose-700',
+                    'iconClass' => 'text-rose-600 dark:text-rose-300',
+                    'params'    => [
+                        'patient_id' => $patient->id,
+                        'start_date' => $startDateStr,
+                        'days'       => $daysCount,
+                        'section'    => 'vitals',
+                    ],
+                ])
+                <button type="button" onclick="openVitalModal('{{ date('Y-m-d') }}', '{{ (int)date('H') < 12 ? '06:00' : '18:00' }}')"
+                        class="w-full sm:w-auto justify-center px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm flex items-center gap-1.5 shrink-0">
+                    <i class="fa-solid fa-plus-circle"></i> + ลงสัญญาณชีพวันนี้
+                </button>
+            </div>
         </div>
 
         <!-- 📱 โหมดมือถือ: การ์ดสัญญาณชีพรายวัน -->
@@ -307,6 +327,18 @@
                 <button type="button" onclick="openAddMedicationModal()" class="w-full sm:w-auto justify-center px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm flex items-center gap-1.5">
                     <i class="fa-solid fa-plus"></i> + เพิ่มรายการยาที่ต้องกิน / ทา
                 </button>
+                @include('partials.export_report_menu', [
+                    'module'    => 'care_chart',
+                    'label'     => 'ส่งออกตารางยา e-MAR',
+                    'btnClass'  => 'bg-teal-50 hover:bg-teal-100 dark:bg-teal-900/40 dark:hover:bg-teal-800/60 text-teal-700 dark:text-teal-200 border border-teal-200 dark:border-teal-700',
+                    'iconClass' => 'text-teal-600 dark:text-teal-300',
+                    'params'    => [
+                        'patient_id' => $patient->id,
+                        'start_date' => $startDateStr,
+                        'days'       => $daysCount,
+                        'section'    => 'emar',
+                    ],
+                ])
             </div>
         </div>
 
