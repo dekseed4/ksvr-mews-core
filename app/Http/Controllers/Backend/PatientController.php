@@ -4,17 +4,22 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\HosxpPatient;
+use App\Models\MewsAssessment;
 use App\Models\MilitaryDischarge;
 use App\Models\MilitaryUnit;
 use App\Models\Patient;
+use App\Models\RecruitAppointment;
+use App\Models\RecruitInfirmaryStay;
+use App\Models\RecruitMorbidity;
+use App\Models\RecruitScreening;
 use App\Services\AuditLog;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-
 class PatientController extends Controller
 {
     private bool $hosxpTimeoutApplied = false;
@@ -322,7 +327,7 @@ class PatientController extends Controller
             }
         }
 
-        // 🌟 3.5 ตัวกรอง "สถานะกำลังพล / การรายงานตัว / การปลดทหาร (discharge_status)"
+        // 3.5 ตัวกรอง "สถานะกำลังพล / การรายงานตัว / การปลดทหาร (discharge_status)"
         if ($request->filled('discharge_status')) {
             $dStat = $request->discharge_status;
             if ($dStat === 'discharged') {
@@ -342,7 +347,7 @@ class PatientController extends Controller
             }
         }
 
-        // 🌟 3.6 ตัวกรอง "สถานะการนัดพบแพทย์ (appointment_filter)"
+        // 3.6 ตัวกรอง "สถานะการนัดพบแพทย์ (appointment_filter)"
         if ($request->filled('appointment_filter')) {
             $todayDate = Carbon::today()->format('Y-m-d');
             $tomorrowDate = Carbon::tomorrow()->format('Y-m-d');
@@ -360,7 +365,7 @@ class PatientController extends Controller
             }
         }
 
-        // 🌟 3.7 ตัวกรอง "สถานะรักษา MEWS & การนอน รพ. (mews_status)"
+        // 3.7 ตัวกรอง "สถานะรักษา MEWS & การนอน รพ. (mews_status)"
         if ($request->filled('mews_status')) {
             $mStatus = $request->mews_status;
 
@@ -789,6 +794,20 @@ class PatientController extends Controller
         }
         $allUnits = $unitsDropdownQuery->get();
 
+        // 📊 10. ชุดข้อมูลกราฟทั้ง 4 มิติ (8 แผนภูมิ) — คำนวณและแคช 5 นาทีเฉพาะโหมด view=overview เท่านั้น
+        $overviewCharts = null;
+        if ($viewMode === 'overview') {
+            $overviewCharts = $this->buildOverviewCharts(
+                $request,
+                $user,
+                $allUnits,
+                $pttypeCounts,
+                $overviewExtraStats,
+                $totalPatientsCount,
+                $canViewChronic
+            );
+        }
+
         $hosxpSyncPaused   = $this->isHosxpSyncPaused();
         $hosxpMaxBatchSize = $this->getHosxpMaxBatchSize();
 
@@ -796,8 +815,583 @@ class PatientController extends Controller
             'patients', 'activePatients', 'availableBatches',
             'totalPatientsCount', 'emergencyCount', 'observeCount', 'batchUnitStats', 'recentBatches', 'allBatchUnitStats',
             'allUnits', 'availablePttypes', 'pttypeCounts', 'screeningStats',
-            'viewMode', 'overviewExtraStats', 'hosxpSyncPaused', 'hosxpMaxBatchSize'
+            'viewMode', 'overviewExtraStats', 'overviewCharts', 'hosxpSyncPaused', 'hosxpMaxBatchSize'
         ));
+    }
+
+    // =========================================================================
+    // 📊 Executive Analytics Engine: สร้างชุดข้อมูลกราฟทั้ง 4 มิติ (8 แผนภูมิ)
+    // ทำงานเฉพาะฐานข้อมูล KSVR 100% + Cache 5 นาที (ไม่แตะ HosXP)
+    // =========================================================================
+    private function buildOverviewCharts(
+        Request $request,
+        $user,
+        $allUnits,
+        $pttypeCounts,
+        array $overviewExtraStats,
+        int $totalPatientsCount,
+        bool $canViewChronic
+    ): array {
+        $batchFilter = $request->filled('batch') ? (string) $request->batch : 'all';
+        $unitFilter  = $request->filled('unit') ? (string) $request->unit : 'all';
+        $scopeTag    = $this->canViewAllPatients($user)
+            ? 'all'
+            : ('m_' . ($user->military_unit_id ?? 0) . '_' . ($user->intake_batch ?? 'all'));
+
+        $cacheKey = 'ksvr_overview_charts_v2_' . md5(implode('|', [
+            $scopeTag,
+            $batchFilter,
+            $unitFilter,
+            $canViewChronic ? 'pdpa1' : 'pdpa0',
+            Carbon::today()->format('Y-m-d'),
+        ]));
+
+        // รองรับปุ่มรีเฟรชตัวเลขสด (?refresh_charts=1)
+        if ($request->boolean('refresh_charts')) {
+            Cache::forget($cacheKey);
+        }
+
+        return Cache::remember($cacheKey, 300, function () use (
+            $request,
+            $user,
+            $allUnits,
+            $pttypeCounts,
+            $overviewExtraStats,
+            $totalPatientsCount,
+            $canViewChronic
+        ) {
+            // รายชื่อหน่วยฝึกเป้าหมายที่อยู่ในขอบเขตการกรอง
+            $scopedUnits = $request->filled('unit')
+                ? $allUnits->where('id', (int) $request->unit)->values()
+                : $allUnits->values();
+
+            $unitIds    = $scopedUnits->pluck('id')->all();
+            $unitLabels = $scopedUnits->map(fn ($u) => $u->short_name ?? $u->name)->values()->all();
+
+            $applyCommonFilters = function ($q, string $tablePrefix = '') use ($user, $request) {
+                $colUnit  = $tablePrefix ? "{$tablePrefix}.military_unit_id" : 'military_unit_id';
+                $colBatch = $tablePrefix ? "{$tablePrefix}.intake_batch" : 'intake_batch';
+
+                if (!$this->canViewAllPatients($user)) {
+                    $q->where($colUnit, $user->military_unit_id);
+                    if (!empty($user->intake_batch)) {
+                        $q->where($colBatch, $user->intake_batch);
+                    }
+                }
+                if ($request->filled('batch')) {
+                    $q->where($colBatch, $request->batch);
+                }
+                if ($request->filled('unit')) {
+                    $q->where($colUnit, $request->unit);
+                }
+            };
+
+            // =================================================================
+            // มิติที่ 1: กำลังพล สิทธิการรักษา และความพร้อม (Manpower & Coverage)
+            // =================================================================
+
+            // กราฟที่ 1: ยอดกำลังพลและสถานะความพร้อม แยกตามหน่วยฝึก (Stacked Bar)
+            $hasDischargeTable = Schema::hasTable('military_discharges');
+            $manpowerSql = $hasDischargeTable
+                ? "
+                    military_unit_id,
+                    SUM(CASE WHEN EXISTS (SELECT 1 FROM military_discharges md WHERE md.patient_id = patients.id) THEN 1 ELSE 0 END) as discharged_cnt,
+                    SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM military_discharges md WHERE md.patient_id = patients.id) AND duty_status = 'absent' THEN 1 ELSE 0 END) as absent_cnt,
+                    SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM military_discharges md WHERE md.patient_id = patients.id) AND duty_status IN ('imprisoned', 'deceased') THEN 1 ELSE 0 END) as other_inactive_cnt,
+                    SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM military_discharges md WHERE md.patient_id = patients.id) AND (duty_status = 'active' OR duty_status IS NULL) THEN 1 ELSE 0 END) as active_cnt
+                "
+                : "
+                    military_unit_id,
+                    0 as discharged_cnt,
+                    SUM(CASE WHEN duty_status = 'absent' THEN 1 ELSE 0 END) as absent_cnt,
+                    SUM(CASE WHEN duty_status IN ('imprisoned', 'deceased') THEN 1 ELSE 0 END) as other_inactive_cnt,
+                    SUM(CASE WHEN duty_status = 'active' OR duty_status IS NULL THEN 1 ELSE 0 END) as active_cnt
+                ";
+
+            $mpQuery = DB::table('patients')->selectRaw($manpowerSql);
+            $applyCommonFilters($mpQuery, 'patients');
+            $mpByUnit = $mpQuery->groupBy('military_unit_id')->get()->keyBy('military_unit_id');
+
+            $mpActive = [];
+            $mpDischarged = [];
+            $mpAbsent = [];
+            $mpOtherInactive = [];
+
+            foreach ($unitIds as $uid) {
+                $row = $mpByUnit->get($uid);
+                $mpActive[]        = (int) ($row->active_cnt ?? 0);
+                $mpDischarged[]    = (int) ($row->discharged_cnt ?? 0);
+                $mpAbsent[]        = (int) ($row->absent_cnt ?? 0);
+                $mpOtherInactive[] = (int) ($row->other_inactive_cnt ?? 0);
+            }
+
+            // กราฟที่ 2: สัดส่วนสิทธิการรักษา (Donut — ใช้มาตรฐานสีของโรงพยาบาล)
+            $coverageBuckets = [
+                'บัตรทอง'         => ['count' => 0, 'color' => '#d97706'], // Gold
+                'ประกันสังคม'      => ['count' => 0, 'color' => '#2563eb'], // Blue
+                'ข้าราชการพลเรือน' => ['count' => 0, 'color' => '#38bdf8'], // Light Blue
+                'ทหาร'            => ['count' => 0, 'color' => '#15803d'], // Dark Green
+                'ครอบครัว'        => ['count' => 0, 'color' => '#4ade80'], // Light Green
+                'อื่นๆ'            => ['count' => 0, 'color' => '#facc15'], // Yellow
+                'รอซิงค์สิทธิ'      => ['count' => 0, 'color' => '#94a3b8'], // Slate
+            ];
+
+            foreach ($pttypeCounts as $ptRow) {
+                $groupName = $this->classifyCoverageGroup((string) ($ptRow->right_key ?? 'unsynced'));
+                $coverageBuckets[$groupName]['count'] += (int) ($ptRow->total ?? 0);
+            }
+
+            $covLabels = [];
+            $covData   = [];
+            $covColors = [];
+            foreach ($coverageBuckets as $label => $meta) {
+                if ($meta['count'] > 0) {
+                    $covLabels[] = $label;
+                    $covData[]   = $meta['count'];
+                    $covColors[] = $meta['color'];
+                }
+            }
+
+            // =================================================================
+            // มิติที่ 2: การคัดกรองแรกรับและสุขภาพพื้นฐาน (Screening & Health Risk)
+            // =================================================================
+
+            // กราฟที่ 3: ความคืบหน้าและผลคัดกรองทหารใหม่ แยกตามหน่วยฝึก (Horizontal Stacked Bar)
+            $scGreen = [];
+            $scYellow = [];
+            $scRed = [];
+            $scUnscreened = [];
+
+            if (Schema::hasTable('recruit_screenings')) {
+                $latestScSub = DB::table('recruit_screenings')
+                    ->select('patient_id', DB::raw('MAX(id) as max_id'))
+                    ->groupBy('patient_id');
+
+                $scQuery = DB::table('patients')
+                    ->leftJoinSub($latestScSub, 'lsc', 'patients.id', '=', 'lsc.patient_id')
+                    ->leftJoin('recruit_screenings as rs', 'rs.id', '=', 'lsc.max_id')
+                    ->where(function ($q) {
+                        $q->where('patients.duty_status', 'active')->orWhereNull('patients.duty_status');
+                    })
+                    ->selectRaw("
+                        patients.military_unit_id,
+                        SUM(CASE WHEN rs.color_group = 'green' THEN 1 ELSE 0 END) as green_cnt,
+                        SUM(CASE WHEN rs.color_group = 'yellow' THEN 1 ELSE 0 END) as yellow_cnt,
+                        SUM(CASE WHEN rs.color_group = 'red' THEN 1 ELSE 0 END) as red_cnt,
+                        SUM(CASE WHEN rs.id IS NULL THEN 1 ELSE 0 END) as unscreened_cnt
+                    ");
+                $applyCommonFilters($scQuery, 'patients');
+                $scByUnit = $scQuery->groupBy('patients.military_unit_id')->get()->keyBy('military_unit_id');
+
+                foreach ($unitIds as $uid) {
+                    $row = $scByUnit->get($uid);
+                    $scGreen[]      = (int) ($row->green_cnt ?? 0);
+                    $scYellow[]     = (int) ($row->yellow_cnt ?? 0);
+                    $scRed[]        = (int) ($row->red_cnt ?? 0);
+                    $scUnscreened[] = (int) ($row->unscreened_cnt ?? 0);
+                }
+            }
+
+            // กราฟที่ 4: การกระจายตัวของดัชนี BMI (Bar Chart) + โรคประจำตัว (เฉพาะสิทธิ์ PDPA)
+            $bmiExpr = "
+                CASE
+                    WHEN bmi REGEXP '^[0-9]+(\\\\.[0-9]+)?$' AND CAST(bmi AS DECIMAL(6,2)) > 0
+                        THEN CAST(bmi AS DECIMAL(6,2))
+                    WHEN weight REGEXP '^[0-9]+(\\\\.[0-9]+)?$' AND height REGEXP '^[0-9]+(\\\\.[0-9]+)?$' AND CAST(height AS DECIMAL(6,2)) > 0
+                        THEN CAST(weight AS DECIMAL(6,2)) / POW(CAST(height AS DECIMAL(6,2)) / 100, 2)
+                    ELSE NULL
+                END
+            ";
+
+            $bmiQuery = DB::table('patients')->selectRaw("
+                SUM(CASE WHEN ({$bmiExpr}) IS NOT NULL AND ({$bmiExpr}) < 18.5 THEN 1 ELSE 0 END) as underweight,
+                SUM(CASE WHEN ({$bmiExpr}) >= 18.5 AND ({$bmiExpr}) < 23.0 THEN 1 ELSE 0 END) as normal,
+                SUM(CASE WHEN ({$bmiExpr}) >= 23.0 AND ({$bmiExpr}) < 25.0 THEN 1 ELSE 0 END) as overweight,
+                SUM(CASE WHEN ({$bmiExpr}) >= 25.0 AND ({$bmiExpr}) < 30.0 THEN 1 ELSE 0 END) as obese1,
+                SUM(CASE WHEN ({$bmiExpr}) >= 30.0 THEN 1 ELSE 0 END) as obese2,
+                SUM(CASE WHEN ({$bmiExpr}) IS NULL THEN 1 ELSE 0 END) as unknown_bmi
+            ");
+            $applyCommonFilters($bmiQuery, 'patients');
+            $bmiAgg = $bmiQuery->first();
+
+            $bmiCounts = [
+                (int) ($bmiAgg->underweight ?? 0),
+                (int) ($bmiAgg->normal ?? 0),
+                (int) ($bmiAgg->overweight ?? 0),
+                (int) ($bmiAgg->obese1 ?? 0),
+                (int) ($bmiAgg->obese2 ?? 0),
+                (int) ($bmiAgg->unknown_bmi ?? 0),
+            ];
+
+            $chronicNone = max(0, $totalPatientsCount - ($overviewExtraStats['chronic_total'] ?? 0));
+            $chronicChart = [
+                'allowed' => $canViewChronic,
+                'labels'  => ['ไม่มีโรคประจำตัว', 'มีโรคประจำตัว', 'อื่นๆ (ระบุ)'],
+                'data'    => $canViewChronic
+                    ? [$chronicNone, (int) ($overviewExtraStats['chronic_yes'] ?? 0), (int) ($overviewExtraStats['chronic_other'] ?? 0)]
+                    : [0, 0, 0],
+                'colors'  => ['#10b981', '#e11d48', '#f59e0b'],
+            ];
+
+            // =================================================================
+            // มิติที่ 3: เฝ้าระวังการเจ็บป่วย โรคระบาด และห้องพยาบาล (Morbidity & Infirmary)
+            // =================================================================
+
+            // กราฟที่ 5: แนวโน้มการเจ็บป่วยรายวันย้อนหลัง 14 วัน (Multi-Line / Area)
+            $trendStart = Carbon::today()->subDays(13);
+            $trendDates = [];
+            $trendLabels = [];
+            for ($i = 0; $i < 14; $i++) {
+                $d = $trendStart->copy()->addDays($i);
+                $trendDates[]  = $d->format('Y-m-d');
+                $trendLabels[] = $d->copy()->locale('th')->translatedFormat('j M');
+            }
+
+            $trendCovid  = array_fill_keys($trendDates, 0);
+            $trendFlu    = array_fill_keys($trendDates, 0);
+            $trendHeat   = array_fill_keys($trendDates, 0);
+            $trendMental = array_fill_keys($trendDates, 0);
+
+            if (Schema::hasTable('recruit_morbidities')) {
+                $morbQuery = DB::table('recruit_morbidities')
+                    ->whereDate('onset_date', '>=', $trendDates[0])
+                    ->whereDate('onset_date', '<=', end($trendDates))
+                    ->selectRaw("
+                        DATE(onset_date) as d_key,
+                        SUM(CASE WHEN category = 'respiratory' AND sub_type = 'covid' THEN 1 ELSE 0 END) as covid_cnt,
+                        SUM(CASE WHEN category = 'respiratory' AND sub_type = 'flu' THEN 1 ELSE 0 END) as flu_cnt,
+                        SUM(CASE WHEN category = 'heat' THEN 1 ELSE 0 END) as heat_cnt,
+                        SUM(CASE WHEN category = 'mental' THEN 1 ELSE 0 END) as mental_cnt
+                    ");
+                $applyCommonFilters($morbQuery, 'recruit_morbidities');
+
+                foreach ($morbQuery->groupBy('d_key')->get() as $row) {
+                    $k = (string) $row->d_key;
+                    if (isset($trendCovid[$k])) {
+                        $trendCovid[$k]  = (int) $row->covid_cnt;
+                        $trendFlu[$k]    = (int) $row->flu_cnt;
+                        $trendHeat[$k]   = (int) $row->heat_cnt;
+                        $trendMental[$k] = (int) $row->mental_cnt;
+                    }
+                }
+            }
+
+            // กราฟที่ 6: ยอดแยกนอนห้องพยาบาล / Admit / Refer ปัจจุบัน แยกตามหน่วยฝึก (Grouped Bar)
+            $infUnitArr      = [];
+            $infCampIsoArr   = [];
+            $ipdCampArr      = [];
+            $ipdPublicArr    = [];
+
+            $infMap = [];
+            if (Schema::hasTable('recruit_infirmary_stays')) {
+                $infQuery = DB::table('recruit_infirmary_stays as ris')
+                    ->join('patients as p', 'p.id', '=', 'ris.patient_id')
+                    ->where('ris.status', 'staying')
+                    ->selectRaw("
+                        COALESCE(ris.military_unit_id, p.military_unit_id) as unit_id,
+                        COUNT(DISTINCT CASE WHEN ris.location_type = 'unit_infirmary' THEN ris.patient_id END) as unit_inf_cnt,
+                        COUNT(DISTINCT CASE WHEN ris.location_type = 'camp_hospital' THEN ris.patient_id END) as camp_iso_cnt
+                    ");
+                $applyCommonFilters($infQuery, 'p');
+
+                foreach ($infQuery->groupBy('unit_id')->get() as $row) {
+                    $infMap[(int) $row->unit_id] = [
+                        'unit_inf' => (int) $row->unit_inf_cnt,
+                        'camp_iso' => (int) $row->camp_iso_cnt,
+                    ];
+                }
+            }
+
+            // นับ Admit รพ.ค่ายฯ และ Refer รพ.สาธารณสุข แบบไม่ซ้ำคน (รวมทั้งจาก MEWS และรายงานประจำวัน)
+            $admitCampPatientsByUnit   = [];
+            $referPublicPatientsByUnit = [];
+
+            if (Schema::hasTable('mews_assessments')) {
+                $latestMewsSub = DB::table('mews_assessments')
+                    ->select('patient_id', DB::raw('MAX(id) as max_id'))
+                    ->groupBy('patient_id');
+
+                $activeIpdMewsQ = DB::table('patients as p')
+                    ->joinSub($latestMewsSub, 'lm', 'p.id', '=', 'lm.patient_id')
+                    ->join('mews_assessments as ma', 'ma.id', '=', 'lm.max_id')
+                    ->where('ma.status', 'completed')
+                    ->whereIn('ma.discharge_type', ['admitted', 'refer'])
+                    ->whereNull('ma.returned_to_unit_at')
+                    ->select('p.id as patient_id', 'p.military_unit_id', 'ma.discharge_type');
+                $applyCommonFilters($activeIpdMewsQ, 'p');
+
+                foreach ($activeIpdMewsQ->get() as $row) {
+                    $uid = (int) $row->military_unit_id;
+                    if ($row->discharge_type === 'refer') {
+                        $referPublicPatientsByUnit[$uid][$row->patient_id] = true;
+                    } else {
+                        $admitCampPatientsByUnit[$uid][$row->patient_id] = true;
+                    }
+                }
+            }
+
+            if (Schema::hasTable('recruit_morbidities')) {
+                $activeIpdMorbQ = DB::table('recruit_morbidities as rm')
+                    ->join('patients as p', 'p.id', '=', 'rm.patient_id')
+                    ->where('rm.category', 'other_ipd')
+                    ->where('rm.status', 'treating')
+                    ->select('rm.patient_id', DB::raw('COALESCE(rm.military_unit_id, p.military_unit_id) as unit_id'), 'rm.sub_type');
+                $applyCommonFilters($activeIpdMorbQ, 'p');
+
+                foreach ($activeIpdMorbQ->get() as $row) {
+                    $uid = (int) $row->unit_id;
+                    if ($row->sub_type === 'public_hospital') {
+                        $referPublicPatientsByUnit[$uid][$row->patient_id] = true;
+                    } else {
+                        $admitCampPatientsByUnit[$uid][$row->patient_id] = true;
+                    }
+                }
+            }
+
+            foreach ($unitIds as $uid) {
+                $infUnitArr[]    = $infMap[$uid]['unit_inf'] ?? 0;
+                $infCampIsoArr[] = $infMap[$uid]['camp_iso'] ?? 0;
+                $ipdCampArr[]    = isset($admitCampPatientsByUnit[$uid]) ? count($admitCampPatientsByUnit[$uid]) : 0;
+                $ipdPublicArr[]  = isset($referPublicPatientsByUnit[$uid]) ? count($referPublicPatientsByUnit[$uid]) : 0;
+            }
+
+            // =================================================================
+            // มิติที่ 4: การส่งตัว นัดหมาย และเอกสารนำปลด (Appointments & Discharges)
+            // =================================================================
+
+            // กราฟที่ 7: ปริมาณคิวนัดพบแพทย์ล่วงหน้า 7 วัน (Stacked Bar)
+            $nextDates  = [];
+            $nextLabels = [];
+            $todayObj   = Carbon::today();
+            for ($i = 0; $i < 7; $i++) {
+                $d = $todayObj->copy()->addDays($i);
+                $nextDates[]  = $d->format('Y-m-d');
+                $shortTh      = $d->copy()->locale('th')->translatedFormat('j M');
+                $nextLabels[] = $i === 0 ? "{$shortTh} (วันนี้)" : ($i === 1 ? "{$shortTh} (พรุ่งนี้)" : $shortTh);
+            }
+
+            $appCampMap   = array_fill_keys($nextDates, 0);
+            $appPublicMap = array_fill_keys($nextDates, 0);
+
+            if (Schema::hasTable('recruit_appointments')) {
+                $appQuery = DB::table('recruit_appointments as ra')
+                    ->join('patients as p', 'p.id', '=', 'ra.patient_id')
+                    ->whereIn('ra.status', ['scheduled', 'completed'])
+                    ->where('ra.appointment_date', '>=', $nextDates[0] . ' 00:00:00')
+                    ->where('ra.appointment_date', '<=', end($nextDates) . ' 23:59:59')
+                    ->selectRaw("
+                        DATE(ra.appointment_date) as d_key,
+                        SUM(CASE WHEN ra.hospital_type = 'public_hospital' THEN 1 ELSE 0 END) as public_cnt,
+                        SUM(CASE WHEN ra.hospital_type != 'public_hospital' OR ra.hospital_type IS NULL THEN 1 ELSE 0 END) as camp_cnt
+                    ");
+
+                if (!$this->canViewAllPatients($user)) {
+                    $appQuery->whereRaw('COALESCE(ra.military_unit_id, p.military_unit_id) = ?', [$user->military_unit_id]);
+                    if (!empty($user->intake_batch)) {
+                        $appQuery->whereRaw("COALESCE(NULLIF(ra.intake_batch, ''), p.intake_batch) = ?", [$user->intake_batch]);
+                    }
+                }
+                if ($request->filled('batch')) {
+                    $appQuery->whereRaw("COALESCE(NULLIF(ra.intake_batch, ''), p.intake_batch) = ?", [$request->batch]);
+                }
+                if ($request->filled('unit')) {
+                    $appQuery->whereRaw('COALESCE(ra.military_unit_id, p.military_unit_id) = ?', [$request->unit]);
+                }
+
+                foreach ($appQuery->groupBy(DB::raw('DATE(ra.appointment_date)'))->get() as $row) {
+                    $k = (string) $row->d_key;
+                    if (isset($appCampMap[$k])) {
+                        $appCampMap[$k]   = (int) $row->camp_cnt;
+                        $appPublicMap[$k] = (int) $row->public_cnt;
+                    }
+                }
+            }
+
+            $appCampArr   = array_values($appCampMap);
+            $appPublicArr = array_values($appPublicMap);
+
+            // กราฟที่ 8: สรุปเอกสารนำปลดทหาร แยกประเภท (กาย vs สุขภาพจิต) และสถานะ
+            $dcPhysical   = 0;
+            $dcMental     = 0;
+            $dcCompleted  = 0;
+            $dcInProgress = 0;
+
+            if ($hasDischargeTable && class_exists(MilitaryDischarge::class)) {
+                $dcListQ = DB::table('military_discharges')
+                    ->select('patient_id', 'diagnosis_text', 'process_status');
+                $applyCommonFilters($dcListQ, 'military_discharges');
+                $dcRows = $dcListQ->get();
+
+                // ดึงรายการ patient_id ที่มีประวัติเคสสุขภาพจิตไว้เทียบแบบ 1 Query (ป้องกัน N+1)
+                $mentalPatientIds = [];
+                if (Schema::hasTable('recruit_morbidities') && $dcRows->isNotEmpty()) {
+                    $mentalPatientIds = DB::table('recruit_morbidities')
+                        ->whereIn('patient_id', $dcRows->pluck('patient_id')->all())
+                        ->where('category', 'mental')
+                        ->pluck('patient_id')
+                        ->flip()
+                        ->all();
+                }
+
+                foreach ($dcRows as $dc) {
+                    if ($dc->process_status === 'completed') {
+                        $dcCompleted++;
+                    } else {
+                        $dcInProgress++;
+                    }
+
+                    $isMental = isset($mentalPatientIds[$dc->patient_id])
+                        || $this->isPsychiatricDischargeText((string) ($dc->diagnosis_text ?? ''));
+
+                    if ($isMental) {
+                        $dcMental++;
+                    } else {
+                        $dcPhysical++;
+                    }
+                }
+            }
+
+            $dcTotal = $dcPhysical + $dcMental;
+
+            return [
+                'generated_at' => now()->addYears(543)->format('d/m/Y H:i น.'),
+
+                // มิติที่ 1
+                'manpower_by_unit' => [
+                    'labels'         => $unitLabels,
+                    'unit_ids'       => $unitIds,
+                    'active'         => $mpActive,
+                    'discharged'     => $mpDischarged,
+                    'absent'         => $mpAbsent,
+                    'other_inactive' => $mpOtherInactive,
+                ],
+                'coverage_donut' => [
+                    'labels'         => $covLabels,
+                    'data'           => $covData,
+                    'colors'         => $covColors,
+                    'hn_percent'     => (float) ($overviewExtraStats['hn_percent'] ?? 0),
+                    'synced_hn'      => (int) ($overviewExtraStats['synced_hn'] ?? 0),
+                    'total_patients' => $totalPatientsCount,
+                ],
+
+                // มิติที่ 2
+                'screening_by_unit' => [
+                    'labels'     => $unitLabels,
+                    'unit_ids'   => $unitIds,
+                    'green'      => $scGreen,
+                    'yellow'     => $scYellow,
+                    'red'        => $scRed,
+                    'unscreened' => $scUnscreened,
+                ],
+                'bmi_and_chronic' => [
+                    'bmi' => [
+                        'labels'      => ['ผอม (<18.5)', 'ปกติ (18.5–22.9)', 'ท้วม (23–24.9)', 'อ้วน 1 (25–29.9)', 'อ้วน 2 (≥30 เสี่ยงลมร้อน)', 'ไม่ระบุ'],
+                        'data'        => $bmiCounts,
+                        'colors'      => ['#38bdf8', '#10b981', '#facc15', '#f97316', '#e11d48', '#cbd5e1'],
+                        'high_risk_cnt' => $bmiCounts[4], // BMI >= 30
+                    ],
+                    'chronic' => $chronicChart,
+                ],
+
+                // มิติที่ 3
+                'morbidity_trend_14d' => [
+                    'labels' => $trendLabels,
+                    'dates'  => $trendDates,
+                    'covid'  => array_values($trendCovid),
+                    'flu'    => array_values($trendFlu),
+                    'heat'   => array_values($trendHeat),
+                    'mental' => array_values($trendMental),
+                ],
+                'infirmary_ipd_by_unit' => [
+                    'labels'          => $unitLabels,
+                    'unit_ids'        => $unitIds,
+                    'unit_infirmary'  => $infUnitArr,
+                    'camp_isolation'  => $infCampIsoArr,
+                    'admit_camp'      => $ipdCampArr,
+                    'refer_public'    => $ipdPublicArr,
+                    'totals'          => [
+                        'infirmary_total'  => array_sum($infUnitArr) + array_sum($infCampIsoArr),
+                        'ipd_total'        => array_sum($ipdCampArr) + array_sum($ipdPublicArr),
+                        'grand_active_beds'=> array_sum($infUnitArr) + array_sum($infCampIsoArr) + array_sum($ipdCampArr) + array_sum($ipdPublicArr),
+                    ],
+                ],
+
+                // มิติที่ 4
+                'appointments_next_7d' => [
+                    'labels'          => $nextLabels,
+                    'dates'           => $nextDates,
+                    'camp_hospital'   => $appCampArr,
+                    'public_hospital' => $appPublicArr,
+                    'today_count'     => ($appCampArr[0] ?? 0) + ($appPublicArr[0] ?? 0),
+                    'tomorrow_count'  => ($appCampArr[1] ?? 0) + ($appPublicArr[1] ?? 0),
+                    'total_7d'        => array_sum($appCampArr) + array_sum($appPublicArr),
+                ],
+                'discharge_summary' => [
+                    'physical'          => $dcPhysical,
+                    'mental'            => $dcMental,
+                    'in_progress'       => $dcInProgress,
+                    'completed'         => $dcCompleted,
+                    'total'             => $dcTotal,
+                    'completed_percent' => $dcTotal > 0 ? round(($dcCompleted / $dcTotal) * 100, 1) : 0,
+                ],
+            ];
+        });
+    }
+
+    // 🎨 จัดหมวดหมู่ชื่อสิทธิการรักษาจาก HosXP เข้าสู่กลุ่มสีมาตรฐานของโรงพยาบาล
+    private function classifyCoverageGroup(string $rawName): string
+    {
+        $name = trim($rawName);
+        if ($name === '' || $name === 'unsynced') {
+            return 'รอซิงค์สิทธิ';
+        }
+
+        $lower = mb_strtolower($name);
+
+        if (str_contains($lower, 'ครอบครัว')) {
+            return 'ครอบครัว';
+        }
+        if (str_contains($lower, 'ทหาร') || str_contains($lower, 'พลฯ')) {
+            return 'ทหาร';
+        }
+        if (str_contains($lower, 'บัตรทอง') || str_contains($lower, 'หลักประกันสุขภาพ') || str_contains($lower, '30 บาท') || str_contains($lower, 'สปสช') || preg_match('/\buc\b/i', $lower)) {
+            return 'บัตรทอง';
+        }
+        if (str_contains($lower, 'ประกันสังคม') || str_contains($lower, 'ปกส')) {
+            return 'ประกันสังคม';
+        }
+        if (str_contains($lower, 'ข้าราชการ') || str_contains($lower, 'จ่ายตรง') || str_contains($lower, 'รัฐวิสาหกิจ') || str_contains($lower, 'อปท')) {
+            return 'ข้าราชการพลเรือน';
+        }
+
+        return 'อื่นๆ';
+    }
+
+    // 🧠 ตรวจสอบข้อความโรควินิจฉัยนำปลดว่าเป็นกลุ่มสุขภาพจิต/จิตเวชหรือไม่
+    private function isPsychiatricDischargeText(string $dxText): bool
+    {
+        $text = mb_strtolower(trim($dxText));
+        if ($text === '' || str_contains($text, '[ปลดทางกาย]')) {
+            return false;
+        }
+        if (str_contains($text, '[ปลดทางสุขภาพจิต]')) {
+            return true;
+        }
+
+        $keywords = [
+            'จิต', 'ซึมเศร้า', 'เครียด', 'ปรับตัว', 'สติปัญญา', 'สมาธิสั้น', 'ออทิสติก',
+            'สารเสพติด', 'ถอนพิษ', 'ทำร้ายตัวเอง', 'ประสาทหลอน', 'ไบโพลาร์', 'วิตกกังวล',
+            'psych', 'depress', 'schizo', 'bipolar', 'anxiety', 'adjustment',
+            'mental', 'autis', 'adhd', 'substance', 'ptsd', 'suicid',
+        ];
+
+        foreach ($keywords as $kw) {
+            if (str_contains($text, $kw)) {
+                return true;
+            }
+        }
+
+        return (bool) preg_match('/\bf[0-9]{2}(\.[0-9]+)?\b/i', $text);
     }
 
     public function showSearchForm()
