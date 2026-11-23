@@ -12,19 +12,45 @@ use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
+    // 🛡️ แปลงสิทธิ์ผู้ใช้งานให้เป็น Array มาตรฐานเสมอ (รองรับทั้งคอลัมน์ roles และ role)
+    private function getUserRoles($user): array
+    {
+        if (!$user) {
+            return [];
+        }
+
+        $roles = [];
+        $rawRoles = $user->roles ?? null;
+
+        if (is_string($rawRoles) && trim($rawRoles) !== '') {
+            $decoded = json_decode($rawRoles, true);
+            $roles = is_array($decoded) ? $decoded : [trim($rawRoles)];
+        } elseif (is_array($rawRoles)) {
+            $roles = $rawRoles;
+        }
+
+        if (!empty($user->role) && is_string($user->role)) {
+            $roles[] = trim($user->role);
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            fn ($r) => trim((string) $r),
+            $roles
+        ))));
+    }
+
     public function index(Request $request)
     {
         $user = auth()->user();
-        
-        $userRoles = is_string($user->roles) ? json_decode($user->roles, true) : (array)($user->roles ?? $user->role);
-        $isAdmin = in_array('admin', $userRoles);
-        
-        $isExecutive    = $isAdmin || in_array('executive', $userRoles);
-        $isER           = $isAdmin || in_array('er_nurse', $userRoles);
-        $isMedic        = $isAdmin || in_array('medic', $userRoles);
-        $isRegistration = $isAdmin || in_array('registration', $userRoles); 
-        $isOPD          = $isAdmin || in_array('opd_nurse', $userRoles);
-        $isScreening    = $isAdmin || in_array('screening', $userRoles);
+        $userRoles = $this->getUserRoles($user);
+
+        $isAdmin        = in_array('admin', $userRoles, true);
+        $isExecutive    = $isAdmin || in_array('executive', $userRoles, true);
+        $isER           = $isAdmin || in_array('er_nurse', $userRoles, true);
+        $isMedic        = $isAdmin || in_array('medic', $userRoles, true);
+        $isRegistration = $isAdmin || in_array('registration', $userRoles, true);
+        $isOPD          = $isAdmin || in_array('opd_nurse', $userRoles, true) || in_array('medical_staff', $userRoles, true);
+        $isScreening    = $isAdmin || in_array('screening', $userRoles, true);
 
         $requestedView = $request->query('view');
 
@@ -45,9 +71,12 @@ class DashboardController extends Controller
             return redirect()->to($request->fullUrlWithQuery(['view' => 'registration']));
         } elseif ($isOPD) {
             return redirect()->to($request->fullUrlWithQuery(['view' => 'opd']));
-        } else {
+        } elseif ($isMedic) {
             return redirect()->to($request->fullUrlWithQuery(['view' => 'medic']));
         }
+
+        // 🛡️ ป้องกันลูป ERR_TOO_MANY_REDIRECTS 100% หากบัญชีนี้ยังไม่ได้รับการกำหนดบทบาทใดๆ
+        abort(403, 'บัญชีของคุณยังไม่ได้รับการกำหนดสิทธิ์เข้าใช้งานหน้าแดชบอร์ด กรุณาติดต่อผู้ดูแลระบบ (Admin) เพื่อกำหนดบทบาทครับ');
     }
 
     // =================================================================

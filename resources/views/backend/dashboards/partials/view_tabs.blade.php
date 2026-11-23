@@ -29,7 +29,7 @@
             'dot_cls'    => 'bg-rose-500',
         ];
     }
-    if ($tabIsAdmin || in_array('opd_nurse', $tabRoles, true)) {
+    if ($tabIsAdmin || in_array('opd_nurse', $tabRoles, true) || in_array('medical_staff', $tabRoles, true)) {
         $availableViews[] = [
             'key'        => 'opd',
             'label'      => 'OPD',
