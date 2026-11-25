@@ -47,41 +47,71 @@ class AiController extends Controller
         return (string) (config('services.gemini.model') ?: env('GEMINI_MODEL', 'gemini-flash-lite-latest'));
     }
 
-    // 🌟 เรียก Gemini API และแปลงผลลัพธ์ JSON อย่างปลอดภัย (ศูนย์กลางลดโค้ดซ้ำ)
-    private function callGeminiJson(string $prompt, float $temperature = 0.1, int $timeout = 12): ?array
+    // 🌟 เรียก Gemini API อย่างปลอดภัย (ส่งคีย์ผ่าน Header กันคีย์รั่วลง Log + บังคับ IPv4 ลด DNS Timeout)
+    private function callGeminiJson(string $prompt, float $temperature = 0.1, int $timeout = 20, ?array $responseSchema = null): ?array
     {
         $apiKey = $this->getGeminiApiKey();
         if (empty($apiKey)) {
+            Log::warning('Gemini API Key is missing');
             return null;
         }
 
         $model = $this->getGeminiModel();
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apiKey}";
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
+
+        $generationConfig = [
+            'temperature'      => $temperature,
+            'responseMimeType' => 'application/json',
+        ];
+        if ($responseSchema !== null) {
+            $generationConfig['responseSchema'] = $responseSchema;
+        }
 
         $response = Http::withoutVerifying()
-            ->connectTimeout(4)
+            ->connectTimeout(6)
             ->timeout($timeout)
-            ->withHeaders(['Content-Type' => 'application/json'])
+            ->withOptions([
+                'curl' => [
+                    CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+                ],
+            ])
+            ->withHeaders([
+                'Content-Type'   => 'application/json',
+                'x-goog-api-key' => $apiKey,
+            ])
             ->post($url, [
                 'contents'         => [['parts' => [['text' => $prompt]]]],
-                'generationConfig' => [
-                    'temperature'      => $temperature,
-                    'responseMimeType' => 'application/json',
-                ],
+                'generationConfig' => $generationConfig,
             ]);
 
         if (!$response->successful()) {
-            Log::error('Gemini API Error: ' . $response->status() . ' | ' . $response->body());
+            Log::error('Gemini API HTTP Error: ' . $response->status() . ' | ' . $response->body());
             return null;
         }
 
         $rawText = (string) ($response->json('candidates.0.content.parts.0.text') ?? '');
+        if (trim($rawText) === '') {
+            Log::warning('Gemini Empty Response Body', ['body' => $response->json()]);
+            return null;
+        }
+
         $cleanText = str_replace(['```json', '```'], '', $rawText);
         preg_match('/\{[\s\S]*\}/', $cleanText, $matches);
-        $jsonString = $matches[0] ?? $cleanText;
+        $jsonString = trim($matches[0] ?? $cleanText);
 
-        $decoded = json_decode(trim($jsonString), true);
-        return (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : null;
+        $decoded = json_decode($jsonString, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $sanitized = preg_replace('/[\x00-\x1F\x7F]/u', ' ', $jsonString);
+            $decoded = json_decode((string) $sanitized, true);
+        }
+
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            Log::warning('Gemini JSON Parse Failed: ' . json_last_error_msg(), ['raw' => mb_substr($rawText, 0, 800)]);
+            return null;
+        }
+
+        return $decoded;
     }
 
     // 🌟 แปลงสิทธิ์ผู้ใช้เป็น Array มาตรฐาน
@@ -1218,5 +1248,177 @@ class AiController extends Controller
             Log::error('AI Executive Query Error: ' . $e->getMessage());
             return response()->json(['status' => 'error', 'message' => 'ไม่สามารถประมวลผลคำถามได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ'], 500);
         }
+    }
+
+    // =========================================================================
+    // 📋 4. AI SBAR Handover (สรุปส่งเวร / ส่งต่อ Refer มาตรฐาน SBAR 1 คลิก + Smart Fallback)
+    // =========================================================================
+    public function sbarHandover(Request $request, $mews_id)
+    {
+        $user = auth()->user();
+        $mews = MewsAssessment::with([
+            'patient.militaryUnit',
+            'patient.recruitScreening',
+            'patient.activeInfirmaryStay',
+            'evaluator',
+        ])->findOrFail($mews_id);
+
+        $patient = $mews->patient;
+        if (!$patient) {
+            return response()->json(['status' => 'error', 'message' => 'ไม่พบข้อมูลผู้ป่วยของใบประเมินนี้'], 404);
+        }
+
+        // 🛡️ ตรวจสิทธิ์หน่วยฝึกหากผู้ใช้เป็นเสนารักษ์
+        if (!$this->canViewAllUnits($user) && (int) $patient->military_unit_id !== (int) $user->military_unit_id) {
+            return response()->json(['status' => 'error', 'message' => 'คุณไม่มีสิทธิ์เข้าถึงเคสของหน่วยทหารอื่นครับ'], 403);
+        }
+
+        // ใช้ Cache ผูกกับ updated_at เพื่อไม่ต้องเรียก Gemini ซ้ำเมื่อกดเปิดดูหลายครั้ง
+        $cacheKey = 'sbar_handover_mews_' . $mews->id . '_' . ($mews->updated_at?->timestamp ?? 0);
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return response()->json(['status' => 'success', 'data' => $cached]);
+        }
+
+        // ดึงแนวโน้มการประเมินทั้งหมดในแฟ้มการรักษา (case_id) เดียวกัน (Query เฉพาะฝั่ง KSVR)
+        $caseHistory = MewsAssessment::where('case_id', $mews->case_id)
+            ->where('status', '!=', 'cancelled')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $trendLines = $caseHistory->map(function ($row, $idx) {
+            $t = $row->created_at ? $row->created_at->format('H:i') : '-';
+            return 'ครั้งที่ ' . ($idx + 1) . " ({$t} น.): MEWS={$row->total_score} ({$row->risk_level}), BP={$row->systolic_bp}, HR={$row->heart_rate}, RR={$row->respiratory_rate}, Temp={$row->temperature}°C, O2={$row->o2sat}%, AVPU={$row->consciousness}";
+        })->implode("\n");
+
+        $symptomsMap = EmergencySymptom::pluck('name', 'code')->toArray();
+        $rawSyms = is_string($mews->symptoms) ? json_decode($mews->symptoms, true) : ($mews->symptoms ?? []);
+        $symNames = [];
+        if (is_array($rawSyms)) {
+            foreach ($rawSyms as $code) {
+                $symNames[] = $symptomsMap[$code] ?? $code;
+            }
+        }
+        $symptomText = !empty($symNames) ? implode(', ', $symNames) : 'ไม่มีอาการฉุกเฉินเฉพาะโรค';
+
+        $chronicText = 'ไม่มีโรคประจำตัว';
+        if (in_array($patient->chronic_disease_status, ['yes', 'other'], true)) {
+            $chronicText = $patient->chronic_disease_detail ?: 'มีโรคประจำตัว';
+        }
+
+        $activeMedsText = 'ไม่มีรายการยาต่อเนื่อง';
+        if (class_exists(PatientMedication::class) && Schema::hasTable('patient_medications')) {
+            $medList = PatientMedication::where('patient_id', $patient->id)
+                ->where('is_active', true)
+                ->pluck('drug_name')
+                ->toArray();
+            if (!empty($medList)) {
+                $activeMedsText = implode(', ', $medList);
+            }
+        }
+
+        $fullName = trim(($patient->rank ?? '') . ($patient->first_name ?? '') . ' ' . ($patient->last_name ?? ''));
+        $unitName = $patient->militaryUnit->short_name ?? $patient->militaryUnit->name ?? $patient->company ?? 'ไม่ระบุหน่วย';
+        $ageText = '-';
+        if (!empty($patient->dob)) {
+            try {
+                $ageText = Carbon::parse($patient->dob)->age . ' ปี';
+            } catch (\Throwable $e) {
+            }
+        }
+
+        $screeningNote = $patient->recruitScreening->symptoms_note ?? 'ปกติ/ไม่มีข้อมูลเสี่ยง';
+        $symptomNote = trim((string) ($mews->symptoms_note ?? '')) ?: 'ไม่ได้ระบุ';
+
+        $sbarSchema = [
+            'type'       => 'OBJECT',
+            'properties' => [
+                'situation'      => ['type' => 'STRING'],
+                'background'     => ['type' => 'STRING'],
+                'assessment'     => ['type' => 'STRING'],
+                'recommendation' => ['type' => 'STRING'],
+            ],
+            'required'   => ['situation', 'background', 'assessment', 'recommendation'],
+        ];
+
+        $prompt = "
+            คุณคือแพทย์และพยาบาลเวชศาสตร์ฉุกเฉิน โรงพยาบาลค่ายกฤษณ์สีวะรา (KSVR Hospital)
+            จงสรุปรายงานส่งเวรหรือส่งต่อผู้ป่วย (Refer) ตามมาตรฐานสากล SBAR เป็นภาษาไทยที่กระชับ ชัดเจน อ่านเข้าใจได้ใน 15 วินาที (ห้ามใช้ Markdown)
+
+            ข้อมูลผู้ป่วย:
+            - ชื่อ-สกุล: {$fullName} (อายุ {$ageText}) | HN: " . ($patient->hn ?: 'ยังไม่มี HN') . " | สิทธิ: " . ($patient->pttype_name ?: 'ไม่ระบุ') . "
+            - สังกัด: {$unitName} | ผลัด: " . ($patient->intake_batch ?: '-') . "
+            - โรคประจำตัว/แพ้ยา: {$chronicText}
+            - รายการยา e-MAR ที่ใช้อยู่: {$activeMedsText}
+            - ประวัติคัดกรองแรกรับ: {$screeningNote}
+            - อาการฉุกเฉินที่พบ: {$symptomText}
+            - อาการสำคัญ/บันทึกเพิ่มเติม: {$symptomNote}
+            - สถานะปัจจุบัน: {$mews->status}" . ($mews->discharge_type ? " ({$mews->discharge_type}: {$mews->discharge_details})" : '') . "
+            - แนวโน้มสัญญาณชีพในแฟ้มนี้ (VN: {$mews->case_id}):
+            {$trendLines}
+        ";
+
+        $aiResult = null;
+        if (!empty($this->getGeminiApiKey())) {
+            try {
+                $rawAi = $this->callGeminiJson($prompt, 0.2, 20, $sbarSchema);
+                if (is_array($rawAi)) {
+                    $normalized = array_change_key_case($rawAi, CASE_LOWER);
+                    if (!empty($normalized['situation'])) {
+                        $aiResult = [
+                            'patient_name'   => $fullName,
+                            'situation'      => trim((string) ($normalized['situation'] ?? '-')),
+                            'background'     => trim((string) ($normalized['background'] ?? '-')),
+                            'assessment'     => trim((string) ($normalized['assessment'] ?? '-')),
+                            'recommendation' => trim((string) ($normalized['recommendation'] ?? '-')),
+                            'is_fallback'    => false,
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('AI SBAR Handover Exception (switching to fallback): ' . $e->getMessage());
+            }
+        }
+
+        // 🛡️ Smart Clinical Fallback: หาก Gemini API สะดุด/Timeout ให้สรุป SBAR จากข้อมูลจริงในระบบทันที (งาน ER ไม่สะดุด)
+        if ($aiResult === null) {
+            $riskLabel = match ($mews->risk_level) {
+                'emergency' => 'ฉุกเฉินสีแดง (EMERGENCY)',
+                'observe'   => 'เฝ้าระวังสีเหลือง (OBSERVE)',
+                default     => 'ปกติสีเขียว (NORMAL)',
+            };
+
+            $recAction = ($mews->risk_level === 'emergency' || !empty($symNames))
+                ? 'ประสานห้องฉุกเฉิน (ER) เตรียมรับตัว ประเมินอาการซ้ำทุก 15 นาที และเฝ้าระวังสัญญาณชีพใกล้ชิด'
+                : ($mews->risk_level === 'observe'
+                    ? 'เฝ้าระวังอาการและวัดสัญญาณชีพซ้ำทุก 30 นาที หากคะแนน MEWS เพิ่มขึ้นให้รายงานแพทย์เวรทันที'
+                    : 'ดูแลตามอาการและติดตามประเมินซ้ำตามแผนการรักษา (OPD/หน่วยฝึก)');
+
+            $aiResult = [
+                'patient_name'   => $fullName,
+                'situation'      => "{$fullName} อายุ {$ageText} สังกัด {$unitName} (ผลัด " . ($patient->intake_batch ?: '-') . ") อาการสำคัญ: {$symptomNote} | อาการเฉพาะโรค: {$symptomText} [ระดับความเสี่ยง: {$riskLabel}]",
+                'background'     => "โรคประจำตัว: {$chronicText} | ยาต่อเนื่อง (e-MAR): {$activeMedsText} | คัดกรองแรกรับ: {$screeningNote}",
+                'assessment'     => "คะแนน MEWS ล่าสุด {$mews->total_score} คะแนน (ประเมินในแฟ้มนี้ทั้งหมด {$caseHistory->count()} ครั้ง) | V/S ล่าสุด: BP {$mews->systolic_bp} mmHg, HR {$mews->heart_rate}/min, RR {$mews->respiratory_rate}/min, Temp {$mews->temperature}°C, O2Sat {$mews->o2sat}%, AVPU: {$mews->consciousness}",
+                'recommendation' => "{$recAction} (สรุปอัตโนมัติจากฐานข้อมูล KSVR)",
+                'is_fallback'    => true,
+            ];
+        }
+
+        $aiResult['copy_text'] = implode("\n", [
+            '📋 [SBAR ส่งเวร/ส่งต่อ — KSVR Hospital]',
+            "ผู้ป่วย: {$fullName} ({$unitName}) | HN: " . ($patient->hn ?: '-'),
+            "S (Situation): {$aiResult['situation']}",
+            "B (Background): {$aiResult['background']}",
+            "A (Assessment): {$aiResult['assessment']}",
+            "R (Recommendation): {$aiResult['recommendation']}",
+            'เวลาสรุป: ' . now()->addYears(543)->format('d/m/Y H:i') . ' น.',
+        ]);
+
+        // เก็บลง Cache เฉพาะกรณีที่ AI สรุปสำเร็จ เพื่อให้กรณี Fallback สามารถกดลองเรียก AI ใหม่ได้ในครั้งถัดไป
+        if (empty($aiResult['is_fallback'])) {
+            Cache::put($cacheKey, $aiResult, 3600);
+        }
+
+        return response()->json(['status' => 'success', 'data' => $aiResult]);
     }
 }

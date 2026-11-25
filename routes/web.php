@@ -41,6 +41,15 @@ Route::post('/forgot-password/notify-admin', [PasswordResetController::class, 'n
 // ==========================================
 Route::middleware(['auth'])->group(function () {
 
+    // ต่ออายุ Session (ใช้สำหรับปุ่ม "ใช้งานต่อ" และ Heartbeat หน้าจอแผนก ER)
+    Route::post('/session/keep-alive', function (\Illuminate\Http\Request $request) {
+        $request->session()->put('last_activity_at', time());
+        return response()->json([
+            'status' => 'extended',
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+    })->name('session.keep-alive');
+
     // เส้นทางสำหรับเปลี่ยนรหัสผ่านครั้งแรก (ไม่โดน Middleware force.password บล็อก)
     Route::get('/force-change-password', [BackendAuthController::class, 'showForceChangePasswordForm'])->name('password.force.edit');
     Route::post('/force-change-password', [BackendAuthController::class, 'processForceChangePassword'])->name('password.force.update');

@@ -20,6 +20,92 @@
             background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
             background-size: 20px 20px;
         }
+        /* ===== KSVR Custom Remember Checkbox ===== */
+.ksvr-auth-options {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ksvr-remember-label {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ksvr-remember-input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+}
+
+.ksvr-remember-box {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    margin-top: 1px;
+    border-radius: 7px;
+    border: 1.8px solid #cbd5e1;
+    background-color: #f8fafc;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ksvr-remember-box svg {
+    width: 14px;
+    height: 14px;
+    color: #ffffff;
+    opacity: 0;
+    transform: scale(0.6);
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ksvr-remember-label:hover .ksvr-remember-box {
+    border-color: #059669;
+    background-color: #ecfdf5;
+}
+
+.ksvr-remember-input:checked + .ksvr-remember-box {
+    background-color: #059669;
+    border-color: #059669;
+    box-shadow: 0 3px 8px rgba(5, 150, 105, 0.28);
+}
+
+.ksvr-remember-input:checked + .ksvr-remember-box svg {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.ksvr-remember-input:focus-visible + .ksvr-remember-box {
+    outline: 3px solid rgba(5, 150, 105, 0.25);
+    outline-offset: 2px;
+}
+
+.ksvr-remember-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+}
+
+.ksvr-remember-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.ksvr-remember-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-top: 2px;
+}
     </style>
 </head>
 <body class="bg-login-pattern min-h-screen flex items-center justify-center p-4">
@@ -51,6 +137,15 @@
                     </div>
                 </div>
             @endif
+            <!-- แจ้งเตือนกรณีหมดเวลาใช้งานอัตโนมัติ -->
+            @if(session('session_expired'))
+                <div class="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded-r-lg">
+                    <div class="flex items-start">
+                        <i class="fa-solid fa-clock text-amber-500 mr-3 mt-0.5"></i>
+                        <p class="text-sm text-amber-800 font-medium">{{ session('session_expired') }}</p>
+                    </div>
+                </div>
+            @endif
 
             <form method="POST" action="{{ route('login') }}" class="space-y-6">
                 @csrf
@@ -71,34 +166,47 @@
                             class="block w-full rounded-xl border-slate-300 py-3 pl-11 pr-4 text-slate-900 placeholder:text-slate-400 placeholder:text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-lg transition-colors">
                     </div>
                 </div>
-
-                <!-- ช่องรหัสผ่าน พร้อมปุ่มดูรหัส -->
+                <!-- 🔑 ช่องรหัสผ่าน (กู้คืนกลับเข้าฟอร์มให้ครบคู่กับสคริปต์ togglePassword เดิม) -->
                 <div>
-                    <label for="password" class="block text-sm font-medium text-slate-700">รหัสผ่าน</label>
+                    <label for="password" class="block text-sm font-medium text-slate-700">
+                        รหัสผ่าน
+                    </label>
                     <div class="mt-2 relative">
                         <input id="password" type="password" name="password" required
-                            class="block w-full rounded-xl border-slate-300 py-3 pl-4 pr-12 text-slate-900 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-lg transition-colors">
-                        
-                        <button type="button" id="togglePassword" 
+                            placeholder="กรอกรหัสผ่านของคุณ"
+                            class="block w-full rounded-xl border-slate-300 py-3 pl-4 pr-11 text-slate-900 placeholder:text-slate-400 placeholder:text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-lg transition-colors">
+
+                        <button type="button" id="togglePassword"
                                 class="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-emerald-600 focus:outline-none transition-colors">
-                            <i class="fa-solid fa-eye text-lg transition-transform hover:scale-110" id="eyeIcon"></i>
+                            <i id="eyeIcon" class="fa-regular fa-eye text-lg"></i>
                         </button>
                     </div>
                 </div>
+                <div class="ksvr-auth-options">
+                    {{-- Checkbox จดจำการเข้าสู่ระบบ (รวมเหลือจุดเดียว) --}}
+                    <label for="remember" class="ksvr-remember-label">
+                        <input
+                            type="checkbox"
+                            id="remember"
+                            name="remember"
+                            value="1"
+                            class="ksvr-remember-input"
+                            {{ old('remember') ? 'checked' : '' }}
+                        >
+                        <span class="ksvr-remember-box" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </span>
+                        <span class="ksvr-remember-text">
+                            <span class="ksvr-remember-title">จดจำการเข้าสู่ระบบ</span>
+                            <span class="ksvr-remember-sub">แนะนำสำหรับมือถือส่วนตัว</span>
+                        </span>
+                    </label>
 
-                <!-- 🌟 แถว Checkbox จดจำฉัน + ปุ่มลืมรหัสผ่าน -->
-                <div class="flex items-center justify-between gap-2">
-                    <div class="flex items-center">
-                        <input id="remember_me" name="remember" type="checkbox" 
-                            class="h-5 w-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer">
-                        <label for="remember_me" class="ml-2.5 block text-xs sm:text-sm font-medium text-slate-700 cursor-pointer">
-                            จดจำฉันในระบบ
-                        </label>
-                    </div>
-
-                    <!-- 🔑 ปุ่มเปิด Modal ลืมรหัสผ่าน -->
-                    <button type="button" onclick="openForgotPasswordModal()" 
-                            class="text-xs sm:text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline focus:outline-none transition-colors">
+                    {{-- ปุ่มลืมรหัสผ่าน (ใช้ปุ่มเปิด Modal เดิมของระบบ) --}}
+                    <button type="button" onclick="openForgotPasswordModal()"
+                            class="shrink-0 pt-0.5 text-xs sm:text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline focus:outline-none transition-colors">
                         <i class="fa-solid fa-key mr-1 text-xs"></i>ลืมรหัสผ่าน?
                     </button>
                 </div>

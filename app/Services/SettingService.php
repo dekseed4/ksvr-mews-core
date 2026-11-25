@@ -42,6 +42,18 @@ class SettingService
             'appointment_alert_days'   => ['group' => 'clinical',      'type' => 'integer', 'label' => 'แจ้งเตือนนัดแพทย์ล่วงหน้า (วัน)',      'value' => 1],
             'polling_interval_seconds' => ['group' => 'clinical',      'type' => 'integer', 'label' => 'รอบเช็กแจ้งเตือนอัตโนมัติ (วินาที)',   'value' => 30],
             'pdpa_chronic_roles'       => ['group' => 'clinical',      'type' => 'json',    'label' => 'บทบาทที่เห็นข้อมูลโรคประจำตัว',      'value' => ['admin', 'executive', 'er_nurse', 'opd_nurse', 'screening', 'medical_staff']],
+            // 4. เกณฑ์คลินิก (SLA) & PDPA
+            'er_sla_red_minutes'        => ['group' => 'clinical',      'type' => 'integer', 'label' => 'SLA วัด V/S ซ้ำ สีแดง (นาที)',         'value' => 15],
+            'er_sla_yellow_minutes'     => ['group' => 'clinical',      'type' => 'integer', 'label' => 'SLA วัด V/S ซ้ำ สีเหลือง (นาที)',       'value' => 30],
+            'appointment_alert_days'    => ['group' => 'clinical',      'type' => 'integer', 'label' => 'แจ้งเตือนนัดแพทย์ล่วงหน้า (วัน)',        'value' => 1],
+            'polling_interval_seconds'  => ['group' => 'clinical',      'type' => 'integer', 'label' => 'รอบเช็กแจ้งเตือนอัตโนมัติ (วินาที)',     'value' => 30],
+            'pdpa_chronic_roles'        => ['group' => 'clinical',      'type' => 'json',    'label' => 'บทบาทที่เห็นข้อมูลโรคประจำตัว',        'value' => ['admin', 'executive', 'er_nurse', 'opd_nurse', 'screening', 'medical_staff']],
+
+            // ⏱️ นโยบายกำหนดเวลาล็อกเอาต์อัตโนมัติ (Auto-Logout / Idle Timeout)
+            'idle_timeout_pc'           => ['group' => 'clinical',      'type' => 'integer', 'label' => 'เวลาล็อกเอาต์อัตโนมัติ PC (นาที)',       'value' => (int) config('session.idle_timeout_pc', 30)],
+            'idle_timeout_mobile'       => ['group' => 'clinical',      'type' => 'integer', 'label' => 'เวลาล็อกเอาต์อัตโนมัติ มือถือ (นาที)',   'value' => (int) config('session.idle_timeout_mobile', 720)],
+            'idle_timeout_exempt_roles' => ['group' => 'clinical',      'type' => 'json',    'label' => 'บทบาทที่ยกเว้นการล็อกเอาต์อัตโนมัติ',     'value' => ['er_nurse']],
+            
         ];
     }
 

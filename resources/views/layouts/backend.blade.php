@@ -1259,8 +1259,19 @@
             const ksvrPollingMs = {{ (int) ($sysPollingSeconds ?? 30) * 1000 }};
             setInterval(function() {
                 if (document.hidden === false || Notification.permission === 'granted') {
-                    fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                        .then(res => res.text())
+                    fetch(window.location.href, {
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-KSVR-Background-Poll': '1'
+                            }
+                        })
+                            .then(res => {
+                                if (res.status === 401 || res.status === 419) {
+                                    window.location.href = "{{ route('login') }}";
+                                    throw new Error('Session expired');
+                                }
+                                return res.text();
+                            })
                         .then(html => {
                             const parser = new DOMParser();
                             const doc = parser.parseFromString(html, 'text/html');
@@ -2003,5 +2014,197 @@
 
     @include('partials.pwa_install_modal')
     @include('partials.workflow_overview_modal')
+    {{-- ⏱️ ระบบกำหนดเวลาล็อกเอาต์อัตโนมัติ (PC / Mobile) & เลี้ยง Session (ER Monitor) --}}
+    @auth
+    @php
+        $resolvedIdleMinutes = isset($idleTimeoutMinutes)
+            ? (int) $idleTimeoutMinutes
+            : (int) config('session.idle_timeout_pc', 30);
+        $keepAliveUrl = \Illuminate\Support\Facades\Route::has('session.keep-alive')
+            ? route('session.keep-alive')
+            : null;
+    @endphp
+
+    @if($resolvedIdleMinutes <= 0)
+        {{-- 🟢 โหมดไม่ล็อกเอาต์ (เช่น แผนก ER / มือถือที่ตั้ง 0): ส่ง Heartbeat ทุก 10 นาที กัน 419 Page Expired --}}
+        @if($keepAliveUrl)
+        <script>
+            (function () {
+                const HEARTBEAT_MS = 10 * 60 * 1000;
+                const keepAliveUrl = @json($keepAliveUrl);
+
+                async function sendKsvrHeartbeat() {
+                    try {
+                        const res = await fetch(keepAliveUrl, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                'Accept': 'application/json'
+                            }
+                        });
+                        if (res.status === 401 || res.status === 419) {
+                            window.location.reload();
+                        }
+                    } catch (e) {}
+                }
+
+                setInterval(sendKsvrHeartbeat, HEARTBEAT_MS);
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible') sendKsvrHeartbeat();
+                });
+            })();
+        </script>
+        @endif
+    @else
+        {{-- 🟡 โหมดนับเวลาล็อกเอาต์อัตโนมัติ (รองรับ Light/Dark Mode + ซิงก์ข้ามแท็บ) --}}
+        <div id="ksvr-idle-modal"
+             class="fixed inset-0 z-[99998] hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div class="w-full max-w-md rounded-3xl bg-white dark:bg-slate-800 p-6 shadow-2xl border border-slate-100 dark:border-slate-700 text-center">
+                <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-500 border border-amber-200/70 dark:border-amber-700/50">
+                    <i class="fa-solid fa-clock text-2xl animate-pulse"></i>
+                </div>
+
+                <h3 class="text-lg font-black text-slate-800 dark:text-white">
+                    กำลังจะออกจากระบบอัตโนมัติ
+                </h3>
+                <p class="mt-1.5 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+                    ไม่พบการใช้งานเป็นระยะเวลาหนึ่ง เพื่อความปลอดภัยของข้อมูลผู้ป่วย ระบบจะออกจากระบบภายใน
+                </p>
+
+                <div class="my-4 py-2 rounded-2xl bg-amber-50/70 dark:bg-slate-900/60 border border-amber-100 dark:border-slate-700">
+                    <span id="ksvr-idle-countdown" class="text-4xl font-black text-amber-600 dark:text-amber-400">60</span>
+                    <span class="text-sm font-bold text-slate-500 dark:text-slate-400 ml-1">วินาที</span>
+                </div>
+
+                <div class="mt-5 flex flex-col-reverse sm:flex-row gap-2.5 justify-center">
+                    <button type="button" id="ksvr-btn-idle-logout"
+                            class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                        <i class="fa-solid fa-right-from-bracket mr-1"></i> ออกจากระบบเลย
+                    </button>
+                    <button type="button" id="ksvr-btn-idle-stay"
+                            class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-sm font-bold text-white shadow-sm transition-colors">
+                        <i class="fa-solid fa-check mr-1"></i> ใช้งานต่อ
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <form id="ksvr-auto-logout-form" action="{{ route('logout') }}" method="POST" class="hidden">
+            @csrf
+        </form>
+
+        <script>
+            (function () {
+                const IDLE_TIMEOUT_MS = {{ $resolvedIdleMinutes }} * 60 * 1000;
+                const WARNING_BEFORE_MS = Math.min(60 * 1000, Math.floor(IDLE_TIMEOUT_MS / 2));
+                const STORAGE_KEY = 'ksvr_mews_last_activity_{{ auth()->id() }}';
+                const keepAliveUrl = @json($keepAliveUrl);
+
+                const modal = document.getElementById('ksvr-idle-modal');
+                const countdownEl = document.getElementById('ksvr-idle-countdown');
+                const btnStay = document.getElementById('ksvr-btn-idle-stay');
+                const btnLogout = document.getElementById('ksvr-btn-idle-logout');
+                const logoutForm = document.getElementById('ksvr-auto-logout-form');
+
+                let isWarningVisible = false;
+                let lastActiveLocal = Date.now();
+                let isLoggingOut = false;
+
+                function recordActivity(sync = true) {
+                    if (isWarningVisible || isLoggingOut) return;
+                    lastActiveLocal = Date.now();
+                    if (sync) localStorage.setItem(STORAGE_KEY, String(lastActiveLocal));
+                }
+
+                function showWarning(sec) {
+                    isWarningVisible = true;
+                    if (countdownEl) countdownEl.textContent = String(Math.max(0, sec));
+                    if (modal) {
+                        modal.classList.remove('hidden');
+                        modal.classList.add('flex');
+                    }
+                }
+
+                function hideWarning() {
+                    isWarningVisible = false;
+                    if (modal) {
+                        modal.classList.add('hidden');
+                        modal.classList.remove('flex');
+                    }
+                }
+
+                function triggerLogout() {
+                    if (isLoggingOut) return;
+                    isLoggingOut = true;
+                    localStorage.removeItem(STORAGE_KEY);
+                    if (logoutForm) logoutForm.submit();
+                }
+
+                let throttle = null;
+                ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'].forEach(ev => {
+                    window.addEventListener(ev, () => {
+                        if (!throttle && !isWarningVisible) {
+                            recordActivity(true);
+                            throttle = setTimeout(() => { throttle = null; }, 3000);
+                        }
+                    }, { passive: true });
+                });
+
+                window.addEventListener('storage', (e) => {
+                    if (e.key === STORAGE_KEY && e.newValue) {
+                        lastActiveLocal = parseInt(e.newValue, 10) || Date.now();
+                        if (isWarningVisible) hideWarning();
+                    }
+                });
+
+                if (btnStay) {
+                    btnStay.addEventListener('click', async () => {
+                        if (!keepAliveUrl) {
+                            hideWarning();
+                            recordActivity(true);
+                            return;
+                        }
+                        try {
+                            const res = await fetch(keepAliveUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                    'Accept': 'application/json'
+                                }
+                            });
+                            if (res.status === 401 || res.status === 419) {
+                                window.location.href = "{{ route('login') }}";
+                                return;
+                            }
+                            hideWarning();
+                            recordActivity(true);
+                        } catch (err) {
+                            window.location.reload();
+                        }
+                    });
+                }
+
+                if (btnLogout) btnLogout.addEventListener('click', triggerLogout);
+
+                recordActivity(true);
+
+                setInterval(() => {
+                    if (isLoggingOut) return;
+                    const stored = parseInt(localStorage.getItem(STORAGE_KEY) || String(lastActiveLocal), 10);
+                    const lastActive = Math.max(lastActiveLocal, isNaN(stored) ? 0 : stored);
+                    const remainingMs = IDLE_TIMEOUT_MS - (Date.now() - lastActive);
+
+                    if (remainingMs <= 0) {
+                        triggerLogout();
+                    } else if (remainingMs <= WARNING_BEFORE_MS) {
+                        showWarning(Math.ceil(remainingMs / 1000));
+                    } else if (isWarningVisible) {
+                        hideWarning();
+                    }
+                }, 1000);
+            })();
+        </script>
+    @endif
+    @endauth
 </body>
 </html>

@@ -230,4 +230,9 @@ return [
 
     'serialization' => 'json',
 
+
+    // Custom configuration for session idle timeout
+    'idle_timeout_pc' => (int) env('APP_IDLE_TIMEOUT_PC', 30),
+    'idle_timeout_mobile' => (int) env('APP_IDLE_TIMEOUT_MOBILE', 720), // ใส่ 0 หากต้องการให้มือถือไม่ต้องล็อกเอาต์เลย
+
 ];

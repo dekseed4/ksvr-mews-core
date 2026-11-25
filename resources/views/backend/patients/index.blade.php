@@ -394,7 +394,11 @@
         @endif
 
     </div>
-    @endif <!-- จบส่วนเฉพาะโหมด Overview --> 
+
+    {{-- 📊 แทรก Executive Analytics Bento Grid ไว้ด้านนอก #realtime-overview-container เพื่อไม่ให้ถูก Real-time Polling ลบกราฟ --}}
+    @include('backend.patients.partials.overview_charts')
+
+    @endif <!-- จบส่วนเฉพาะโหมด Overview -->
 
 
     <!-- ========================================================================= -->

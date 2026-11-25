@@ -37,10 +37,11 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-            'must_change_password' => 'boolean', 
-            'roles' => 'array',
+            'email_verified_at'    => 'datetime',
+            'last_seen_at'         => 'datetime',
+            'password'             => 'hashed',
+            'must_change_password' => 'boolean',
+            'roles'                => 'array',
         ];
     }
 
@@ -74,7 +75,11 @@ class User extends Authenticatable
             return true;
         }
 
-        return $this->last_seen_at !== null && $this->last_seen_at->gt(now()->subMinutes(5));
+        if (empty($this->last_seen_at)) {
+            return false;
+        }
+
+        return \Carbon\Carbon::parse($this->last_seen_at)->gt(now()->subMinutes(5));
     }
 
     public function getLastSeenLabelAttribute(): string
@@ -83,8 +88,8 @@ class User extends Authenticatable
             return 'กำลังออนไลน์';
         }
 
-        return $this->last_seen_at
-            ? 'ใช้งานเมื่อ ' . $this->last_seen_at->locale('th')->diffForHumans()
+        return !empty($this->last_seen_at)
+            ? 'ใช้งานเมื่อ ' . \Carbon\Carbon::parse($this->last_seen_at)->locale('th')->diffForHumans()
             : 'ยังไม่เคยเข้าใช้งาน';
     }
 
@@ -92,4 +97,5 @@ class User extends Authenticatable
     {
         return $query->where('last_seen_at', '>=', now()->subMinutes(5));
     }
+    
 }

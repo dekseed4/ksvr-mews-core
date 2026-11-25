@@ -350,7 +350,7 @@
                         </table>
                     </div>
 
-                    <!-- รายชื่อผู้ป่วยเคสสุขภาพจิตที่กำลังดูแลอยู่ (ถ้ามี) -->
+                    {{-- <!-- รายชื่อผู้ป่วยเคสสุขภาพจิตที่กำลังดูแลอยู่ (ถ้ามี) -->
                     @if($safeMentalList->count() > 0)
                         <div class="mt-3 p-3 bg-white rounded-xl border border-purple-200 space-y-1.5">
                             @foreach($safeMentalList as $mItem)
@@ -365,7 +365,7 @@
                                 </div>
                             @endforeach
                         </div>
-                    @endif
+                    @endif --}}
                 </div>
 
             </div>
@@ -408,7 +408,7 @@
                         </tbody>
                     </table>
 
-                    <!-- 📋 กล่องแสดงรายชื่อทหารที่ Admit พร้อมชื่อหน่วยฝึกหลังชื่อทหาร และ Dx. (ย้ายมาอยู่ใต้ตารางทั้งสองเรียบร้อย) -->
+                    <!-- 📋 กล่องแสดงรายชื่อทหารที่ Admit พร้อมชื่อหน่วยฝึกหลังชื่อทหาร และ Dx.  -->
                     <div class="p-3.5 bg-white rounded-xl border border-rose-200 min-h-[90px] flex flex-col justify-center">
                         @forelse($activeIpdList as $ipd)
                         @if($ipd['hosp_type'] === 'รพ.ค่ายฯ')
@@ -463,7 +463,7 @@
                         </tbody>
                     </table>
 
-                    <!-- 📋 กล่องแสดงรายชื่อทหารที่ Admit พร้อมชื่อหน่วยฝึกหลังชื่อทหาร และ Dx. (ย้ายมาอยู่ใต้ตารางทั้งสองเรียบร้อย) -->
+                    <!-- 📋 กล่องแสดงรายชื่อทหารที่ Admit พร้อมชื่อหน่วยฝึกหลังชื่อทหาร และ Dx. -->
                     <div class="p-3.5 bg-white rounded-xl border border-rose-200 min-h-[90px] flex flex-col justify-center">
                         @forelse($activeIpdList as $ipd)
                         @if($ipd['hosp_type'] === 'รพ.สาธารณสุข')

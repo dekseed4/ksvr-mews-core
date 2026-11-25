@@ -1218,12 +1218,16 @@ class RecruitMorbidityReportController extends Controller
         try {
             $this->applyHosxpTimeout();
 
-            $cleanUTF8 = function ($str) {
+            $cleanUTF8 = function ($str): string {
                 if (empty($str)) {
                     return '';
                 }
-                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string) $str);
-                return trim(mb_convert_encoding($utf8 ?: (string) $str, 'UTF-8', 'UTF-8'));
+                $raw = (string) $str;
+                if (mb_check_encoding($raw, 'UTF-8') && !preg_match('/[\x{00C0}-\x{024F}]/u', $raw)) {
+                    return trim($raw);
+                }
+                $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', $raw);
+                return trim(mb_convert_encoding($utf8 ?: $raw, 'UTF-8', 'UTF-8'));
             };
 
             // ขั้นที่ 1: หา Visit (vn) ล่าสุดจากตาราง ovst ด้วย Index hn + vstdate (ไม่ Join ข้ามตารางตอน Sort)

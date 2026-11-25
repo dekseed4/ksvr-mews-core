@@ -121,8 +121,18 @@ class RecruitAppointmentController extends Controller
         if (empty($str)) {
             return '';
         }
-        $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', (string) $str);
-        return trim(mb_convert_encoding($utf8 ?: (string) $str, 'UTF-8', 'UTF-8'));
+
+        $raw = (string) $str;
+
+        // 🛡️ หากข้อมูลจาก HosXP เป็น UTF-8 ที่สมบูรณ์อยู่แล้ว (เช่น ตั้ง charset => utf8mb4)
+        // ให้คืนค่าเดิมทันที ห้ามสั่ง iconv('TIS-620', ...) ซ้ำเพื่อป้องกันอักษรเพี้ยนเป็น "เธ... เน..."
+        if (mb_check_encoding($raw, 'UTF-8') && !preg_match('/[\x{00C0}-\x{024F}]/u', $raw)) {
+            return trim($raw);
+        }
+
+        // กรณีข้อมูลดิบยังเป็น TIS-620 ค่อยแปลงเป็น UTF-8
+        $utf8 = @iconv('TIS-620', 'UTF-8//IGNORE', $raw);
+        return trim(mb_convert_encoding($utf8 ?: $raw, 'UTF-8', 'UTF-8'));
     }
 
     public function index(Request $request)

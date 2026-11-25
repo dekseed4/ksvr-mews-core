@@ -67,11 +67,11 @@ return [
         // การเชื่อมต่อสำหรับฐานข้อมูล HosXP
         'hosxp' => [
             'driver'   => 'mysql',
-            'host'     => env('HOSXP_DB_HOST', '192.168.x.x'),
-            'port'     => env('HOSXP_DB_PORT', '3306'),
-            'database' => env('HOSXP_DB_DATABASE', 'hos'),
-            'username' => env('HOSXP_DB_USERNAME', ''),
-            'password' => env('HOSXP_DB_PASSWORD', ''),
+            'host'     => env('DB_HOSXP_HOST', '192.168.5.1'),
+            'port'     => env('DB_HOSXP_PORT', '3306'),
+            'database' => env('DB_HOSXP_DATABASE', 'hos'),
+            'username' => env('DB_HOSXP_USERNAME', ''),
+            'password' => env('DB_HOSXP_PASSWORD', ''),
             'charset'  => 'utf8mb4',
             'collation'=> 'utf8mb4_unicode_ci',
             'strict'   => false,

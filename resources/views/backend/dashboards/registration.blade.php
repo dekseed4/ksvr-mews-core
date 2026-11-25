@@ -269,7 +269,7 @@
             </div>
 
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <!-- 1. เลข ปชช. ผิดหลัก Mod-11 -->
+                <!-- 1. เลข ปชช. ผิดหลัก -->
                 <button type="button" onclick="showAuditListModal('invalid_cid')"
                         class="text-left p-3.5 rounded-2xl border-2 transition-all {{ $dataAudit['invalid_cid_count'] > 0 ? 'bg-amber-50/70 border-amber-200 hover:border-amber-400' : 'bg-slate-50/70 dark:bg-slate-900/50 border-slate-100 dark:border-slate-700' }}">
                     <div class="flex items-center justify-between text-xs font-bold {{ $dataAudit['invalid_cid_count'] > 0 ? 'text-amber-700' : 'text-slate-400' }}">
@@ -279,7 +279,7 @@
                     <div class="text-2xl font-black mt-1.5 {{ $dataAudit['invalid_cid_count'] > 0 ? 'text-amber-700' : 'text-emerald-600' }}">
                         {{ number_format($dataAudit['invalid_cid_count']) }}
                     </div>
-                    <div class="text-[10px] font-semibold text-slate-500 mt-0.5">ไม่ผ่านสูตร Mod-11</div>
+                    <div class="text-[10px] font-semibold text-slate-500 mt-0.5">เลขไม่ครบ / พิมพ์ผิดหลัก</div>
                 </button>
 
                 <!-- 2. เลข ปชช. ซ้ำ -->
@@ -720,22 +720,32 @@
     function showAuditListModal(type) {
         const metaMap = {
             invalid_cid: {
-                title: 'รายชื่อเลขบัตร ปชช. ผิดหลัก (ไม่ผ่าน Mod-11)',
+                title: 'รายชื่อเลขบัตร ปชช. ผิดหลัก',
                 icon: 'fa-id-card text-amber-500',
                 list: regDataAudit.invalid_cid_list || [],
-                empty: 'ไม่พบเลขบัตร ปชช. ผิดหลักในผลัดนี้ ข้อมูลสมบูรณ์ 100% ครับ'
+                empty: 'ไม่พบเลขบัตร ปชช. ผิดหลักในผลัดนี้ ข้อมูลสมบูรณ์ 100% ครับ',
+                helpHtml: `
+                    <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-left text-xs text-amber-900 flex items-start gap-2.5 mb-3">
+                        <i class="fa-solid fa-circle-info text-amber-500 text-sm mt-0.5 shrink-0"></i>
+                        <div class="leading-relaxed">
+                            <b class="text-amber-950">ทำไมระบบจึงแจ้งเตือน?</b> เลข 13 หลักของรายชื่อด้านล่างไม่ตรงตามสูตรตรวจสอบของกรมการปกครอง (Mod-11) มักเกิดจาก <b>พิมพ์ตัวเลขผิด/สลับหลัก/ไม่ครบ 13 หลัก</b> ทำให้ซิงค์ HN กับ HosXP ไม่พบ กรุณาตรวจสอบกับบัตร ปชช. จริงแล้วกดแก้ไขครับ
+                        </div>
+                    </div>
+                `
             },
             duplicate_cid: {
                 title: 'รายชื่อเลขบัตร ปชช. ซ้ำซ้อนในระบบ',
                 icon: 'fa-clone text-rose-500',
                 list: regDataAudit.duplicate_cid_list || [],
-                empty: 'ไม่พบรายชื่อที่มีเลขบัตร ปชช. ซ้ำกันในระบบครับ'
+                empty: 'ไม่พบรายชื่อที่มีเลขบัตร ปชช. ซ้ำกันในระบบครับ',
+                helpHtml: ''
             },
             missing_contact: {
                 title: 'รายชื่อที่ข้อมูลไม่ครบ (ขาดวันเกิด / เบอร์โทร)',
                 icon: 'fa-phone-slash text-sky-500',
                 list: regDataAudit.missing_contact_list || [],
-                empty: 'กำลังพลทุกคนมีข้อมูลวันเกิดและเบอร์โทรศัพท์ครบถ้วนแล้วครับ'
+                empty: 'กำลังพลทุกคนมีข้อมูลวันเกิดและเบอร์โทรศัพท์ครบถ้วนแล้วครับ',
+                helpHtml: ''
             }
         };
 
@@ -747,7 +757,7 @@
             return;
         }
 
-        let html = '<div class="space-y-2.5 mt-3 text-left max-h-[60vh] overflow-y-auto pr-1">';
+        let html = (cfg.helpHtml || '') + '<div class="space-y-2.5 mt-2 text-left max-h-[55vh] overflow-y-auto pr-1">';
         cfg.list.forEach((item, idx) => {
             const url = patientShowUrlTemplate.replace('__ID__', item.id);
             const extraTag = item.missing ? `<span class="px-2 py-0.5 bg-sky-100 text-sky-700 rounded text-[10px] font-bold">ขาด: ${escapeRegHtml(item.missing)}</span>` : '';

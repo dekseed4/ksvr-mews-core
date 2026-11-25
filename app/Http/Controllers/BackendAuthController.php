@@ -58,6 +58,7 @@ class BackendAuthController extends Controller
     if (Auth::attempt($credentials, $request->boolean('remember'))) {
         // ป้องกัน Session Fixation Attack
         $request->session()->regenerate();
+        $request->session()->put('last_activity_at', time()); // <-- เพิ่มบรรทัดนี้
 
         // (ตัวเลือกเสริม) บันทึกลง AuditLog ของระบบ KSVR ว่าล็อกอินสำเร็จด้วยช่องทางไหน
         if (class_exists(\App\Services\AuditLog::class)) {

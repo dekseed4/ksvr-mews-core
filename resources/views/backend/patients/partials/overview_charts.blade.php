@@ -11,6 +11,37 @@
     $appTomCount     = (int) ($overviewCharts['appointments_next_7d']['tomorrow_count'] ?? 0);
     $appTotal7d      = (int) ($overviewCharts['appointments_next_7d']['total_7d'] ?? 0);
     $dcSum           = $overviewCharts['discharge_summary'] ?? ['physical' => 0, 'mental' => 0, 'in_progress' => 0, 'completed' => 0, 'total' => 0, 'completed_percent' => 0];
+
+    // เตรียมข้อมูลแถบสรุปความพร้อมกำลังพลรายหน่วยสำหรับมิติที่ 1
+    $mpData        = $overviewCharts['manpower_by_unit'] ?? [];
+    $mpLabels      = $mpData['labels'] ?? [];
+    $mpUnitIds     = $mpData['unit_ids'] ?? [];
+    $mpActive      = $mpData['active'] ?? [];
+    $mpDischarged  = $mpData['discharged'] ?? [];
+    $mpAbsent      = $mpData['absent'] ?? [];
+    $mpOther       = $mpData['other_inactive'] ?? [];
+    $mpUnitCards   = [];
+    $mpTotalExcep  = 0;
+
+    foreach ($mpLabels as $idx => $uLabel) {
+        $act = (int) ($mpActive[$idx] ?? 0);
+        $dc  = (int) ($mpDischarged[$idx] ?? 0);
+        $abs = (int) ($mpAbsent[$idx] ?? 0);
+        $oth = (int) ($mpOther[$idx] ?? 0);
+        $exc = $dc + $abs + $oth;
+        $tot = $act + $exc;
+        $mpTotalExcep += $exc;
+
+        $mpUnitCards[] = [
+            'unit_id'       => $mpUnitIds[$idx] ?? '',
+            'label'         => $uLabel,
+            'active'        => $act,
+            'exceptions'    => $exc,
+            'total'         => $tot,
+            'ready_percent' => $tot > 0 ? round(($act / $tot) * 100, 1) : 0,
+        ];
+    }
+    $mpDefaultMode = $mpTotalExcep > 0 ? 'exceptions' : 'all';
 @endphp
 
 <!-- ========================================================================= -->
@@ -53,19 +84,80 @@
     <!-- ===================================================================== -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
-        <!-- กราฟที่ 1: ยอดกำลังพลและสถานะความพร้อม แยกตามหน่วยฝึก -->
-        <div class="lg:col-span-7 bg-white dark:bg-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col justify-between">
-            <div class="flex flex-wrap items-start justify-between gap-2 mb-4">
+        <!-- กราฟที่ 1: ยอดกำลังพลและสถานะความพร้อม แยกตามหน่วยฝึก (อัปเกรดแถบความพร้อม + สลับโหมดซูม) -->
+        <div class="lg:col-span-7 bg-white dark:bg-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col justify-between gap-3.5">
+            <div class="flex flex-wrap items-start justify-between gap-2">
                 <div>
                     <span class="text-[10px] font-black uppercase tracking-widest text-indigo-500">มิติที่ 1 • กำลังพล &amp; ความพร้อม</span>
                     <h4 class="text-sm sm:text-base font-black text-slate-800 dark:text-white mt-0.5 flex items-center gap-2">
                         <i class="fa-solid fa-users-rectangle text-indigo-500"></i> สถานะความพร้อมกำลังพล แยกตามหน่วยฝึก
                     </h4>
                 </div>
-                <span class="text-[11px] font-bold text-slate-400">คลิกแท่งเพื่อดูรายชื่อหน่วย</span>
+
+                <!-- ปุ่มสลับโหมดกราฟ: เจาะกลุ่มไม่พร้อม vs ภาพรวมทั้งหมด -->
+                <div class="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700 text-[11px] font-bold shrink-0">
+                    <button type="button"
+                            id="btn-mp-mode-exceptions"
+                            onclick="window.setManpowerChartMode('exceptions')"
+                            class="px-2.5 py-1 rounded-lg transition-all {{ $mpDefaultMode === 'exceptions' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200' }}">
+                        <i class="fa-solid fa-magnifying-glass-chart mr-1"></i>เจาะกลุ่มไม่พร้อม
+                    </button>
+                    <button type="button"
+                            id="btn-mp-mode-all"
+                            onclick="window.setManpowerChartMode('all')"
+                            class="px-2.5 py-1 rounded-lg transition-all {{ $mpDefaultMode === 'all' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200' }}">
+                        <i class="fa-solid fa-layer-group mr-1"></i>ภาพรวมทั้งหมด
+                    </button>
+                </div>
             </div>
-            <div class="relative h-64 sm:h-72 w-full">
+
+            <!-- แถบสรุปความพร้อมกำลังพลรายหน่วย (คลิกดูรายชื่อประจำการปกติของแต่ละหน่วยได้ทันที) -->
+            @if(count($mpUnitCards) > 0)
+                <div class="grid grid-cols-1 {{ count($mpUnitCards) > 1 ? 'sm:grid-cols-2' : '' }} gap-2.5">
+                    @foreach($mpUnitCards as $uCard)
+                        @php
+                            $uActiveUrl = route('backend.patients.index', array_filter([
+                                'view'             => 'list',
+                                'unit'             => $uCard['unit_id'],
+                                'batch'            => $chartBatchParam,
+                                'discharge_status' => 'active_duty',
+                            ], fn ($v) => $v !== null && $v !== ''));
+                        @endphp
+                        <a href="{{ $uActiveUrl }}"
+                           class="group p-3 rounded-2xl bg-slate-50/90 dark:bg-slate-900/70 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/30 border border-slate-200/70 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all block">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-xs font-black text-slate-700 dark:text-slate-200 truncate group-hover:text-emerald-700 dark:group-hover:text-emerald-300">
+                                    {{ $uCard['label'] }}
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 shrink-0">
+                                    พร้อม {{ $uCard['ready_percent'] }}%
+                                </span>
+                            </div>
+                            <div class="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden mt-2">
+                                <div class="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                                     style="width: {{ $uCard['ready_percent'] }}%"></div>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 mt-1.5 text-[11px] font-bold">
+                                <span class="text-emerald-700 dark:text-emerald-400">
+                                    ประจำการ {{ number_format($uCard['active']) }}/{{ number_format($uCard['total']) }} นาย
+                                </span>
+                                <span class="{{ $uCard['exceptions'] > 0 ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400' }}">
+                                    ไม่พร้อม/นำปลด {{ number_format($uCard['exceptions']) }}
+                                </span>
+                            </div>
+                        </a>
+                    @endforeach
+                </div>
+            @endif
+
+            <div class="relative h-56 sm:h-60 w-full">
                 <canvas id="chart-manpower-unit"></canvas>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                <span id="mp-chart-caption">
+                    <i class="fa-solid fa-circle-info mr-1 text-indigo-400"></i>แสดงเฉพาะกลุ่มนำปลด/ไม่พร้อมเพื่อเทียบความต่างชัดเจน (คลิกแท่งเพื่อดูรายชื่อ)
+                </span>
             </div>
         </div>
 
@@ -82,7 +174,7 @@
                     ซิงค์ HN {{ $overviewCharts['coverage_donut']['hn_percent'] ?? 0 }}%
                 </span>
             </div>
-            <div class="relative h-64 sm:h-72 w-full">
+            <div class="relative h-64 sm:h-72 w-full my-auto">
                 <canvas id="chart-coverage-donut"></canvas>
             </div>
         </div>
@@ -300,6 +392,7 @@
     const activeUnit  = @json($chartUnitParam);
 
     const chartInstances = {};
+    let manpowerChartMode = @json($mpDefaultMode);
 
     function isDarkMode() {
         return document.documentElement.classList.contains('dark');
@@ -312,7 +405,19 @@
             title: dark ? '#f8fafc' : '#0f172a',
             grid: dark ? 'rgba(148, 163, 184, 0.14)' : 'rgba(226, 232, 240, 0.85)',
             tooltipBg: dark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(15, 23, 42, 0.90)',
-            borderColor: dark ? '#1e293b' : '#ffffff'
+            borderColor: dark ? '#1e293b' : '#ffffff',
+            otherInactiveColor: dark ? '#94a3b8' : '#475569'
+        };
+    }
+
+    function getBaseTooltip(theme) {
+        return {
+            backgroundColor: theme.tooltipBg,
+            titleColor: '#f8fafc',
+            bodyColor: '#e2e8f0',
+            padding: 10,
+            cornerRadius: 12,
+            displayColors: true
         };
     }
 
@@ -327,6 +432,7 @@
         window.location.href = qs ? `${baseUrl}?${qs}` : baseUrl;
     }
 
+    // ปลั๊กอินข้อความตรงกลางโดนัท
     const centerTextPlugin = {
         id: 'ksvrCenterText',
         afterDraw(chart) {
@@ -354,12 +460,197 @@
         }
     };
 
+    // ปลั๊กอินแสดงตัวเลขบนหัวแท่งกราฟ (รองรับทั้ง Grouped Bar และยอดรวม Stacked Bar)
+    const barValueLabelPlugin = {
+        id: 'ksvrBarValueLabels',
+        afterDatasetsDraw(chart) {
+            const opts = chart.config.options?.plugins?.ksvrBarValueLabels;
+            if (!opts || !opts.enabled) return;
+
+            const { ctx } = chart;
+            const theme = getThemeTokens();
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.font = '700 11px "Prompt", sans-serif';
+            ctx.fillStyle = theme.title;
+
+            if (opts.mode === 'stackedTotal') {
+                const labelCount = chart.data.labels?.length || 0;
+                for (let idx = 0; idx < labelCount; idx++) {
+                    let sum = 0;
+                    let topY = null;
+                    let barX = null;
+
+                    chart.data.datasets.forEach((ds, dsIdx) => {
+                        if (!chart.isDatasetVisible(dsIdx)) return;
+                        const val = Number(ds.data?.[idx] || 0);
+                        sum += val;
+                        const meta = chart.getDatasetMeta(dsIdx);
+                        const bar = meta.data?.[idx];
+                        if (bar && val > 0) {
+                            barX = bar.x;
+                            topY = (topY === null) ? bar.y : Math.min(topY, bar.y);
+                        }
+                    });
+
+                    if (sum > 0 && topY !== null && barX !== null) {
+                        ctx.fillText(`${sum.toLocaleString()} นาย`, barX, topY - 5);
+                    }
+                }
+            } else {
+                chart.data.datasets.forEach((ds, dsIdx) => {
+                    if (!chart.isDatasetVisible(dsIdx)) return;
+                    const meta = chart.getDatasetMeta(dsIdx);
+                    meta.data.forEach((bar, idx) => {
+                        const val = Number(ds.data?.[idx] || 0);
+                        if (val > 0) {
+                            ctx.fillText(`${val.toLocaleString()}`, bar.x, bar.y - 4);
+                        }
+                    });
+                });
+            }
+
+            ctx.restore();
+        }
+    };
+
     function handleHoverCursor(event, elements) {
         const target = event?.native?.target;
         if (target) {
             target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
         }
     }
+
+    // ฟังก์ชันอัปเดตปุ่มสลับโหมด + คำอธิบายใต้กราฟที่ 1
+    function syncManpowerModeUI() {
+        const btnExc  = document.getElementById('btn-mp-mode-exceptions');
+        const btnAll  = document.getElementById('btn-mp-mode-all');
+        const caption = document.getElementById('mp-chart-caption');
+
+        const activeCls   = 'px-2.5 py-1 rounded-lg transition-all bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm';
+        const inactiveCls = 'px-2.5 py-1 rounded-lg transition-all text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200';
+
+        if (btnExc) btnExc.className = manpowerChartMode === 'exceptions' ? activeCls : inactiveCls;
+        if (btnAll) btnAll.className = manpowerChartMode === 'all' ? activeCls : inactiveCls;
+
+        if (caption) {
+            caption.innerHTML = manpowerChartMode === 'exceptions'
+                ? '<i class="fa-solid fa-circle-info mr-1 text-indigo-400"></i>แสดงเฉพาะกลุ่มนำปลด/ไม่พร้อมเพื่อเทียบความต่างชัดเจน (คลิกแท่งเพื่อดูรายชื่อ)'
+                : '<i class="fa-solid fa-circle-info mr-1 text-emerald-500"></i>แสดงภาพรวมกำลังพลทั้งหมดทุกสถานะ แยกตามหน่วยฝึก (คลิกแท่งเพื่อดูรายชื่อ)';
+        }
+    }
+
+    // เรนเดอร์เฉพาะกราฟที่ 1 (สลับโหมดได้ลื่นๆ โดยไม่กระทบกราฟอื่น)
+    function renderManpowerChart() {
+        const mpEl = document.getElementById('chart-manpower-unit');
+        if (!mpEl || !chartData.manpower_by_unit || typeof window.Chart === 'undefined') return;
+
+        if (chartInstances.manpower) {
+            try { chartInstances.manpower.destroy(); } catch (e) {}
+            delete chartInstances.manpower;
+        }
+
+        const theme = getThemeTokens();
+        const baseTooltip = getBaseTooltip(theme);
+        const mp = chartData.manpower_by_unit;
+        const isExceptionMode = (manpowerChartMode === 'exceptions');
+
+        // คำนวณยอดรวมแต่ละหน่วยไว้แสดง % ใน Tooltip
+        const unitTotals = (mp.labels || []).map((_, idx) =>
+            Number(mp.active?.[idx] || 0)
+            + Number(mp.discharged?.[idx] || 0)
+            + Number(mp.absent?.[idx] || 0)
+            + Number(mp.other_inactive?.[idx] || 0)
+        );
+
+        const datasets = isExceptionMode
+            ? [
+                { label: 'ยื่นนำปลด/ปลดแล้ว', data: mp.discharged, backgroundColor: '#8b5cf6', borderRadius: 8, maxBarThickness: 44, statusKey: 'discharged' },
+                { label: 'ไม่มารายงานตัว', data: mp.absent, backgroundColor: '#f97316', borderRadius: 8, maxBarThickness: 44, statusKey: 'absent' },
+                { label: 'ต้องโทษ/เสียชีวิต', data: mp.other_inactive, backgroundColor: theme.otherInactiveColor, borderRadius: 8, maxBarThickness: 44, statusKey: 'inactive_all' }
+            ]
+            : [
+                { label: 'ประจำการปกติ', data: mp.active, backgroundColor: '#10b981', borderRadius: 4, maxBarThickness: 84, statusKey: 'active_duty' },
+                { label: 'ยื่นนำปลด/ปลดแล้ว', data: mp.discharged, backgroundColor: '#8b5cf6', borderRadius: 4, maxBarThickness: 84, statusKey: 'discharged' },
+                { label: 'ไม่มารายงานตัว', data: mp.absent, backgroundColor: '#f97316', borderRadius: 4, maxBarThickness: 84, statusKey: 'absent' },
+                { label: 'ต้องโทษ/เสียชีวิต', data: mp.other_inactive, backgroundColor: theme.otherInactiveColor, borderRadius: 4, maxBarThickness: 84, statusKey: 'inactive_all' }
+            ];
+
+        syncManpowerModeUI();
+
+        chartInstances.manpower = new Chart(mpEl, {
+            type: 'bar',
+            data: {
+                labels: mp.labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 22 } },
+                onHover: handleHoverCursor,
+                onClick: (evt, els, chart) => {
+                    if (!els.length) return;
+                    const { datasetIndex, index } = els[0];
+                    const uid = mp.unit_ids?.[index];
+                    const statusKey = chart.data.datasets?.[datasetIndex]?.statusKey || '';
+                    navigateWithParams(routes.patientsList, {
+                        view: 'list',
+                        unit: uid,
+                        batch: activeBatch,
+                        discharge_status: statusKey
+                    });
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { usePointStyle: true, boxWidth: 8, padding: 14, font: { size: 11 } }
+                    },
+                    tooltip: {
+                        ...baseTooltip,
+                        callbacks: {
+                            label: (ctx) => {
+                                const val = Number(ctx.raw || 0);
+                                const tot = unitTotals[ctx.dataIndex] || 0;
+                                const pct = tot > 0 ? ((val / tot) * 100).toFixed(1) : '0.0';
+                                return ` ${ctx.dataset.label}: ${val.toLocaleString()} นาย (${pct}%)`;
+                            }
+                        }
+                    },
+                    ksvrBarValueLabels: {
+                        enabled: true,
+                        mode: isExceptionMode ? 'perBar' : 'stackedTotal'
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: !isExceptionMode,
+                        grid: { display: false },
+                        ticks: { font: { size: 12, weight: '600' } }
+                    },
+                    y: {
+                        stacked: !isExceptionMode,
+                        beginAtZero: true,
+                        grace: '15%',
+                        suggestedMax: isExceptionMode ? 5 : undefined,
+                        ticks: {
+                            precision: 0,
+                            stepSize: isExceptionMode ? 1 : undefined
+                        },
+                        grid: { color: theme.grid }
+                    }
+                }
+            },
+            plugins: [barValueLabelPlugin]
+        });
+    }
+
+    window.setManpowerChartMode = function (mode) {
+        if (mode !== 'exceptions' && mode !== 'all') return;
+        manpowerChartMode = mode;
+        renderManpowerChart();
+    };
 
     function renderAllOverviewCharts() {
         if (typeof window.Chart === 'undefined') return;
@@ -373,59 +664,12 @@
         Chart.defaults.font.family = "'Prompt', sans-serif";
         Chart.defaults.color = theme.text;
 
-        const baseTooltip = {
-            backgroundColor: theme.tooltipBg,
-            titleColor: '#f8fafc',
-            bodyColor: '#e2e8f0',
-            padding: 10,
-            cornerRadius: 12,
-            displayColors: true
-        };
+        const baseTooltip = getBaseTooltip(theme);
 
         // =====================================================================
         // มิติที่ 1 — กราฟที่ 1: ยอดกำลังพลและความพร้อม แยกตามหน่วยฝึก
         // =====================================================================
-        const mpEl = document.getElementById('chart-manpower-unit');
-        if (mpEl && chartData.manpower_by_unit) {
-            const mp = chartData.manpower_by_unit;
-            const statusByDataset = ['active_duty', 'discharged', 'absent', 'inactive_all'];
-            chartInstances.manpower = new Chart(mpEl, {
-                type: 'bar',
-                data: {
-                    labels: mp.labels,
-                    datasets: [
-                        { label: 'ประจำการปกติ', data: mp.active, backgroundColor: '#10b981', borderRadius: 4 },
-                        { label: 'ยื่นนำปลด/ปลดแล้ว', data: mp.discharged, backgroundColor: '#8b5cf6', borderRadius: 4 },
-                        { label: 'ไม่มารายงานตัว', data: mp.absent, backgroundColor: '#f97316', borderRadius: 4 },
-                        { label: 'ต้องโทษ/เสียชีวิต', data: mp.other_inactive, backgroundColor: '#475569', borderRadius: 4 }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    onHover: handleHoverCursor,
-                    onClick: (evt, els) => {
-                        if (!els.length) return;
-                        const { datasetIndex, index } = els[0];
-                        const uid = mp.unit_ids?.[index];
-                        navigateWithParams(routes.patientsList, {
-                            view: 'list',
-                            unit: uid,
-                            batch: activeBatch,
-                            discharge_status: statusByDataset[datasetIndex] || ''
-                        });
-                    },
-                    plugins: {
-                        legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 14 } },
-                        tooltip: baseTooltip
-                    },
-                    scales: {
-                        x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } },
-                        y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, grid: { color: theme.grid } }
-                    }
-                }
-            });
-        }
+        renderManpowerChart();
 
         // =====================================================================
         // มิติที่ 1 — กราฟที่ 2: สัดส่วนสิทธิการรักษา & ความคืบหน้าซิงค์ HN
